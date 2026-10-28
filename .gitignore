@@ -37,3 +37,6 @@ Secrets.swift
 *.swiftmodule
 *.swiftdoc
 *.o
+
+# 打包产物
+dist/

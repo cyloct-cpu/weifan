@@ -1,5 +1,6 @@
 import { LANGUAGES, SEND_TARGETS } from '../core/language.js';
 import { DEFAULT_SETTINGS } from '../core/core.js';
+import { EXT, sendToBackground } from '../shared/ext.js';
 
 const STORAGE_KEY = 'weifan';
 const $ = (id) => document.getElementById(id);
@@ -8,7 +9,7 @@ const $ = (id) => document.getElementById(id);
 let store = { keys: {}, settings: { ...DEFAULT_SETTINGS }, chats: {} };
 
 async function load() {
-  const raw = await chrome.storage.local.get(STORAGE_KEY);
+  const raw = await EXT.storage.local.get(STORAGE_KEY);
   const value = raw?.[STORAGE_KEY] ?? {};
   store = {
     keys: value.keys ?? {},
@@ -125,7 +126,7 @@ async function save() {
     setStatus('至少要填一个密钥，否则没法翻译', '#f15c6d');
     return;
   }
-  await chrome.storage.local.set({ [STORAGE_KEY]: next });
+  await EXT.storage.local.set({ [STORAGE_KEY]: next });
   store = next;
   setStatus('已保存，刷新 WhatsApp 页面后生效');
 }
@@ -134,7 +135,7 @@ $('save').addEventListener('click', save);
 
 $('clearCache').addEventListener('click', async () => {
   try {
-    await chrome.runtime.sendMessage({ type: 'clearCache' });
+    await sendToBackground({ type: 'clearCache' });
     setStatus('缓存已清空');
   } catch (error) {
     setStatus(`清空失败：${error.message}`, '#f15c6d');

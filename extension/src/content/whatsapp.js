@@ -68,15 +68,40 @@
 
   // MARK: - 与 background 通信
 
+  // content script 不能用 import，这里内联一份与 src/shared/ext.js 等价的实现。
+  // Firefox 的 browser.* 是 Promise 式，Chromium 的 chrome.* 是回调式，必须分两条路。
+  const EXT = globalThis.browser?.runtime?.id ? globalThis.browser : globalThis.chrome;
+  const IS_PROMISE_API = Boolean(globalThis.browser?.runtime?.id);
+
+  /** @param {any} response */
+  function unwrap(response) {
+    if (!response) throw new Error('扩展没有响应，刷新 WhatsApp 页面试试');
+    if (!response.ok) throw new Error(response.error || '未知错误');
+    return response.data;
+  }
+
   /** @param {any} message @returns {Promise<any>} */
   function send(message) {
+    if (IS_PROMISE_API) {
+      return EXT.runtime.sendMessage(message).then(unwrap);
+    }
     return new Promise((resolve, reject) => {
-      chrome.runtime.sendMessage(message, (response) => {
-        if (chrome.runtime.lastError) return reject(new Error(chrome.runtime.lastError.message));
-        if (!response) return reject(new Error('扩展没有响应，刷新 WhatsApp 页面试试'));
-        if (!response.ok) return reject(new Error(response.error || '未知错误'));
-        resolve(response.data);
-      });
+      try {
+        EXT.runtime.sendMessage(message, (response) => {
+          const lastError = globalThis.chrome?.runtime?.lastError;
+          if (lastError) {
+            reject(new Error(lastError.message));
+            return;
+          }
+          try {
+            resolve(unwrap(response));
+          } catch (error) {
+            reject(error);
+          }
+        });
+      } catch (error) {
+        reject(error);
+      }
     });
   }
 

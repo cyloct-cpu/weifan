@@ -8,6 +8,7 @@
 
 import { translateForSending, translateIncoming, DEFAULT_SETTINGS } from './core/core.js';
 import { LANGUAGES } from './core/language.js';
+import { EXT } from './shared/ext.js';
 
 const STORAGE_KEY = 'weifan';
 const CACHE_LIMIT = 300;
@@ -19,7 +20,7 @@ const cache = new Map();
 
 /** @returns {Promise<Store>} */
 async function loadStore() {
-  const raw = await chrome.storage.local.get(STORAGE_KEY);
+  const raw = await EXT.storage.local.get(STORAGE_KEY);
   const value = raw?.[STORAGE_KEY] ?? {};
   return {
     keys: value.keys ?? {},
@@ -30,7 +31,7 @@ async function loadStore() {
 
 /** @param {Store} store */
 async function saveStore(store) {
-  await chrome.storage.local.set({ [STORAGE_KEY]: store });
+  await EXT.storage.local.set({ [STORAGE_KEY]: store });
 }
 
 /** @param {string} key @param {any} value */
@@ -45,7 +46,7 @@ function cacheSet(key, value) {
 /** @param {string} text */
 const fingerprint = (text) => text.length + ':' + text.slice(0, 64);
 
-chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
+EXT.runtime.onMessage.addListener((message, _sender, sendResponse) => {
   handle(message)
     .then((data) => sendResponse({ ok: true, data }))
     .catch((error) => sendResponse({ ok: false, error: error?.message ?? String(error) }));
@@ -58,7 +59,7 @@ async function handle(message) {
 
   switch (message?.type) {
     case 'ping':
-      return { version: chrome.runtime.getManifest().version };
+      return { version: EXT.runtime.getManifest().version };
 
     case 'getConfig':
       // 只回给 content script 需要的部分，密钥不出 background
@@ -129,12 +130,12 @@ async function handle(message) {
 }
 
 // 首次安装时写入默认设置，避免 content script 读到 undefined
-chrome.runtime.onInstalled.addListener(async () => {
+EXT.runtime.onInstalled.addListener(async () => {
   const store = await loadStore();
   await saveStore(store);
 });
 
 // 点扩展图标直接打开设置页（没有 popup，减少一次点击）
-chrome.action.onClicked.addListener(() => {
-  chrome.runtime.openOptionsPage();
+EXT.action.onClicked.addListener(() => {
+  EXT.runtime.openOptionsPage();
 });
