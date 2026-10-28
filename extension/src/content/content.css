@@ -1,0 +1,207 @@
+/* 微翻 · WhatsApp Web 注入样式
+   用深色胶囊风格，在 WhatsApp 的浅色/深色主题下都能看清。 */
+
+/* 收件译文（嵌在气泡里，原文下方） */
+.wf-inline {
+  margin-top: 6px;
+  padding-top: 6px;
+  border-top: 1px dashed rgba(128, 128, 128, 0.35);
+  font-size: 13.5px;
+  line-height: 1.45;
+  white-space: pre-wrap;
+  word-break: break-word;
+  color: #8696a0;
+}
+
+.wf-inline-text {
+  color: #e9edef;
+  background: rgba(0, 168, 132, 0.12);
+  border-left: 2px solid #00a884;
+  padding: 3px 8px;
+  border-radius: 4px;
+}
+
+/* 浅色主题下文字改为深色 */
+@media (prefers-color-scheme: light) {
+  .wf-inline-text {
+    color: #111b21;
+    background: rgba(0, 168, 132, 0.1);
+  }
+}
+
+.wf-inline-text.wf-muted {
+  color: #8696a0;
+  background: transparent;
+  border-left-color: #8696a0;
+  font-style: italic;
+}
+
+.wf-inline-text.wf-error {
+  color: #f15c6d;
+  background: rgba(241, 92, 109, 0.12);
+  border-left-color: #f15c6d;
+}
+
+.wf-inline-meta {
+  margin-top: 3px;
+  font-size: 10.5px;
+  color: #667781;
+  letter-spacing: 0.2px;
+}
+
+.wf-clickable {
+  cursor: pointer;
+}
+
+/* 发件工具栏 */
+.wf-toolbar {
+  position: fixed;
+  right: 22px;
+  bottom: 96px;
+  z-index: 2147483000;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 5px 6px 5px 10px;
+  border-radius: 999px;
+  background: #111b21;
+  box-shadow: 0 6px 20px rgba(0, 0, 0, 0.35);
+  font-family: -apple-system, "PingFang SC", "Microsoft YaHei", sans-serif;
+}
+
+.wf-toolbar .wf-lang {
+  appearance: none;
+  border: none;
+  background: transparent;
+  color: #e9edef;
+  font-size: 12px;
+  max-width: 96px;
+  padding: 2px 4px;
+  cursor: pointer;
+  outline: none;
+}
+
+.wf-toolbar .wf-lang option {
+  background: #111b21;
+  color: #e9edef;
+}
+
+.wf-translate-btn {
+  width: 34px;
+  height: 34px;
+  border: none;
+  border-radius: 50%;
+  background: #00a884;
+  color: #06231d;
+  font-size: 15px;
+  font-weight: 700;
+  cursor: pointer;
+  transition: transform 0.12s ease, opacity 0.12s ease;
+}
+
+.wf-translate-btn:hover {
+  transform: scale(1.06);
+}
+
+.wf-translate-btn:disabled {
+  opacity: 0.6;
+  cursor: default;
+  transform: none;
+}
+
+/* 风险确认面板 */
+.wf-panel {
+  position: fixed;
+  right: 22px;
+  bottom: 148px;
+  z-index: 2147483001;
+  width: 340px;
+  max-width: calc(100vw - 44px);
+  padding: 12px;
+  border-radius: 12px;
+  background: #111b21;
+  border: 1px solid rgba(241, 92, 109, 0.5);
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.45);
+  font-family: -apple-system, "PingFang SC", "Microsoft YaHei", sans-serif;
+  color: #e9edef;
+}
+
+.wf-panel-title {
+  font-size: 12px;
+  color: #f1a45c;
+  margin-bottom: 8px;
+}
+
+.wf-panel-body {
+  font-size: 13.5px;
+  line-height: 1.5;
+  max-height: 180px;
+  overflow: auto;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.wf-panel-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  margin-top: 10px;
+}
+
+.wf-panel-actions button {
+  border: none;
+  border-radius: 8px;
+  padding: 6px 14px;
+  font-size: 12.5px;
+  cursor: pointer;
+  background: rgba(233, 237, 239, 0.12);
+  color: #e9edef;
+}
+
+.wf-panel-actions button.wf-primary {
+  background: #00a884;
+  color: #06231d;
+  font-weight: 600;
+}
+
+/* 提示条 */
+.wf-toast {
+  position: fixed;
+  left: 50%;
+  bottom: 24px;
+  transform: translate(-50%, 20px);
+  z-index: 2147483002;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 9px 16px;
+  border-radius: 999px;
+  background: #111b21;
+  color: #e9edef;
+  font-size: 12.5px;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.4);
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.18s ease, transform 0.18s ease;
+  font-family: -apple-system, "PingFang SC", "Microsoft YaHei", sans-serif;
+}
+
+.wf-toast.wf-show {
+  opacity: 1;
+  transform: translate(-50%, 0);
+  pointer-events: auto;
+}
+
+.wf-toast[data-kind="warn"] { border-left: 3px solid #f1a45c; }
+.wf-toast[data-kind="error"] { border-left: 3px solid #f15c6d; }
+.wf-toast[data-kind="ok"] { border-left: 3px solid #00a884; }
+
+.wf-undo {
+  border: none;
+  background: rgba(233, 237, 239, 0.15);
+  color: #e9edef;
+  border-radius: 6px;
+  padding: 3px 10px;
+  font-size: 12px;
+  cursor: pointer;
+}

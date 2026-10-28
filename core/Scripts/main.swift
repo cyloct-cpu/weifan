@@ -48,8 +48,8 @@ check(protected.units.count == 3, "命中 3 个词条")
 check(Set(protected.hits) == Set(["轻舟 Pro", "Chan", "定金"]), "命中词集合正确")
 let restored = glossary.restore("El ⟦2⟧ de ⟦0⟧ es 500 USD, contacte a ⟦1⟧.", units: protected.units)
 check(restored == "El depósito de 轻舟 Pro es 500 USD, contacte a Chan.", "还原后与预期一致：\(restored)")
-let mangled = glossary.restore("Please ship to 【 1 】.", units: glossary.protect("请寄给 Chan", target: .english).units)
-check(mangled == "Please ship to Chan.", "容忍全角方括号与空格")
+let mangled = glossary.restore("Please ship to 【 0 】.", units: glossary.protect("请寄给 Chan", target: .english).units)
+check(mangled == "Please ship to Chan.", "容忍全角方括号与空格（编号从 0 开始）")
 check(glossary.restore("hello ⟦9⟧ world", units: [:]) == "hello ⟦9⟧ world", "无法还原时保留占位符，不静默出错译")
 let longFirst = Glossary(entries: [
     GlossaryEntry(term: "轻舟", policy: .keepOriginal),

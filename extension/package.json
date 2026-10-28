@@ -1,0 +1,11 @@
+{
+  "name": "weifan-extension",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "微翻 WeiFan — WhatsApp Web 即时翻译扩展",
+  "scripts": {
+    "test": "node tests/selftest.mjs",
+    "check": "node --check src/background.js && node --check src/content/whatsapp.js && node --check src/options/options.js && node --check src/core/core.js && node --check src/core/language.js && node --check src/core/glossary.js && node --check src/core/routing.js && node --check src/core/providers.js && echo 'syntax ok'"
+  }
+}

@@ -1,0 +1,35 @@
+{
+  "manifest_version": 3,
+  "name": "微翻 WeiFan",
+  "version": "0.1.0",
+  "description": "WhatsApp Web 即时翻译：对方消息自动出中文，输入框里的中文一键变对方语言。",
+  "permissions": ["storage"],
+  "host_permissions": [
+    "https://web.whatsapp.com/*",
+    "https://translation.googleapis.com/*",
+    "https://api-free.deepl.com/*",
+    "https://api.deepl.com/*",
+    "https://api.groq.com/*",
+    "https://api.deepseek.com/*",
+    "https://api.openai.com/*"
+  ],
+  "background": {
+    "service_worker": "src/background.js",
+    "type": "module"
+  },
+  "content_scripts": [
+    {
+      "matches": ["https://web.whatsapp.com/*"],
+      "js": ["src/content/whatsapp.js"],
+      "css": ["src/content/content.css"],
+      "run_at": "document_idle"
+    }
+  ],
+  "options_ui": {
+    "page": "src/options/options.html",
+    "open_in_tab": true
+  },
+  "action": {
+    "default_title": "微翻 · 设置"
+  }
+}

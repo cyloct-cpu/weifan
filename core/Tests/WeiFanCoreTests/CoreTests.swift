@@ -92,8 +92,10 @@ final class GlossaryTests: XCTestCase {
     func testRestoreToleratesSpacingAndFullWidthBrackets() {
         let glossary = makeGlossary()
         let protected = glossary.protect("请寄给 Chan", target: .english)
+        // 只有一个命中，占位符编号是 0
+        XCTAssertEqual(protected.units.count, 1)
         // DeepL/Google 有时会塞空格，有时会换成全角
-        let mangled = "Please ship to 【 1 】."
+        let mangled = "Please ship to 【 0 】."
         let restored = glossary.restore(mangled, units: protected.units)
         XCTAssertEqual(restored, "Please ship to Chan.")
     }
