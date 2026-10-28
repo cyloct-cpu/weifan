@@ -1,5 +1,7 @@
 # 微翻 WeiFan
 
+![ci](https://github.com/cyloct-cpu/weifan/actions/workflows/ci.yml/badge.svg)
+
 WhatsApp 跨境沟通的自动翻译工具：**你打中文，发出去的是对方的语言；对方说什么，你看到的是中文。**
 
 - 范围：**三端** —— 浏览器扩展 / Android / iOS（macOS 原生不做）
