@@ -17,7 +17,7 @@ WhatsApp 跨境沟通的自动翻译工具：**你打中文，发出去的是对
 | 端 | 读对方消息 | 改写输入框 | 要切键盘 | 交付门槛 | 状态 |
 |---|---|---|---|---|---|
 | **浏览器扩展** | ✅ DOM 直读 | ✅ 直接改 | ❌ 不用 | 无 | ✅ 可运行 |
-| Android | ✅ 无障碍 | ✅ `ACTION_SET_TEXT` | ❌ 不用 | Android Studio / JDK | ⏸ 需装工具链 |
+| Android | ⚠️ v0.1 未做 | ✅ `ACTION_SET_TEXT` | ❌ 不用 | JDK + Android SDK | 🚧 可编译，未真机验证 |
 | iOS | ❌ 读不到 | ⚠️ 只能改输入框 | ✅ 每次切两次 | Xcode + 真机 + 签名 | ⏸ 最后做 |
 
 ## 30 秒上手（Chrome / Edge / Brave / Opera）
@@ -47,6 +47,12 @@ cd extension && node tests/selftest.mjs    # 33 项断言
 
 ```
 weifan/
+├── android/                      # Android 端：无障碍服务 + 后缀触发（Kotlin，零依赖）
+│   ├── app/src/main/java/com/weifan/app/
+│   │   ├── core/                 # 与扩展同构的判断逻辑（检测/术语/路由/服务商/门面）
+│   │   ├── service/              # 无障碍服务：读输入框 → 翻译 → 原地替换
+│   │   └── MainActivity.kt       # 设置页（纯 framework 视图）
+│   └── README.md                 # 构建、首次使用、保活、已知限制
 ├── extension/                    # ★ 主形态：浏览器扩展（一份源码，三份产物）
 │   ├── manifest.base.json        # manifest 的唯一来源
 │   ├── scripts/build.mjs         # 生成 chrome / firefox / safari 三个产物
@@ -84,7 +90,7 @@ WhatsApp 对个人号**没有**任何插件接口。能真正长在 WhatsApp 里
 | 依赖 web.whatsapp.com | 手机必须保持联网，否则网页版掉线；桌面客户端不在覆盖范围 |
 | DOM 改版会失效 | 选择器集中在 `extension/src/content/whatsapp.js` 顶部，改一处即可 |
 | Safari 交付被 Xcode 阻塞 | 打包命令已备好，装 Xcode 后约 30 分钟能通 |
-| Android / iOS 未开工 | 前者需 Android Studio（本机无 JDK/SDK），后者需 Xcode（本机没有） |
+| iOS 未开工 | 需要 Xcode（本机没有），且 iOS 键盘读不到对方消息，形态待定 |
 | 语音未支持 | 按修订后的 D-23 后置 |
 | Swift 版内核未编译验证 | 本机 Swift 工具链有 SDK 版本错配，只能用 `swiftc -parse` 做语法检查 |
 

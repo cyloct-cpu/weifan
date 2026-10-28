@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">微翻</string>
+    <string name="service_label">微翻 · 翻译输入框</string>
+    <string name="service_description">读取当前输入框的文字，翻译后写回。仅在你输入了触发后缀（默认「?译」）时动作，不会自动发送任何消息。</string>
+</resources>

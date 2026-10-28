@@ -40,3 +40,13 @@ Secrets.swift
 
 # 打包产物
 dist/
+
+# Android
+android/local.properties
+android/.gradle/
+android/build/
+android/app/build/
+android/.idea/
+*.iml
+*.apk
+*.aab
