@@ -32,3 +32,8 @@ Secrets.swift
 # 编辑器
 .vscode/
 .idea/
+
+# Swift 编译残留
+*.swiftmodule
+*.swiftdoc
+*.o
