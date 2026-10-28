@@ -22,6 +22,22 @@ WhatsApp 跨境沟通的自动翻译工具：**你打中文，发出去的是对
 | Android | ⚠️ v0.1 未做 | ✅ `ACTION_SET_TEXT` | ❌ 不用 | JDK + Android SDK | 🚧 可编译，未真机验证 |
 | iOS | ❌ 读不到 | ⚠️ 只能改输入框 | ✅ 每次切两次 | Xcode + 真机 + 签名 | ⏸ 最后做 |
 
+## 直接下载（不用自己构建）
+
+到 **[Releases](https://github.com/cyloct-cpu/weifan/releases/latest)** 下载现成产物：
+
+| 产物 | 谁用 | 怎么装 |
+|---|---|---|
+| `weifan-android-*.apk` | Android 手机 | 直接安装（debug 签名，仅供自用），装完在设置里开无障碍服务 |
+| `weifan-chrome-*.zip` | Chrome / Edge / Brave / Opera / Vivaldi | 解压 → `chrome://extensions` → 开发者模式 → 加载已解压 → 选 `chrome` 目录 |
+| `weifan-firefox-*.zip` | Firefox 121+ | 解压 → `about:debugging#/runtime/this-firefox` → 临时载入 → 选 `firefox/manifest.json` |
+
+打 tag 会自动构建并发布（`.github/workflows/release.yml`）：
+
+```bash
+git tag -a v0.1.1 -m "说明" && git push origin v0.1.1
+```
+
 ## 30 秒上手（Chrome / Edge / Brave / Opera）
 
 ```bash
