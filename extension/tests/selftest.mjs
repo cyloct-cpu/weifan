@@ -11,7 +11,7 @@ import { route, assessRisk, signals } from '../src/core/routing.js';
 import { resolveTarget, DEFAULT_SETTINGS } from '../src/core/core.js';
 import { md5 } from '../src/core/signing.js';
 import { supportsTarget, targetCode, fromPlatformCode } from '../src/core/langs.js';
-import { planCandidates, listProviders, credentialOf, AUTO_ORDER } from '../src/core/providers.js';
+import { planCandidates, listProviders, credentialOf, AUTO_ORDER, PROVIDERS } from '../src/core/providers.js';
 
 let failures = 0;
 let checks = 0;
@@ -160,6 +160,10 @@ check(targetCode('yandex', 'zh-Hans') === 'zh', 'Yandex 简体 → zh');
 check(supportsTarget('azure', 'he') === true, 'Azure 支持希伯来语');
 check(supportsTarget('yandex', 'zh-Hant') === false, 'Yandex 不支持繁体');
 check(supportsTarget('yandex', 'fil') === true, 'Yandex 支持他加禄语（tl）');
+check(targetCode('volcLLM', 'zh-Hans') === 'zh', '火山大模型 简体 → zh');
+check(targetCode('volcLLM', 'fil') === 'tl', '火山大模型 他加禄语 → tl');
+check(supportsTarget('volcLLM', 'he') === true, '火山大模型 支持希伯来语');
+check(supportsTarget('volcLLM', 'zh-Hant') === true, '火山大模型 支持繁体');
 
 section('服务商降级链');
 
@@ -214,7 +218,14 @@ check(credentialOf('azure', { azure: { key: 'k' } })?.region === undefined, 'Azu
 check(credentialOf('tencent', { tencent: { secretId: 'a', secretKey: 'b' } }) !== null, '腾讯地域留空也算已配置');
 check(credentialOf('yandex', { yandex: { key: 'k' } }) === null, 'Yandex 缺 folderId 不算已配置');
 check(credentialOf('yandex', { yandex: { key: 'k', folderId: 'f' } }) !== null, 'Yandex 填齐即算已配置');
-check(AUTO_ORDER.length === 8, '免费池八家');
+check(AUTO_ORDER.length === 9, '免费池九家');
+
+// 端点：固定端点必须写进注册表，用户才只需填密钥
+check(PROVIDERS.every((p) => typeof p.endpoint === 'string' && p.endpoint.startsWith('https://')), '每家都有 https 端点');
+check(PROVIDERS.filter((p) => p.endpointEditable).map((p) => p.id).sort().join(',') === 'azure,deepl', '只有 Azure 与 DeepL 的端点可改');
+check(PROVIDERS.find((p) => p.id === 'volc').endpoint === 'https://translate.volcengineapi.com', '火山文本翻译用官方域名');
+check(PROVIDERS.find((p) => p.id === 'volcLLM').endpoint.includes('matx_translate'), '火山大模型翻译端点正确');
+check(PROVIDERS.find((p) => p.id === 'baidu').kind === 'llm', '百度走大模型端点，标记为 llm 档');
 
 console.log(`\n${checks - failures}/${checks} 通过`);
 process.exit(failures === 0 ? 0 : 1);

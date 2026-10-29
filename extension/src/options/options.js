@@ -155,6 +155,33 @@ function renderProviders() {
       fields.appendChild(wrap);
     }
 
+    // 端点：固定的只展示一行说明，可改的才给输入框（用户通常只要填密钥）
+    /** @type {HTMLElement[]} */
+    const endpointParts = [];
+    if (provider.endpoint) {
+      if (provider.endpointEditable) {
+        const wrap = document.createElement('div');
+        wrap.className = 'field';
+        const label = document.createElement('label');
+        label.textContent = provider.id === 'deepl'
+          ? '端点（付费版改成 https://api.deepl.com/v2/translate）'
+          : '终结点（区域资源填自己的子域名，留空用默认）';
+        const input = document.createElement('input');
+        input.type = 'text';
+        input.value = provider.endpoint;
+        input.dataset.field = 'endpoint';
+        input.dataset.provider = provider.id;
+        input.spellcheck = false;
+        wrap.append(label, input);
+        endpointParts.push(wrap);
+      } else {
+        const note = document.createElement('p');
+        note.className = 'provider-endpoint';
+        note.textContent = `接口 ${provider.endpoint}`;
+        endpointParts.push(note);
+      }
+    }
+
     const status = document.createElement('p');
     status.className = 'provider-status';
     status.hidden = true;
@@ -166,7 +193,7 @@ function renderProviders() {
     test.addEventListener('click', () => runProviderTest(provider.id, status, test));
     head.appendChild(test);
 
-    card.append(head, fields, status);
+    card.append(head, ...endpointParts, fields, status);
     host.appendChild(card);
   }
 }
@@ -285,6 +312,33 @@ function renderCustoms() {
       renderCustoms();
     });
 
+    // 端点：固定的只展示一行说明，可改的才给输入框（用户通常只要填密钥）
+    /** @type {HTMLElement[]} */
+    const endpointParts = [];
+    if (provider.endpoint) {
+      if (provider.endpointEditable) {
+        const wrap = document.createElement('div');
+        wrap.className = 'field';
+        const label = document.createElement('label');
+        label.textContent = provider.id === 'deepl'
+          ? '端点（付费版改成 https://api.deepl.com/v2/translate）'
+          : '终结点（区域资源填自己的子域名，留空用默认）';
+        const input = document.createElement('input');
+        input.type = 'text';
+        input.value = provider.endpoint;
+        input.dataset.field = 'endpoint';
+        input.dataset.provider = provider.id;
+        input.spellcheck = false;
+        wrap.append(label, input);
+        endpointParts.push(wrap);
+      } else {
+        const note = document.createElement('p');
+        note.className = 'provider-endpoint';
+        note.textContent = `接口 ${provider.endpoint}`;
+        endpointParts.push(note);
+      }
+    }
+
     const status = document.createElement('p');
     status.className = 'provider-status';
     status.hidden = true;
@@ -330,7 +384,7 @@ function renderCustoms() {
       fields.appendChild(wrap);
     }
 
-    card.append(head, fields, status);
+    card.append(head, ...endpointParts, fields, status);
     host.appendChild(card);
   });
 
@@ -405,9 +459,8 @@ function collect() {
   for (const provider of PROVIDERS) {
     /** @type {Record<string, string>} */
     const credential = {};
-    for (const field of provider.fields ?? []) {
-      const input = document.querySelector(`input[data-provider="${provider.id}"][data-field="${field.id}"]`);
-      if (input?.value.trim()) credential[field.id] = input.value.trim();
+    for (const input of document.querySelectorAll(`input[data-provider="${provider.id}"]`)) {
+      if (input.value.trim()) credential[input.dataset.field] = input.value.trim();
     }
     const required = (provider.fields ?? []).filter((f) => f.id !== 'endpoint' && !f.optional);
     if (required.length && required.every((f) => credential[f.id])) {

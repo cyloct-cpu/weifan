@@ -40,6 +40,8 @@ object Providers {
         val kind: String,       // mt | llm
         val freeNote: String,
         val docs: String,
+        val endpoint: String,           // 固定端点，用户只需填密钥
+        val endpointEditable: Boolean,  // 只有 DeepL（付费版）与 Azure（区域资源）需要改
         val fields: List<Field>
     )
 
@@ -55,36 +57,56 @@ object Providers {
         val displayName: String get() = name.ifBlank { model.ifBlank { "自定义接口" } }
     }
 
+    /** 各家端点。绝大多数是固定的——用户去平台申请密钥，填进来就能用。 */
+    val ENDPOINTS: Map<String, String> = mapOf(
+        "baiduGeneral" to "https://fanyi-api.baidu.com/api/trans/vip/translate",
+        "baiduLLM" to "https://fanyi-api.baidu.com/ait/api/aiTextTranslate",
+        "deepl" to "https://api-free.deepl.com/v2/translate",
+        "google" to "https://translation.googleapis.com/language/translate/v2",
+        "azure" to "https://api.cognitive.microsofttranslator.com",
+        "tencent" to "https://tmt.tencentcloudapi.com",
+        "volc" to "https://translate.volcengineapi.com",
+        "volcLLM" to "https://openspeech.bytedance.com/api/v3/machine_translation/matx_translate",
+        "aliyun" to "https://mt.cn-hangzhou.aliyuncs.com",
+        "yandex" to "https://translate.api.cloud.yandex.net/translate/v2/translate"
+    )
+
     val DEFS: List<Def> = listOf(
         Def(
             "deepl", "DeepL API Free", "free", "mt",
             "每月 50 万字符免费（免费版 key 以 :fx 结尾）",
             "https://www.deepl.com/pro-api",
+            ENDPOINTS["deepl"]!!,
+            true,
             listOf(
-                Field("key", "API Key", "xxxxxxxx-xxxx-…:fx", secret = true),
-                Field("endpoint", "端点", "https://api-free.deepl.com/v2/translate", optional = true)
+                Field("key", "API Key", "xxxxxxxx-xxxx-…:fx", secret = true)
             )
         ),
         Def(
             "google", "Google Cloud Translation", "free", "mt",
             "每月 50 万字符免费额度",
             "https://cloud.google.com/translate/docs/setup",
+            ENDPOINTS["google"]!!,
+            false,
             listOf(Field("key", "API Key", "AIza…", secret = true))
         ),
         Def(
             "azure", "Azure 微软翻译", "free", "mt",
             "F0 每月 200 万字符免费",
             "https://learn.microsoft.com/azure/ai-services/translator/",
+            ENDPOINTS["azure"]!!,
+            true,
             listOf(
                 Field("key", "订阅密钥", "32 位十六进制", secret = true),
-                Field("region", "区域（选填）", "eastasia", optional = true),
-                Field("endpoint", "终结点（选填）", "https://api.cognitive.microsofttranslator.com", optional = true)
+                Field("region", "区域（选填）", "eastasia", optional = true)
             )
         ),
         Def(
-            "baidu", "百度翻译开放平台", "free", "mt",
+            "baidu", "百度翻译开放平台", "free", "llm",
             "通用版 5 万/月（高级版 100 万）；大模型版要另开通",
             "https://fanyi-api.baidu.com/doc/21",
+            ENDPOINTS["baiduGeneral"]!!,
+            false,
             listOf(
                 Field("appid", "App ID", "2024……"),
                 Field("secret", "Secret Key", "……", secret = true)
@@ -94,6 +116,8 @@ object Providers {
             "tencent", "腾讯云机器翻译 TMT", "free", "mt",
             "个人实名后每月约 500 万字符免费资源包",
             "https://cloud.tencent.com/document/product/551",
+            ENDPOINTS["tencent"]!!,
+            false,
             listOf(
                 Field("secretId", "SecretId", "AKID……"),
                 Field("secretKey", "SecretKey", "……", secret = true),
@@ -104,6 +128,8 @@ object Providers {
             "volc", "火山引擎翻译", "free", "mt",
             "新用户约 100 万字符免费额度",
             "https://www.volcengine.com/docs/4640",
+            ENDPOINTS["volc"]!!,
+            false,
             listOf(
                 Field("accessKeyId", "AccessKey ID", "AKLT……"),
                 Field("secretKey", "Secret Key", "……", secret = true)
@@ -113,15 +139,27 @@ object Providers {
             "aliyun", "阿里云翻译", "free", "mt",
             "个人版每月 100 万字符免费",
             "https://help.aliyun.com/zh/machine-translation/",
+            ENDPOINTS["aliyun"]!!,
+            false,
             listOf(
                 Field("accessKeyId", "AccessKey ID", "LTAI……"),
                 Field("accessKeySecret", "AccessKey Secret", "……", secret = true)
             )
         ),
         Def(
+            "volcLLM", "火山引擎大模型翻译", "free", "llm",
+            "大模型翻译，32 种语言；要开 volc.speech.mt 权限",
+            "https://docs.volcengine.com/docs/6561/2306735",
+            ENDPOINTS["volcLLM"]!!,
+            false,
+            listOf(Field("key", "API Key", "火山控制台获取的 API Key", secret = true))
+        ),
+        Def(
             "yandex", "Yandex Translate", "free", "mt",
             "按字符计费（新号有试用金），不是固定免费额度",
             "https://cloud.yandex.com/en/docs/translate/quickstart",
+            ENDPOINTS["yandex"]!!,
+            false,
             listOf(
                 Field("key", "API Key", "AQVN…", secret = true),
                 Field("folderId", "Folder ID", "b1g……")
@@ -130,7 +168,7 @@ object Providers {
     )
 
     /** 自动优选时的优先级（也是下拉框里的顺序） */
-    val AUTO_ORDER = listOf("deepl", "google", "azure", "baidu", "tencent", "volc", "aliyun", "yandex")
+    val AUTO_ORDER = listOf("deepl", "google", "azure", "baidu", "tencent", "volcLLM", "volc", "aliyun", "yandex")
 
     // MARK: - 语种映射
 
@@ -173,6 +211,12 @@ object Providers {
             "ru" to "ru", "ar" to "ar", "tr" to "tr", "vi" to "vi", "th" to "th",
             "id" to "id", "ms" to "ms", "hi" to "hi", "ja" to "ja", "ko" to "ko",
             "pl" to "pl", "he" to "he", "fil" to "tl"
+        ),
+        "volcLLM" to mapOf(
+            "zh-Hans" to "zh", "zh-Hant" to "zh-Hant", "en" to "en", "es" to "es", "pt" to "pt",
+            "fr" to "fr", "de" to "de", "it" to "it", "nl" to "nl", "ru" to "ru", "ar" to "ar",
+            "tr" to "tr", "vi" to "vi", "th" to "th", "id" to "id", "ms" to "ms", "hi" to "hi",
+            "ja" to "ja", "ko" to "ko", "pl" to "pl", "he" to "he", "fil" to "tl"
         ),
         "yandex" to mapOf(
             "zh-Hans" to "zh", "en" to "en", "es" to "es", "pt" to "pt", "fr" to "fr",
@@ -372,6 +416,7 @@ object Providers {
         cand.id == "volc" -> volcRun(cand.values, text, target)
         cand.id == "aliyun" -> aliyunRun(cand.values, text, target)
         cand.id == "yandex" -> yandexRun(cand.values, text, target)
+        cand.id == "volcLLM" -> volcLLMRun(cand.values, text, source, target)
         else -> throw IOException("未知服务商 ${cand.id}")
     }
 
@@ -385,7 +430,7 @@ object Providers {
             put("format", "text")
             if (from != null) put("source", from)
         }
-        val url = "https://translation.googleapis.com/language/translate/v2?key=${enc(v["key"] ?: "")}"
+        val url = "${ENDPOINTS["google"]}?key=${enc(v["key"] ?: "")}"
         val raw = post(url, "application/json", body.toString(), mapOf("Content-Type" to "application/json"))
         val first = JSONObject(raw).getJSONObject("data").getJSONArray("translations").getJSONObject(0)
         val detected = first.optString("detectedSourceLanguage").ifBlank { null }
@@ -401,7 +446,7 @@ object Providers {
             append("&target_lang=").append(enc(to))
             if (from != null) append("&source_lang=").append(enc(from))
         }
-        val endpoint = v["endpoint"]?.takeIf { it.isNotBlank() } ?: "https://api-free.deepl.com/v2/translate"
+        val endpoint = v["endpoint"]?.takeIf { it.isNotBlank() } ?: ENDPOINTS["deepl"]!!
         val raw = post(endpoint, "application/x-www-form-urlencoded", form,
             mapOf("Authorization" to "DeepL-Auth-Key ${v["key"] ?: ""}"))
         val first = JSONObject(raw).getJSONArray("translations").getJSONObject(0)
@@ -414,7 +459,7 @@ object Providers {
         val from = if (source.isNullOrBlank()) null else targetCode("azure", source)
 
         val base = v["endpoint"]?.takeIf { it.isNotBlank() }
-            ?: "https://api.cognitive.microsofttranslator.com"
+            ?: ENDPOINTS["azure"]!!
         val params = buildString {
             append("api-version=3.0&to=").append(enc(to))
             if (from != null) append("&from=").append(enc(from))
@@ -517,7 +562,7 @@ object Providers {
 
         return try {
             baiduRequest(
-                "https://fanyi-api.baidu.com/ait/api/aiTextTranslate",
+                ENDPOINTS["baiduLLM"]!!,
                 payload + mapOf("model_type" to "llm", "reference" to baiduReference(style)),
                 json = true
             )
@@ -526,7 +571,7 @@ object Providers {
             val message = e.message ?: ""
             if (!message.contains("52003") && !message.contains("58002")) throw e
             baiduRequest(
-                "https://fanyi-api.baidu.com/api/trans/vip/translate",
+                ENDPOINTS["baiduGeneral"]!!,
                 payload,
                 json = false
             )
@@ -553,7 +598,7 @@ object Providers {
             payload = payload
         )
 
-        val raw = post("https://tmt.tencentcloudapi.com", "application/json; charset=utf-8", payload, headers)
+        val raw = post(ENDPOINTS["tencent"]!!, "application/json; charset=utf-8", payload, headers)
         val response = JSONObject(raw).getJSONObject("Response")
         if (response.has("Error")) {
             val error = response.getJSONObject("Error")
@@ -579,12 +624,12 @@ object Providers {
             secretKey = v["secretKey"] ?: "",
             region = "cn-north-1",
             service = "translate",
-            host = "open.volcengineapi.com",
+            host = "translate.volcengineapi.com",
             body = body,
             query = query
         )
 
-        val raw = post("https://open.volcengineapi.com/?Action=TranslateText&Version=2020-06-01",
+        val raw = post("${ENDPOINTS["volc"]}?Action=TranslateText&Version=2020-06-01",
             "application/json; charset=utf-8", body, headers)
         val response = JSONObject(raw).getJSONObject("Response")
         if (response.has("Error")) {
@@ -613,7 +658,7 @@ object Providers {
         )
 
         val form = params.entries.joinToString("&") { "${enc(it.key)}=${enc(it.value)}" }
-        val raw = post("https://mt.cn-hangzhou.aliyuncs.com/",
+        val raw = post(ENDPOINTS["aliyun"]!!,
             "application/x-www-form-urlencoded", form, mapOf("Content-Type" to "application/x-www-form-urlencoded"))
 
         val data = JSONObject(raw)
@@ -634,7 +679,7 @@ object Providers {
             put("targetLanguageCode", to)
         }.toString()
 
-        val raw = post("https://translate.api.cloud.yandex.net/translate/v2/translate",
+        val raw = post(ENDPOINTS["yandex"]!!,
             "application/json", body,
             mapOf("Content-Type" to "application/json", "Authorization" to "Api-Key ${v["key"] ?: ""}"))
 
@@ -643,6 +688,46 @@ object Providers {
         val first = data.getJSONArray("translations").getJSONObject(0)
         return Result(first.getString("text"), "Yandex",
             fromPlatformCode("yandex", first.optString("detectedLanguageCode")))
+    }
+
+    /** 火山引擎「机器翻译大模型」错误码 */
+    private val VOLC_LLM_ERRORS = mapOf(
+        45000001 to "请求参数错误（target_language 必填）",
+        45000130 to "载荷过大：text_list 最多 16 条、单条最多 1024 tokens",
+        55000001 to "服务内部错误，稍后重试"
+    )
+
+    /** 火山引擎「机器翻译大模型」（豆包语音）：只要一个 API Key，不用 AK/SK 签名 */
+    private fun volcLLMRun(v: Map<String, String>, text: String, source: String?, target: String): Result {
+        val to = targetCode("volcLLM", target) ?: throw IOException("不支持该目标语言")
+        val from = if (source.isNullOrBlank()) null else targetCode("volcLLM", source)
+
+        val body = JSONObject().apply {
+            put("target_language", to)
+            put("text_list", JSONArray().put(text))
+            if (from != null) put("source_language", from)
+        }.toString()
+
+        val headers = mapOf(
+            "X-Api-Key" to (v["key"] ?: ""),
+            "X-Api-Resource-Id" to "volc.speech.mt",
+            "X-Api-Request-Id" to java.util.UUID.randomUUID().toString(),
+            "Content-Type" to "application/json"
+        )
+
+        val raw = post(ENDPOINTS["volcLLM"]!!, "application/json", body, headers)
+        val data = JSONObject(raw)
+        val code = data.optInt("code", 0)
+        if (code != 20000000) {
+            val hint = VOLC_LLM_ERRORS[code] ?: ""
+            throw IOException(
+                "错误 $code：${data.optString("message")}" + (if (hint.isNotEmpty()) " —— $hint" else "")
+            )
+        }
+        val first = data.getJSONObject("data").getJSONArray("translation_list").getJSONObject(0)
+        val dst = first.optString("translation")
+        if (dst.isEmpty()) throw IOException("返回空结果")
+        return Result(dst, "火山大模型", fromPlatformCode("volcLLM", first.optString("detected_source_language")))
     }
 
     private fun customRun(profile: CustomProfile, text: String, target: String, style: String): Result {

@@ -382,7 +382,27 @@ class MainActivity : Activity() {
         card.addView(head)
         card.addView(meta)
 
+        // 端点：固定的只展示一行说明，可改的才给输入框（用户通常只要填密钥）
+        if (def.endpointEditable) {
+            val input = field(
+                if (def.id == "deepl") "端点（付费版改成 https://api.deepl.com/v2/translate）"
+                else "终结点（区域资源填自己的子域名）",
+                secret = false
+            )
+            input.setText(def.endpoint)
+            providerFields["${def.id}:endpoint"] = input
+            card.addView(input)
+        } else {
+            card.addView(TextView(this@MainActivity).apply {
+                text = "接口 ${def.endpoint}"
+                textSize = 11f
+                setTextColor(p.text3)
+                setPadding(0, dp(2), 0, dp(4))
+            })
+        }
+
         for (field in def.fields) {
+            if (field.id == "endpoint") continue
             val input = field(field.label + (if (field.optional) "（选填）" else ""), secret = field.secret)
             input.hint = field.placeholder
             providerFields["${def.id}:${field.id}"] = input

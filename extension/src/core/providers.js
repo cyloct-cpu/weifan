@@ -19,6 +19,25 @@ import { supportsTarget, targetCode, fromPlatformCode } from './langs.js';
 const TIMEOUT_MS = { mt: 8000, llm: 20000 };
 
 /**
+ * 各家端点。**绝大多数是固定的**——用户去平台申请密钥，填进来就能用，不用管地址。
+ * 需要用户自己改的只有两种情况：
+ *   DeepL  付费版（api.deepl.com）与免费版（api-free.deepl.com）不同
+ *   Azure  区域资源有自己的子域名（xxx.cognitiveservices.azure.com）
+ */
+const ENDPOINTS = {
+  baiduGeneral: 'https://fanyi-api.baidu.com/api/trans/vip/translate',
+  baiduLLM: 'https://fanyi-api.baidu.com/ait/api/aiTextTranslate',
+  deepl: 'https://api-free.deepl.com/v2/translate',
+  google: 'https://translation.googleapis.com/language/translate/v2',
+  azure: 'https://api.cognitive.microsofttranslator.com',
+  tencent: 'https://tmt.tencentcloudapi.com',
+  volc: 'https://translate.volcengineapi.com',
+  volcLLM: 'https://openspeech.bytedance.com/api/v3/machine_translation/matx_translate',
+  aliyun: 'https://mt.cn-hangzhou.aliyuncs.com',
+  yandex: 'https://translate.api.cloud.yandex.net/translate/v2/translate'
+};
+
+/**
  * @typedef {Object} Keys
  * @property {{key: string, endpoint?: string}} [google]
  * @property {{key: string, endpoint?: string}} [deepl]
@@ -160,7 +179,7 @@ async function baiduRun(cred, { text, source, target, style }) {
 
   try {
     return await baiduRequest(
-      'https://fanyi-api.baidu.com/ait/api/aiTextTranslate',
+      ENDPOINTS.baiduLLM,
       { ...payload, model_type: 'llm', reference: baiduReference(style) },
       'application/json'
     );
@@ -168,7 +187,7 @@ async function baiduRun(cred, { text, source, target, style }) {
     // 只有"服务没开通"才退回通用端点；签名错、余额不足这类错误直接抛
     if (!/52003|58002/.test(error?.message ?? '')) throw error;
     return await baiduRequest(
-      'https://fanyi-api.baidu.com/api/trans/vip/translate',
+      ENDPOINTS.baiduGeneral,
       payload,
       'application/x-www-form-urlencoded'
     );
@@ -193,7 +212,7 @@ async function tencentRun(cred, { text, target }) {
 
   const { signal, done } = await withTimeout(TIMEOUT_MS.mt);
   try {
-    const res = await fetch('https://tmt.tencentcloudapi.com', { method: 'POST', headers, body: payload, signal });
+    const res = await fetch(ENDPOINTS.tencent, { method: 'POST', headers, body: payload, signal });
     const data = await readJson(res);
     const error = data?.Response?.Error;
     if (error) throw new Error(error.Message || `错误 ${error.Code}`);
@@ -212,7 +231,7 @@ async function googleRun(cred, { text, source, target }) {
   if (!to) throw new Error('不支持该目标语言');
   const from = source && source !== 'auto' ? (targetCode('google', source) ?? null) : null;
 
-  const url = `https://translation.googleapis.com/language/translate/v2?key=${encodeURIComponent(cred.key)}`;
+  const url = `${ENDPOINTS.google}?key=${encodeURIComponent(cred.key)}`;
   /** @type {any} */
   const body = { q: [text], target: to, format: 'text' };
   if (from) body.source = from;
@@ -251,7 +270,7 @@ async function deeplRun(cred, { text, source, target }) {
 
   const { signal, done } = await withTimeout(TIMEOUT_MS.mt);
   try {
-    const res = await fetch(cred.endpoint || 'https://api-free.deepl.com/v2/translate', {
+    const res = await fetch(cred.endpoint || ENDPOINTS.deepl, {
       method: 'POST',
       headers: {
         Authorization: `DeepL-Auth-Key ${cred.key}`,
@@ -283,14 +302,14 @@ async function volcRun(cred, { text, target }) {
     secretKey: cred.secretKey,
     region: 'cn-north-1',
     service: 'translate',
-    host: 'open.volcengineapi.com',
+    host: 'translate.volcengineapi.com',
     body,
     query
   });
 
   const { signal, done } = await withTimeout(TIMEOUT_MS.mt);
   try {
-    const res = await fetch(`https://open.volcengineapi.com/?${new URLSearchParams(query)}`, {
+    const res = await fetch(`${ENDPOINTS.volc}?${new URLSearchParams(query)}`, {
       method: 'POST',
       headers,
       body,
@@ -327,7 +346,7 @@ async function aliyunRun(cred, { text, target }) {
 
   const { signal, done } = await withTimeout(TIMEOUT_MS.mt);
   try {
-    const res = await fetch('https://mt.cn-hangzhou.aliyuncs.com/', {
+    const res = await fetch(ENDPOINTS.aliyun, {
       method: 'POST',
       headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
       body: new URLSearchParams(params),
@@ -354,7 +373,7 @@ async function azureRun(cred, { text, source, target }) {
   if (!to) throw new Error('不支持该目标语言');
   const from = source && source !== 'auto' ? (targetCode('azure', source) ?? null) : null;
 
-  const base = (cred.endpoint || 'https://api.cognitive.microsofttranslator.com').replace(/\/$/, '');
+  const base = (cred.endpoint || ENDPOINTS.azure).replace(/\/$/, '');
   const params = new URLSearchParams({ 'api-version': '3.0', to });
   if (from) params.set('from', from);
 
@@ -397,7 +416,7 @@ async function yandexRun(cred, { text, source, target }) {
 
   const { signal, done } = await withTimeout(TIMEOUT_MS.mt);
   try {
-    const res = await fetch('https://translate.api.cloud.yandex.net/translate/v2/translate', {
+    const res = await fetch(ENDPOINTS.yandex, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', Authorization: `Api-Key ${cred.key}` },
       body: JSON.stringify(body),
@@ -408,6 +427,55 @@ async function yandexRun(cred, { text, source, target }) {
     const dst = data?.translations?.[0]?.text;
     if (!dst) throw new Error('返回空结果');
     return { text: dst, detectedSource: fromPlatformCode('yandex', data?.translations?.[0]?.detectedLanguageCode) };
+  } finally {
+    done();
+  }
+}
+
+/** 火山引擎「机器翻译大模型」错误码 */
+const VOLC_LLM_ERRORS = {
+  45000001: '请求参数错误（target_language 必填）',
+  45000130: '载荷过大：text_list 最多 16 条、单条最多 1024 tokens',
+  55000001: '服务内部错误，稍后重试'
+};
+
+/**
+ * 火山引擎「机器翻译大模型」（豆包语音）。
+ * 鉴权只要一个 API Key，不用 AK/SK 签名——九家里最省事的大模型翻译。
+ * @param {any} cred @param {{text: string, source: string|null, target: string}} args
+ */
+async function volcLLMRun(cred, { text, source, target }) {
+  const to = targetCode('volcLLM', target);
+  if (!to) throw new Error('不支持该目标语言');
+  const from = source && source !== 'auto' ? (targetCode('volcLLM', source) ?? null) : null;
+
+  const body = { target_language: to, text_list: [text] };
+  if (from) body.source_language = from;
+
+  const headers = {
+    'X-Api-Key': cred.key ?? '',
+    'X-Api-Resource-Id': 'volc.speech.mt',
+    'X-Api-Request-Id': crypto.randomUUID(),
+    'Content-Type': 'application/json'
+  };
+
+  const { signal, done } = await withTimeout(TIMEOUT_MS.mt);
+  try {
+    const res = await fetch(ENDPOINTS.volcLLM, {
+      method: 'POST',
+      headers,
+      body: JSON.stringify(body),
+      signal
+    });
+    const data = await readJson(res);
+    const code = data?.code;
+    if (code !== 20000000) {
+      const hint = VOLC_LLM_ERRORS[code] ?? '';
+      throw new Error(`错误 ${code}：${data?.message ?? ''}${hint ? ` —— ${hint}` : ''}`);
+    }
+    const first = data?.data?.translation_list?.[0];
+    if (!first?.translation) throw new Error('返回空结果');
+    return { text: first.translation, detectedSource: fromPlatformCode('volcLLM', first.detected_source_language) };
   } finally {
     done();
   }
@@ -452,9 +520,10 @@ export const PROVIDERS = [
     kind: 'mt',
     freeNote: '每月 50 万字符免费（免费版 key 以 :fx 结尾）',
     docs: 'https://www.deepl.com/pro-api',
+    endpoint: ENDPOINTS.deepl,
+    endpointEditable: true,
     fields: [
-      { id: 'key', label: 'API Key', placeholder: 'xxxxxxxx-xxxx-…:fx', secret: true },
-      { id: 'endpoint', label: '端点', placeholder: 'https://api-free.deepl.com/v2/translate' }
+      { id: 'key', label: 'API Key', placeholder: 'xxxxxxxx-xxxx-…:fx', secret: true }
     ],
     configured: (keys) => Boolean(keys.deepl?.key),
     run: (cred, args) => deeplRun(cred, args)
@@ -466,6 +535,8 @@ export const PROVIDERS = [
     kind: 'mt',
     freeNote: '每月 50 万字符免费额度',
     docs: 'https://cloud.google.com/translate/docs/setup',
+    endpoint: ENDPOINTS.google,
+    endpointEditable: false,
     fields: [{ id: 'key', label: 'API Key', placeholder: 'AIza…', secret: true }],
     configured: (keys) => Boolean(keys.google?.key),
     run: (cred, args) => googleRun(cred, args)
@@ -477,10 +548,11 @@ export const PROVIDERS = [
     kind: 'mt',
     freeNote: 'F0 每月 200 万字符免费',
     docs: 'https://learn.microsoft.com/azure/ai-services/translator/',
+    endpoint: ENDPOINTS.azure,
+    endpointEditable: true,
     fields: [
       { id: 'key', label: '订阅密钥', placeholder: '32 位十六进制', secret: true },
-      { id: 'region', label: '区域（选填）', placeholder: 'eastasia', optional: true },
-      { id: 'endpoint', label: '终结点（选填）', placeholder: 'https://api.cognitive.microsofttranslator.com', optional: true }
+      { id: 'region', label: '区域（选填）', placeholder: 'eastasia', optional: true }
     ],
     configured: (keys) => Boolean(keys.azure?.key),
     run: (cred, args) => azureRun(cred, args)
@@ -489,9 +561,11 @@ export const PROVIDERS = [
     id: 'baidu',
     label: '百度翻译开放平台',
     mode: 'free',
-    kind: 'mt',
+    kind: 'llm',
     freeNote: '通用版 5 万/月（高级版 100 万）；大模型版要另开通',
     docs: 'https://fanyi-api.baidu.com/doc/21',
+    endpoint: ENDPOINTS.baiduGeneral,
+    endpointEditable: false,
     fields: [
       { id: 'appid', label: 'App ID', placeholder: '2024……' },
       { id: 'secret', label: 'Secret Key', placeholder: '……', secret: true }
@@ -506,6 +580,8 @@ export const PROVIDERS = [
     kind: 'mt',
     freeNote: '个人实名后每月约 500 万字符免费资源包',
     docs: 'https://cloud.tencent.com/document/product/551',
+    endpoint: ENDPOINTS.tencent,
+    endpointEditable: false,
     fields: [
       { id: 'secretId', label: 'SecretId', placeholder: 'AKID……' },
       { id: 'secretKey', label: 'SecretKey', placeholder: '……', secret: true },
@@ -521,6 +597,8 @@ export const PROVIDERS = [
     kind: 'mt',
     freeNote: '新用户约 100 万字符免费额度',
     docs: 'https://www.volcengine.com/docs/4640',
+    endpoint: ENDPOINTS.volc,
+    endpointEditable: false,
     fields: [
       { id: 'accessKeyId', label: 'AccessKey ID', placeholder: 'AKLT……' },
       { id: 'secretKey', label: 'Secret Key', placeholder: '……', secret: true }
@@ -535,6 +613,8 @@ export const PROVIDERS = [
     kind: 'mt',
     freeNote: '个人版每月 100 万字符免费',
     docs: 'https://help.aliyun.com/zh/machine-translation/',
+    endpoint: ENDPOINTS.aliyun,
+    endpointEditable: false,
     fields: [
       { id: 'accessKeyId', label: 'AccessKey ID', placeholder: 'LTAI……' },
       { id: 'accessKeySecret', label: 'AccessKey Secret', placeholder: '……', secret: true }
@@ -543,12 +623,29 @@ export const PROVIDERS = [
     run: (cred, args) => aliyunRun(cred, args)
   },
   {
+    id: 'volcLLM',
+    label: '火山引擎大模型翻译',
+    mode: 'free',
+    kind: 'llm',
+    freeNote: '大模型翻译，32 种语言；要开 volc.speech.mt 权限',
+    docs: 'https://docs.volcengine.com/docs/6561/2306735',
+    endpoint: ENDPOINTS.volcLLM,
+    endpointEditable: false,
+    fields: [
+      { id: 'key', label: 'API Key', placeholder: '火山控制台获取的 API Key', secret: true }
+    ],
+    configured: (keys) => Boolean(keys.volcLLM?.key),
+    run: (cred, args) => volcLLMRun(cred, args)
+  },
+  {
     id: 'yandex',
     label: 'Yandex Translate',
     mode: 'free',
     kind: 'mt',
     freeNote: '按字符计费（新号有试用金），不是固定免费额度',
     docs: 'https://cloud.yandex.com/en/docs/translate/quickstart',
+    endpoint: ENDPOINTS.yandex,
+    endpointEditable: false,
     fields: [
       { id: 'key', label: 'API Key', placeholder: 'AQVN…', secret: true },
       { id: 'folderId', label: 'Folder ID', placeholder: 'b1g……' }
@@ -559,7 +656,7 @@ export const PROVIDERS = [
 ];
 
 /** 自动优选时的优先级（也是下拉框里的顺序） */
-export const AUTO_ORDER = ['deepl', 'google', 'azure', 'baidu', 'tencent', 'volc', 'aliyun', 'yandex'];
+export const AUTO_ORDER = ['deepl', 'google', 'azure', 'baidu', 'tencent', 'volcLLM', 'volc', 'aliyun', 'yandex'];
 
 /**
  * 取某个服务商的凭据。

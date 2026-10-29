@@ -38,6 +38,13 @@ const VOLC = {
   vi: 'vi', th: 'th', ms: 'ms', id: 'id', tr: 'tr', ja: 'ja', ko: 'ko'
 };
 
+/** 火山引擎「机器翻译大模型」：ISO 639-1 / BCP-47 标准代码 */
+const VOLC_LLM = {
+  'zh-Hans': 'zh', 'zh-Hant': 'zh-Hant', en: 'en', es: 'es', pt: 'pt', fr: 'fr', de: 'de',
+  it: 'it', nl: 'nl', ru: 'ru', ar: 'ar', tr: 'tr', vi: 'vi', th: 'th', id: 'id', ms: 'ms',
+  hi: 'hi', ja: 'ja', ko: 'ko', pl: 'pl', he: 'he', fil: 'tl'
+};
+
 /** 阿里云 */
 const ALIYUN = {
   'zh-Hans': 'zh', en: 'en', es: 'es', pt: 'pt', fr: 'fr', de: 'de', it: 'it', ru: 'ru',
@@ -67,7 +74,8 @@ export const PROVIDER_LANG_CODES = {
   volc: VOLC,
   aliyun: ALIYUN,
   azure: AZURE,
-  yandex: YANDEX
+  yandex: YANDEX,
+  volcLLM: VOLC_LLM
 };
 
 /**

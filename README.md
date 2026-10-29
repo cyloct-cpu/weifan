@@ -7,7 +7,7 @@
 WhatsApp 跨境沟通的自动翻译工具：**你打中文，发出去的是对方的语言；对方说什么，你看到的是中文。**
 
 点扩展图标弹出一个面板，选好语言和服务就能用：**选区、划词、鼠标悬停、整份文档**都能翻。
-翻译走你自己申请的大厂免费额度（百度 / 腾讯云 / Google / DeepL / Azure / 火山 / 阿里 / Yandex），也能接任何 OpenAI 兼容接口。密钥只留在本机。
+翻译走你自己申请的大厂免费额度（百度 / 腾讯云 / Google / DeepL / Azure / 火山 / 火山大模型 / 阿里 / Yandex），也能接任何 OpenAI 兼容接口。**接口地址全部预置好，你只填密钥。**
 
 - 范围：**三端** —— 浏览器扩展 / Android / iOS（macOS 原生不做）
 - 当前状态：**浏览器扩展已可运行**；Android、iOS 未开工（缺工具链，见下）
@@ -47,7 +47,7 @@ WhatsApp 跨境沟通的自动翻译工具：**你打中文，发出去的是对
 
 | 模式 | 用什么 | 特点 |
 |---|---|---|
-| 免费额度 | 自己去大厂申请 key：百度 / 腾讯云 / Google / DeepL / Azure / 火山 / 阿里 / Yandex | 零成本；用户自取 key，扩展只做路由与降级 |
+| 免费额度 | 自己去大厂申请 key：百度 / 腾讯云 / Google / DeepL / Azure / 火山 / 火山大模型 / 阿里 / Yandex | 零成本；端点全部预置，用户只填密钥；扩展只做路由与降级 |
 | 自定义 API | 任意 OpenAI 兼容接口（key + 接口地址 + 模型名） | 大模型翻译，术语与语气更准；可加多个档案 |
 
 **降级**：用户选的服务商优先，失败（超时/报错/额度用完）自动换下一家「已配置 + 支持该目标语言」的服务，结果里会写明这次是谁翻的、原先那家为什么没用上。
@@ -92,7 +92,7 @@ node scripts/build.mjs      # 生成 dist/chrome、dist/firefox、dist/safari
 
 1. 打开 `chrome://extensions`，开启「开发者模式」
 2. 「加载已解压的扩展程序」→ 选 **`extension/dist/chrome`**
-3. 点扩展图标 → 弹面板 → 点底部「设置」填密钥（百度 / 腾讯云 / Google / DeepL / Azure / 火山 / 阿里 / Yandex 任一，或自定义 API）
+3. 点扩展图标 → 弹面板 → 点底部「设置」填密钥（百度 / 腾讯云 / Google / DeepL / Azure / 火山 / 火山大模型 / 阿里 / Yandex 任一，或自定义 API）
 4. 打开 https://web.whatsapp.com 并刷新
 
 用法：对方消息下方自动出现中文；输入框右下角点「译」或 `Ctrl/Cmd + Enter`，中文原地变对方语言，**不会自动发送**。
@@ -122,7 +122,7 @@ weifan/
 │   ├── manifest.base.json        # manifest 的唯一来源
 │   ├── scripts/build.mjs         # 生成 chrome / firefox / safari 三个产物
 │   ├── src/core/                 # 纯逻辑：检测 / 术语 / 路由 / 服务商 / 门面
-│   │   ├── providers.js          # 八家大厂 + 自定义 API 的注册表与降级链
+│   │   ├── providers.js          # 九家服务商 + 自定义 API 的注册表、端点表与降级链
 │   │   ├── langs.js              # 各家语种代码映射（决定谁支持哪种语言）
 │   │   └── signing.js            # MD5 / 腾讯 TC3 / 火山 V4 / 阿里 RPC 签名
 │   ├── src/shared/theme.css       # 设计 token（popup 与设置页共用一份）
