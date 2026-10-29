@@ -13,6 +13,9 @@ import { effectiveTheme, toMinutes, DEFAULT_SCHEDULE } from '../src/shared/theme
 import { md5 } from '../src/core/signing.js';
 import { supportsTarget, targetCode, fromPlatformCode } from '../src/core/langs.js';
 import { planCandidates, listProviders, credentialOf, AUTO_ORDER, PROVIDERS } from '../src/core/providers.js';
+// 副作用引入：挂 globalThis.WeifanTts（TTS 语言映射）
+import '../src/core/tts.js';
+import { readFileSync } from 'node:fs';
 
 let failures = 0;
 let checks = 0;
@@ -265,6 +268,33 @@ check(effectiveTheme('auto', day, false, at(20, 0)) === 'light', '同日时段�
 check(DEFAULT_SETTINGS.themeMode === 'auto', '默认主题是跟随系统');
 check(DEFAULT_SETTINGS.themeSchedule?.start === DEFAULT_SCHEDULE.start, '默认夜间起点');
 check(DEFAULT_SETTINGS.themeSchedule?.end === DEFAULT_SCHEDULE.end, '默认夜间终点');
+
+// MARK: 右键菜单与快捷键（D-55）
+
+section('右键菜单 / 快捷键');
+const manifest = JSON.parse(readFileSync(new URL('../manifest.base.json', import.meta.url), 'utf8'));
+check(manifest.permissions.includes('contextMenus'), 'manifest 带 contextMenus 权限');
+check(manifest.commands?.['translate-selection']?.suggested_key?.default === 'Alt+Shift+T', '快捷键：翻选区 Alt+Shift+T');
+check(manifest.commands?.['toggle-hover']?.suggested_key?.default === 'Alt+Shift+H', '快捷键：悬停开关 Alt+Shift+H');
+check(manifest.commands?.['open-text-page']?.suggested_key?.default === 'Alt+Shift+X', '快捷键：打开文本页 Alt+Shift+X');
+check(
+  manifest.content_scripts?.some((cs) => (cs.js ?? []).includes('src/core/tts.js')),
+  'content script 注入 tts.js（划词气泡朗读用）'
+);
+
+// MARK: TTS 语言映射（与 android .../core/Tts.kt 同表）
+
+section('TTS 语言映射');
+const { ttsTag } = globalThis.WeifanTts ?? {};
+check(typeof ttsTag === 'function', 'tts.js 挂载了 WeifanTts');
+check(ttsTag?.('zh-Hans') === 'zh-CN', '简体中文 → zh-CN');
+check(ttsTag?.('zh-Hant') === 'zh-TW', '繁体中文 → zh-TW');
+check(ttsTag?.('en') === 'en-US', '英语 → en-US');
+check(ttsTag?.('ja') === 'ja-JP', '日语 → ja-JP');
+check(ttsTag?.('fil') === 'fil-PH', '菲律宾语 → fil-PH');
+check(ttsTag?.('xx') === null, '没有映射的语言返回 null');
+check(ttsTag?.('') === null, '空代码返回 null');
+check(ttsTag?.(null) === null, 'null 返回 null');
 
 console.log(`\n${checks - failures}/${checks} 通过`);
 process.exit(failures === 0 ? 0 : 1);

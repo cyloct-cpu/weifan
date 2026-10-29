@@ -19,6 +19,7 @@ import android.widget.Toast
 import com.weifan.app.core.Detector
 import com.weifan.app.core.Engine
 import com.weifan.app.core.Lang
+import com.weifan.app.core.Tts
 
 /**
  * 翻译页：划词与文本翻译共用。
@@ -51,15 +52,25 @@ class TranslateActivity : BaseActivity() {
     private var lastTranslation = ""
     private var lastTranslation2 = ""
 
+    /** 译文朗读（系统内置语音，零成本） */
+    private var speaker: Tts.Speaker? = null
+
     private val p: Palette get() = palette
     private val ctx: Context get() = this
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         prefs = Prefs(this)
+        speaker = Tts.Speaker(this)
         window.statusBarColor = p.bg
         setContentView(buildUI())
         handleIncoming(intent)
+    }
+
+    override fun onDestroy() {
+        speaker?.shutdown()
+        speaker = null
+        super.onDestroy()
     }
 
     /** 页面已开着时，第二次划词会走 onNewIntent —— 两种入口都要处理 */
@@ -119,13 +130,13 @@ class TranslateActivity : BaseActivity() {
         langRow.addView(target2Field.view, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
         root.addView(langRow)
 
-        // 译文一：自带复制按钮
-        val card1 = outputCard("译文") { copyResult(1) }
+        // 译文一：自带复制与朗读按钮
+        val card1 = outputCard("译文", { copyResult(1) }, { speakResult(1) })
         output1 = card1.second
         root.addView(Ui.withMargin(ctx, card1.first, 10, 0))
 
         // 译文二：填了第二个目标语言才有内容
-        val card2 = outputCard("译文（第二个目标语言）") { copyResult(2) }
+        val card2 = outputCard("译文（第二个目标语言）", { copyResult(2) }, { speakResult(2) })
         output2 = card2.second
         output2.hint = "填了第二个目标语言，这里会同时给出另一份译文"
         root.addView(Ui.withMargin(ctx, card2.first, 10, 0))
@@ -148,8 +159,8 @@ class TranslateActivity : BaseActivity() {
         }
     }
 
-    /** 一张译文卡片：标题 + 复制按钮 + 只读译文框 */
-    private fun outputCard(title: String, onCopy: () -> Unit): Pair<View, TextView> {
+    /** 一张译文卡片：标题 + 复制/朗读按钮 + 只读译文框 */
+    private fun outputCard(title: String, onCopy: () -> Unit, onSpeak: () -> Unit): Pair<View, TextView> {
         val wrap = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
         val head = LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL
@@ -163,6 +174,7 @@ class TranslateActivity : BaseActivity() {
             layoutParams = LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f)
         })
         head.addView(Ui.button(ctx, "复制", false) { onCopy() })
+        head.addView(Ui.button(ctx, "朗读", false) { onSpeak() })
         wrap.addView(head)
 
         val box = Ui.resultBox(ctx)
@@ -340,6 +352,18 @@ class TranslateActivity : BaseActivity() {
         val clipboard = getSystemService(CLIPBOARD_SERVICE) as ClipboardManager
         clipboard.setPrimaryClip(ClipData.newPlainText("translation", text))
         Toast.makeText(this, "已复制", Toast.LENGTH_SHORT).show()
+    }
+
+    /** 朗读译文。读不了（没映射 / 引擎没就绪）只提示，不崩也不弹窗打断 */
+    private fun speakResult(which: Int) {
+        val text = (if (which == 1) lastTranslation else lastTranslation2).trim()
+        if (text.isEmpty()) {
+            Toast.makeText(this, "还没有译文", Toast.LENGTH_SHORT).show()
+            return
+        }
+        val code = if (which == 1) targetField.code else target2Field.code
+        val spoken = speaker?.speak(text, code) == true
+        if (!spoken) Toast.makeText(this, "这个语言读不了（系统没有对应语音）", Toast.LENGTH_SHORT).show()
     }
 
     /** 把译文写回原来的选区 */

@@ -127,6 +127,7 @@
             padding: 5px 8px; font: 12px/1.3 inherit; color: #55606e; cursor: pointer;
           }
           button:hover { color: #161b22; border-color: rgba(22,27,34,.2); }
+          button:disabled { opacity: .45; cursor: default; }
           button.primary { background: #fd6c4e; border-color: #fd6c4e; color: #1a0e0a; font-weight: 600; }
           @media (prefers-color-scheme: dark) {
             .box { background: #161c24; color: #e6eaf0; border-color: #2a333f; box-shadow: 0 8px 26px -8px rgba(0,0,0,.6); }
@@ -189,48 +190,78 @@
       const rect = range.getBoundingClientRect();
       if (!rect.width && !rect.height) return;
 
-      showBubble(
-        { x: rect.left, y: rect.bottom },
-        `<div class="row"><span class="tag">翻译中…</span></div><div class="text busy">${escapeHtml(text)}</div>`,
-        true
-      );
-
-      translate(text)
-        .then((result) => {
-          showBubble(
-            { x: rect.left, y: rect.bottom },
-            `<div class="row">
-               <span class="tag">${escapeHtml(result.provider)}</span>
-               ${result.degradedFrom ? `<span class="tag ghost">已从 ${escapeHtml(result.degradedFrom)} 降级</span>` : ''}
-             </div>
-             <textarea spellcheck="false"></textarea>
-             <div class="acts">
-               <button type="button" data-act="copy">复制</button>
-               <button type="button" data-act="replace" class="primary">替换原文</button>
-             </div>`,
-            true
-          );
-          const area = bubble.querySelector('textarea');
-          area.value = result.text;
-          area.addEventListener('click', (e) => e.stopPropagation());
-          area.addEventListener('mousedown', (e) => e.stopPropagation());
-          bubble.querySelector('[data-act="copy"]').addEventListener('click', async () => {
-            await copyText(area.value);
-            flash(bubble.querySelector('[data-act="copy"]'), '已复制');
-          });
-          bubble.querySelector('[data-act="replace"]').addEventListener('click', () => {
-            replaceSelection(area.value);
-          });
-        })
-        .catch((error) => {
-          showBubble(
-            { x: rect.left, y: rect.bottom },
-            `<div class="row"><span class="tag ghost">翻译失败</span></div><div class="text">${escapeHtml(error.message)}</div>`,
-            true
-          );
-        });
+      runSelectionFlow(text, { left: rect.left, bottom: rect.bottom });
     }, 10);
   });
+
+  /**
+   * 划词翻译主流程：先弹「翻译中…」，拿到译文换成可操作气泡。
+   * mouseup（划词）与右键菜单 / 快捷键（translateSelection 消息）共用这一条链路。
+   * @param {string} text
+   * @param {{left: number, bottom: number}} at 选区位置
+   */
+  function runSelectionFlow(text, at) {
+    showBubble(
+      at,
+      `<div class="row"><span class="tag">翻译中…</span></div><div class="text busy">${escapeHtml(text)}</div>`,
+      true
+    );
+
+    translate(text)
+      .then((result) => {
+        showBubble(
+          at,
+          `<div class="row">
+             <span class="tag">${escapeHtml(result.provider)}</span>
+             ${result.degradedFrom ? `<span class="tag ghost">已从 ${escapeHtml(result.degradedFrom)} 降级</span>` : ''}
+           </div>
+           <textarea spellcheck="false"></textarea>
+           <div class="acts">
+             <button type="button" data-act="speak">朗读</button>
+             <button type="button" data-act="copy">复制</button>
+             <button type="button" data-act="replace" class="primary">替换原文</button>
+           </div>`,
+          true
+        );
+        const area = bubble.querySelector('textarea');
+        area.value = result.text;
+        area.addEventListener('click', (e) => e.stopPropagation());
+        area.addEventListener('mousedown', (e) => e.stopPropagation());
+        setupSpeakButton(bubble.querySelector('[data-act="speak"]'), area, target);
+        bubble.querySelector('[data-act="copy"]').addEventListener('click', async () => {
+          await copyText(area.value);
+          flash(bubble.querySelector('[data-act="copy"]'), '已复制');
+        });
+        bubble.querySelector('[data-act="replace"]').addEventListener('click', () => {
+          replaceSelection(area.value);
+        });
+      })
+      .catch((error) => {
+        showBubble(
+          at,
+          `<div class="row"><span class="tag ghost">翻译失败</span></div><div class="text">${escapeHtml(error.message)}</div>`,
+          true
+        );
+      });
+  }
+
+  /** 朗读按钮：浏览器/系统内置语音合成，零成本零请求。读不了的语言置灰说明，不弹窗打断。 */
+  function setupSpeakButton(button, area, langCode) {
+    if (!button) return;
+    const synth = globalThis.speechSynthesis;
+    const tag = globalThis.WeifanTts?.ttsTag?.(langCode) ?? null;
+    if (!synth || !tag) {
+      button.disabled = true;
+      button.title = '这个语言没有对应的语音';
+      return;
+    }
+    button.addEventListener('click', () => {
+      synth.cancel();
+      const utterance = new SpeechSynthesisUtterance(area.value);
+      utterance.lang = tag;
+      synth.speak(utterance);
+    });
+  }
 
   /** 用译文替换当前选区 */
   function replaceSelection(text) {
@@ -330,6 +361,24 @@
           await loadSettings();
           sendResponse({ ok: true, data: { ok: true } });
           return;
+        case 'translateSelection': {
+          // 右键菜单 / 快捷键触发：background 已带原文过来；没带就吃页面当前选区
+          const passed = String(message.text ?? '').trim();
+          const text = passed || (window.getSelection()?.toString() ?? '').trim();
+          if (!text) {
+            sendResponse({ ok: false, error: '页面上没有选中的文字' });
+            return;
+          }
+          const selection = window.getSelection();
+          const range = selection && selection.rangeCount ? selection.getRangeAt(0) : null;
+          const rect = range?.getBoundingClientRect();
+          const at = rect && (rect.width || rect.height)
+            ? { left: rect.left, bottom: rect.bottom }
+            : { left: window.innerWidth / 2 - 120, bottom: window.innerHeight / 2 };
+          runSelectionFlow(text.slice(0, MAX_LEN), at);
+          sendResponse({ ok: true, data: { shown: true } });
+          return;
+        }
         default:
           sendResponse({ ok: false, error: '未知消息' });
       }

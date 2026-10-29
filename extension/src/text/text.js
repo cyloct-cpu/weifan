@@ -11,6 +11,8 @@
 import { EXT, sendToBackground } from '../shared/ext.js';
 import { LANGUAGES, detectLanguage } from '../core/language.js';
 import { applyFromSettings, watchTheme } from '../shared/theme.js';
+// 副作用引入：把 WeifanTts（朗读语言映射）挂到 globalThis，页面与 content script 共一份实现
+import '../core/tts.js';
 
 const $ = (id) => document.getElementById(id);
 
@@ -93,6 +95,8 @@ async function init() {
   $('run').addEventListener('click', run);
   $('copy').addEventListener('click', () => copyResult($('output').value));
   $('copy2').addEventListener('click', () => copyResult($('output2').value));
+  $('speak').addEventListener('click', () => speakResult($('output').value, codeOf($('dstLang').value)));
+  $('speak2').addEventListener('click', () => speakResult($('output2').value, secondTarget()));
   $('paste').addEventListener('click', pasteInput);
   $('swap1').addEventListener('click', swapSourceTarget);
   $('swap2').addEventListener('click', swapTargets);
@@ -100,6 +104,15 @@ async function init() {
   // 第二个目标语言填了才显示第二块译文
   $('dstLang2').addEventListener('input', syncSecondPane);
   $('dstLang2').addEventListener('change', syncSecondPane);
+
+  // 右键菜单 / 快捷键的兜底入口：把选中的文字带过来。
+  // **不自动翻** —— 每次右键都发请求会把免费额度烧光，让用户点「翻译」。
+  const prefill = new URLSearchParams(location.search).get('text');
+  if (prefill) {
+    $('input').value = prefill;
+    $('run').focus();
+    setStatus('已把选中的文字带过来，点「翻译」开始');
+  }
 }
 
 /** 第二个目标语言是否已填 */
@@ -234,6 +247,30 @@ async function pasteInput() {
   } catch {
     setStatus('读不到剪贴板，直接粘贴到左边就行', 'err');
   }
+}
+
+/**
+ * 朗读译文：浏览器内置语音合成，零成本零请求。
+ * 语言读不了（没映射 / 浏览器没语音）给行内提示，不弹窗。
+ * @param {string} text
+ * @param {string|null} code
+ */
+function speakResult(text, code) {
+  if (!text?.trim()) {
+    setStatus('还没有译文', 'err');
+    return;
+  }
+  const synth = globalThis.speechSynthesis;
+  const tag = globalThis.WeifanTts?.ttsTag?.(code ?? '') ?? null;
+  if (!synth || !tag) {
+    setStatus('这个语言读不了（浏览器没有对应的语音）', 'err');
+    return;
+  }
+  synth.cancel();
+  const utterance = new SpeechSynthesisUtterance(text);
+  utterance.lang = tag;
+  synth.speak(utterance);
+  setStatus(`正在朗读（${tag}）`, 'ok');
 }
 
 /**

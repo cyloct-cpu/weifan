@@ -289,8 +289,105 @@ async function handle(message) {
   }
 }
 
-// 首次安装时写入默认设置，避免 content script 读到 undefined
+// 首次安装时写入默认设置，避免 content script 读到 undefined；顺带建右键菜单
 EXT.runtime.onInstalled.addListener(async () => {
   const store = await loadStore();
   await saveStore(store);
+  createContextMenus();
 });
+
+/* ── 右键菜单 + 快捷键（D-55）─────────────────────────── */
+
+const MENU_TRANSLATE = 'weifan-translate-selection';
+
+/** 右键菜单：只建一个「翻译选区」，目标语言与服务沿用全局设置 */
+function createContextMenus() {
+  if (!EXT.contextMenus?.create) return;
+  EXT.contextMenus.removeAll(() => {
+    EXT.contextMenus.create({
+      id: MENU_TRANSLATE,
+      title: '用微翻翻译“%s”',
+      contexts: ['selection']
+    });
+  });
+}
+
+EXT.contextMenus?.onClicked?.addListener(async (info, tab) => {
+  if (info.menuItemId !== MENU_TRANSLATE) return;
+  await translateSelectionIn(tab, info.selectionText ?? '');
+});
+
+EXT.commands?.onCommand?.addListener(async (command) => {
+  if (command === 'open-text-page') {
+    await openTextPage('');
+    return;
+  }
+  if (command === 'toggle-hover') {
+    await toggleHover();
+    return;
+  }
+  if (command === 'translate-selection') {
+    const [tab] = await EXT.tabs.query({ active: true, currentWindow: true });
+    // 选区在页面里，得先问 pageagent（chrome:// 等页问不到 → 走文本页兜底）
+    let text = '';
+    try {
+      const reply = await EXT.tabs.sendMessage(tab.id, { type: 'getSelection' });
+      text = reply?.data?.text ?? '';
+    } catch {
+      // 页面吃不到消息，text 留空
+    }
+    await translateSelectionIn(tab, text);
+  }
+});
+
+/**
+ * 把选中文本投给所在标签页弹划词气泡（与划词同一条链路）；
+ * 页面接不住（chrome:// 等无法注入的页）就打开文本翻译页并带上原文。
+ * @param {any} tab
+ * @param {string} text
+ */
+async function translateSelectionIn(tab, text) {
+  const trimmed = String(text ?? '').trim();
+  if (!trimmed || !tab?.id) {
+    await openTextPage(trimmed);
+    return;
+  }
+  try {
+    const reply = await EXT.tabs.sendMessage(tab.id, { type: 'translateSelection', text: trimmed });
+    if (!reply?.ok) throw new Error(reply?.error ?? '页面没接住');
+  } catch {
+    await openTextPage(trimmed);
+  }
+}
+
+/** @param {string} text 空字符串就只开页面，不预填 */
+async function openTextPage(text) {
+  const base = EXT.runtime.getURL('src/text/index.html');
+  const url = text ? `${base}?text=${encodeURIComponent(text)}` : base;
+  await EXT.tabs.create({ url });
+}
+
+/** 快捷键开关悬停：改设置 + 让已注入的页面立即生效 + 角标提示一下 */
+async function toggleHover() {
+  const store = await loadStore();
+  const next = !store.settings.hoverTranslate;
+  store.settings = { ...store.settings, hoverTranslate: next };
+  await saveStore(store);
+
+  // 页面平时每分钟才同步一次设置，开关后逐页叫它们立刻刷新
+  const tabs = await EXT.tabs.query({});
+  for (const tab of tabs) {
+    try {
+      await EXT.tabs.sendMessage(tab.id, { type: 'refresh' });
+    } catch {
+      // chrome:// 等页发不进消息，跳过
+    }
+  }
+
+  try {
+    EXT.action.setBadgeText({ text: next ? '开' : '关' });
+    setTimeout(() => EXT.action.setBadgeText({ text: '' }), 1500);
+  } catch {
+    // 角标失败不影响开关本身
+  }
+}

@@ -83,6 +83,8 @@ select:focus, textarea:focus {
   cursor: pointer;
 }
 .mini:hover { color: var(--text); border-color: var(--line-strong); }
+.pane-head-btns { display: flex; gap: 6px; align-items: center; }
+.mini:disabled { opacity: 0.45; cursor: default; }
 
 textarea {
   width: 100%;

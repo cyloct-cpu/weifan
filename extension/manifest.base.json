@@ -9,7 +9,21 @@
     "48": "src/icons/icon48.png",
     "128": "src/icons/icon128.png"
   },
-  "permissions": ["storage", "clipboardRead"],
+  "permissions": ["storage", "clipboardRead", "contextMenus"],
+  "commands": {
+    "translate-selection": {
+      "suggested_key": { "default": "Alt+Shift+T" },
+      "description": "翻译当前选中的文字"
+    },
+    "toggle-hover": {
+      "suggested_key": { "default": "Alt+Shift+H" },
+      "description": "开 / 关鼠标悬停翻译"
+    },
+    "open-text-page": {
+      "suggested_key": { "default": "Alt+Shift+X" },
+      "description": "打开文本翻译页"
+    }
+  },
   "host_permissions": ["<all_urls>"],
   "background": {
     "service_worker": "src/background.js",
@@ -24,7 +38,7 @@
     },
     {
       "matches": ["<all_urls>"],
-      "js": ["src/content/pageagent.js"],
+      "js": ["src/core/tts.js", "src/content/pageagent.js"],
       "run_at": "document_idle",
       "all_frames": false
     }

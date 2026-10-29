@@ -457,6 +457,10 @@ async function runMenu(action) {
     }
     return;
   }
+  if (action === 'shortcuts') {
+    toast('翻选区 Alt+Shift+T / 悬停开关 Alt+Shift+H / 文本页 Alt+Shift+X（chrome://extensions/shortcuts 可改）');
+    return;
+  }
   if (action === 'usage') {
     try {
       const data = await sendToBackground({ type: 'usage' });
