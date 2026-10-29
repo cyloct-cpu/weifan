@@ -124,6 +124,11 @@ class Prefs(context: Context) {
 
     // MARK: - 其它设置
 
+    /** 默认语气：business / casual / literal */
+    var style: String
+        get() = sp.getString("style", "business") ?: "business"
+        set(value) = sp.edit().putString("style", value).apply()
+
     /** 兜底目标语言（检测不出对方语言时用） */
     var defaultTarget: String
         get() = sp.getString("target", "en") ?: "en"

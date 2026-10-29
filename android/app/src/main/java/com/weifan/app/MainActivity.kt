@@ -63,68 +63,7 @@ class MainActivity : Activity() {
     /** 服务商下拉里的 id，顺序与 [serviceSpinner] 一致 */
     private var serviceIds = listOf<String>()
 
-    // MARK: - 品牌色板
-
-    private class Palette(
-        val bg: Int,
-        val surface: Int,
-        val surface2: Int,
-        val line: Int,
-        val text: Int,
-        val text2: Int,
-        val text3: Int,
-        val warm: Int,
-        val cool: Int,
-        val teal: Int,
-        val ink: Int,
-        val warn: Int,
-        val err: Int
-    ) {
-        val warmGrad: IntArray get() = intArrayOf(Color.parseColor("#FF4353"), Color.parseColor("#FF9064"))
-        val coolGrad: IntArray get() = intArrayOf(Color.parseColor("#4C9BF7"), Color.parseColor("#00E9DD"))
-        val mixGrad: IntArray get() = intArrayOf(Color.parseColor("#FD6C4E"), Color.parseColor("#2FB6FF"))
-    }
-
-    private val palette: Palette
-        get() {
-            val night = (resources.configuration.uiMode and Configuration.UI_MODE_NIGHT_MASK) ==
-                Configuration.UI_MODE_NIGHT_YES
-            return if (night) {
-                Palette(
-                    bg = Color.parseColor("#0F1720"),
-                    surface = Color.parseColor("#161C24"),
-                    surface2 = Color.parseColor("#1D242E"),
-                    line = Color.parseColor("#2A333F"),
-                    text = Color.parseColor("#E6EAF0"),
-                    text2 = Color.parseColor("#A9B4C2"),
-                    text3 = Color.parseColor("#8B96A6"),
-                    warm = Color.parseColor("#FD6C4E"),
-                    cool = Color.parseColor("#2FB6FF"),
-                    teal = Color.parseColor("#00E9DD"),
-                    ink = Color.parseColor("#1A0E0A"),
-                    warn = Color.parseColor("#F1A45C"),
-                    err = Color.parseColor("#F15C6D")
-                )
-            } else {
-                Palette(
-                    bg = Color.parseColor("#F4F6F8"),
-                    surface = Color.WHITE,
-                    surface2 = Color.parseColor("#F5F7F9"),
-                    line = Color.parseColor("#E7EAEE"),
-                    text = Color.parseColor("#161B22"),
-                    text2 = Color.parseColor("#55606E"),
-                    text3 = Color.parseColor("#8B97A5"),
-                    warm = Color.parseColor("#FD6C4E"),
-                    cool = Color.parseColor("#2FB6FF"),
-                    teal = Color.parseColor("#00E9DD"),
-                    ink = Color.parseColor("#1A0E0A"),
-                    warn = Color.parseColor("#B06A1F"),
-                    err = Color.parseColor("#D63C41")
-                )
-            }
-        }
-
-    private val p: Palette get() = palette
+    private val p: Palette get() = Brand.palette(this)
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -193,6 +132,20 @@ class MainActivity : Activity() {
             dp(12)
         )
         root.addView(card(listOf(statusText, openAccess)))
+
+        // 翻译工具（划词 / 文本 / 文档）
+        root.addView(groupCard(
+            "翻译工具",
+            "划词：在任意应用里选中文字，菜单里选「微翻」。文档：txt / md / csv / docx，本机解析不上传。",
+            p.coolGrad
+        ) {
+            addView(ghostButton("翻译文字 / 划词") {
+                startActivity(Intent(this@MainActivity, TranslateActivity::class.java))
+            })
+            addView(ghostButton("翻译文档") {
+                startActivity(Intent(this@MainActivity, TranslateDocActivity::class.java))
+            })
+        })
 
         // 翻译服务（双向通用）
         root.addView(groupCard(

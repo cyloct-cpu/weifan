@@ -1,6 +1,7 @@
 package com.weifan.app.core
 
 import com.weifan.app.Prefs
+import java.util.concurrent.Executors
 
 /**
  * 内核门面。与 extension/src/core/core.js 的 translateForSending / translateIncoming 对应。
@@ -45,6 +46,74 @@ object Engine {
             custom = prefs.customProfile()
         )
         return TestOutcome(result.text, result.provider, System.currentTimeMillis() - started)
+    }
+
+    data class GenericOutcome(
+        val text: String,
+        val provider: String,
+        val degradedFrom: String?,
+        val latencyMs: Long
+    )
+
+    /** 通用翻译：划词 / 文本翻译 / 文档翻译都走这里 */
+    fun translateText(
+        text: String,
+        source: String?,
+        target: String,
+        prefs: Prefs
+    ): GenericOutcome {
+        val started = System.currentTimeMillis()
+        val result = Providers.translate(
+            text = text,
+            source = source,
+            target = target,
+            style = prefs.style,
+            route = if (prefs.style == "business") "llm" else "mt",
+            creds = prefs.allCredentials(),
+            custom = prefs.customProfile(),
+            selection = prefs.selection,
+            mode = prefs.mode,
+            blocked = prefs.blockedProviders()
+        )
+        prefs.addUsage(result.providerId, text.length)
+        return GenericOutcome(
+            result.text,
+            result.provider,
+            result.degradedFrom,
+            System.currentTimeMillis() - started
+        )
+    }
+
+    /**
+     * 批量翻译（文档用）。并发跑，最多 4 条同时。
+     * @param onProgress 已完成数
+     */
+    fun translateBatch(
+        items: List<String>,
+        target: String,
+        prefs: Prefs,
+        onProgress: (Int) -> Unit = {}
+    ): List<String> {
+        val results = arrayOfNulls<String>(items.size)
+        val pool = Executors.newFixedThreadPool(4)
+        val done = java.util.concurrent.atomic.AtomicInteger(0)
+        try {
+            val futures = items.mapIndexed { index, text ->
+                pool.submit {
+                    val out = try {
+                        translateText(text, null, target, prefs).text
+                    } catch (t: Throwable) {
+                        text
+                    }
+                    results[index] = out
+                    onProgress(done.incrementAndGet())
+                }
+            }
+            futures.forEach { it.get() }
+        } finally {
+            pool.shutdown()
+        }
+        return results.map { it ?: "" }
     }
 
     fun translateForSending(
