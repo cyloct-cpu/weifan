@@ -1,0 +1,59 @@
+/* 微翻 · 设计 token（唯一来源）
+   色板来自品牌规范（brand/brand-spec.png）：
+   暖 #FD6C4E = 发件，冷 #2FB6FF = 收件，强调 #00E9DD，正文 #161B22，深底 #0F1720。
+   界面里唯一的彩色就是「方向」，结构一律中性。
+
+   popup 与设置页共用这份变量，改色只改这里。 */
+
+:root {
+  color-scheme: light;
+
+  --bg: #f4f6f8;
+  --surface: #ffffff;
+  --surface-2: #f5f7f9;
+  --line: rgba(22, 27, 34, 0.09);
+  --line-strong: rgba(22, 27, 34, 0.16);
+
+  --text: #161b22;
+  --text-2: #55606e;
+  --text-3: #8b97a5;
+
+  --warm: #fd6c4e;
+  --warm-deep: #ff4353;
+  --cool: #2fb6ff;
+  --teal: #00e9dd;
+  --teal-ink: #00806f;
+  --warn-ink: #b06a1f;
+
+  --warm-grad: linear-gradient(135deg, #ff4353, #fd6c4e 45%, #ff9064);
+  --cool-grad: linear-gradient(135deg, #4c9bf7, #2fb6ff 45%, #00e9dd);
+
+  --shadow-card: 0 1px 2px rgba(22, 27, 34, 0.04), 0 10px 28px -18px rgba(22, 27, 34, 0.16);
+  --shadow-pop: 0 1px 3px rgba(22, 27, 34, 0.14);
+  --ease: cubic-bezier(0.22, 0.9, 0.31, 1);
+
+  --sans: -apple-system, BlinkMacSystemFont, "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", sans-serif;
+  --mono: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    color-scheme: dark;
+
+    --bg: #0f1720;
+    --surface: #161c24;
+    --surface-2: #1d242e;
+    --line: #2a333f;
+    --line-strong: #3a4552;
+
+    --text: #e6eaf0;
+    --text-2: #a9b4c2;
+    --text-3: #8b96a6;
+
+    --teal-ink: #00e9dd;
+    --warn-ink: #f1a45c;
+
+    --shadow-card: 0 1px 2px rgba(0, 0, 0, 0.3), 0 12px 30px -18px rgba(0, 0, 0, 0.6);
+    --shadow-pop: 0 1px 3px rgba(0, 0, 0, 0.4);
+  }
+}

@@ -17,22 +17,13 @@ jobs:
         with:
           node-version: '20'
 
-      - name: 内核断言集（33 项）
+      - name: 内核断言集（70 项）
         working-directory: extension
         run: node tests/selftest.mjs
 
       - name: 语法检查
         working-directory: extension
-        run: |
-          node --check src/background.js
-          node --check src/content/whatsapp.js
-          node --check src/options/options.js
-          node --check src/shared/ext.js
-          node --check src/core/core.js
-          node --check src/core/language.js
-          node --check src/core/glossary.js
-          node --check src/core/routing.js
-          node --check src/core/providers.js
+        run: node scripts/check.mjs
 
       - name: 多浏览器打包
         working-directory: extension

@@ -22,6 +22,12 @@ import { translate } from './providers.js';
  * @property {'business'|'casual'|'literal'} style
  * @property {import('./glossary.js').GlossaryEntry[]} glossary
  * @property {number} autoTranslateMaxChars
+ * @property {string} selection             用户选的服务商 id，'auto' = 自动优选
+ * @property {'free'|'custom'} mode         免费额度池 / 自定义 API
+ * @property {number} dailyCharLimit        单个服务商每日字符上限（0 = 不限）
+ * @property {boolean} compact              简洁模式
+ * @property {boolean} hoverTranslate       鼠标悬停翻译
+ * @property {boolean} selectionTranslate   划词翻译
  */
 
 /** @type {Settings} */
@@ -33,7 +39,13 @@ export const DEFAULT_SETTINGS = {
   previewOnLowConfidence: true,
   style: 'business',
   glossary: [],
-  autoTranslateMaxChars: 1500
+  autoTranslateMaxChars: 1500,
+  selection: 'auto',
+  mode: 'free',
+  dailyCharLimit: 0,
+  compact: false,
+  hoverTranslate: false,
+  selectionTranslate: true
 };
 
 /**
@@ -83,8 +95,8 @@ export async function translateForSending(text, opts = {}) {
 
   // ④ 翻译
   const result = await translate(
-    { text: protectedText.masked, source: 'zh-Hans', target: resolved.target, style, route },
-    keys
+    { text: protectedText.masked, source: 'zh-Hans', target: resolved.target, style, route, keys },
+    { selection: settings.selection, mode: settings.mode, blocked: opts.blocked }
   );
 
   // ⑤ 还原
@@ -143,7 +155,14 @@ export async function translateIncoming(text, opts = {}) {
     escalateOnNumbers: true
   });
 
-  const result = await translate({ text, source, target: 'zh-Hans', style: 'casual', route }, opts.keys ?? {});
+  const result = await translate(
+    { text, source, target: 'zh-Hans', style: 'casual', route, keys: opts.keys ?? {} },
+    {
+      selection: settings.selection,
+      mode: settings.mode,
+      blocked: opts.blocked
+    }
+  );
 
   return {
     translated: result.text,

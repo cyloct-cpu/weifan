@@ -1,5 +1,6 @@
 import { LANGUAGES, SEND_TARGETS } from '../core/language.js';
 import { DEFAULT_SETTINGS } from '../core/core.js';
+import { PROVIDERS } from '../core/providers.js';
 import { EXT, sendToBackground } from '../shared/ext.js';
 
 const STORAGE_KEY = 'weifan';
@@ -25,7 +26,10 @@ const storage =
   });
 
 /** @type {any} */
-let store = { keys: {}, settings: { ...DEFAULT_SETTINGS }, chats: {} };
+let store = { keys: {}, settings: { ...DEFAULT_SETTINGS }, chats: {}, usage: {} };
+
+/** 自定义接口的草稿（界面上能增删，保存时才写进 keys） */
+let customs = [];
 
 const STYLE_NOTES = {
   business: '商务：正式、简洁、不用缩略语。',
@@ -40,24 +44,20 @@ async function load() {
     store = {
       keys: value.keys ?? {},
       settings: { ...DEFAULT_SETTINGS, ...(value.settings ?? {}) },
-      chats: value.chats ?? {}
+      chats: value.chats ?? {},
+      usage: value.usage ?? {}
     };
   } catch {
     // 读不到也先把页面渲染出来，不能白屏
   }
+  customs = (store.keys.customs ?? []).map((item) => ({ ...item }));
   render();
 }
 
 function render() {
-  const { keys, settings } = store;
-
-  $('groq').value = keys.groq ?? '';
-  $('deepl').value = keys.deepl ?? '';
-  $('deeplEndpoint').value = keys.deeplEndpoint ?? 'https://api-free.deepl.com/v2/translate';
-  $('google').value = keys.google ?? '';
-  $('llm').value = keys.llm ?? '';
-  $('llmBaseURL').value = keys.llmBaseURL ?? 'https://api.deepseek.com/v1';
-  $('llmModel').value = keys.llmModel ?? 'deepseek-chat';
+  const { settings } = store;
+  renderProviders();
+  renderCustoms();
 
   const select = $('defaultTarget');
   select.innerHTML = '';
@@ -79,10 +79,191 @@ function render() {
   $('thresholdLabel').textContent = String(threshold);
   updateRangeFill($('longSentenceThreshold'));
 
+  const limit = settings.dailyCharLimit ?? 0;
+  $('dailyCharLimit').value = String(limit);
+  $('limitLabel').textContent = limit ? `${limit} 字` : '不限制';
+  updateRangeFill($('dailyCharLimit'));
+
   $('glossary').value = formatGlossary(settings.glossary ?? []);
   updateGlossaryCount();
   refreshKeyStatus();
 }
+
+/* ── 免费额度服务商表单 ───────────────────────────── */
+
+/** 从注册表自动生成六家表单，改服务商只要改 core/providers.js */
+function renderProviders() {
+  const host = $('providerList');
+  host.innerHTML = '';
+
+  for (const provider of PROVIDERS) {
+    const card = document.createElement('div');
+    card.className = 'provider';
+    card.dataset.id = provider.id;
+
+    const head = document.createElement('div');
+    head.className = 'provider-head';
+
+    const name = document.createElement('strong');
+    name.textContent = provider.label;
+
+    const pill = document.createElement('span');
+    pill.className = 'pill';
+    pill.hidden = true;
+    pill.textContent = '已配置';
+
+    const note = document.createElement('span');
+    note.className = 'provider-note';
+    note.textContent = provider.freeNote ?? '';
+
+    head.append(name, pill, note);
+
+    if (provider.docs) {
+      const link = document.createElement('a');
+      link.className = 'provider-link';
+      link.href = provider.docs;
+      link.target = '_blank';
+      link.rel = 'noreferrer';
+      link.textContent = '去申请';
+      head.appendChild(link);
+    }
+
+    const fields = document.createElement('div');
+    fields.className = 'provider-fields';
+
+    for (const field of provider.fields ?? []) {
+      const wrap = document.createElement('div');
+      wrap.className = 'field';
+
+      const label = document.createElement('label');
+      label.textContent = field.label;
+
+      const input = document.createElement('input');
+      input.type = field.secret ? 'password' : 'text';
+      input.placeholder = field.placeholder ?? '';
+      input.dataset.field = field.id;
+      input.dataset.provider = provider.id;
+      input.spellcheck = false;
+      input.autocomplete = 'off';
+
+      const saved = readCredential(provider.id, field.id);
+      if (saved) input.value = saved;
+
+      input.addEventListener('input', refreshKeyStatus);
+
+      wrap.append(label, input);
+      fields.appendChild(wrap);
+    }
+
+    card.append(head, fields);
+    host.appendChild(card);
+  }
+}
+
+/**
+ * @param {string} providerId
+ * @param {string} fieldId
+ */
+function readCredential(providerId, fieldId) {
+  const value = store.keys[providerId];
+  if (!value) return '';
+  if (typeof value === 'string') return fieldId === 'key' ? value : '';
+  return value[fieldId] ?? '';
+}
+
+/* ── 自定义接口 ───────────────────────────────────── */
+
+function renderCustoms() {
+  const host = $('customList');
+  host.innerHTML = '';
+
+  if (!customs.length) {
+    const empty = document.createElement('p');
+    empty.className = 'hint';
+    empty.textContent = '还没有自定义接口。填一个 key + 接口地址 + 模型名，就能接任何 OpenAI 兼容服务。';
+    host.appendChild(empty);
+    refreshKeyStatus();
+    return;
+  }
+
+  customs.forEach((item, index) => {
+    const card = document.createElement('div');
+    card.className = 'provider';
+
+    const head = document.createElement('div');
+    head.className = 'provider-head';
+
+    const name = document.createElement('strong');
+    name.textContent = item.name || `接口 ${index + 1}`;
+
+    const pill = document.createElement('span');
+    pill.className = 'pill';
+    pill.hidden = !(item.key && item.baseURL);
+    pill.textContent = '已配置';
+
+    const remove = document.createElement('button');
+    remove.type = 'button';
+    remove.className = 'provider-remove';
+    remove.textContent = '删除';
+    remove.addEventListener('click', () => {
+      customs.splice(index, 1);
+      renderCustoms();
+    });
+
+    head.append(name, pill, remove);
+
+    const fields = document.createElement('div');
+    fields.className = 'provider-fields';
+
+    const defs = [
+      { id: 'name', label: '名称', placeholder: 'DeepSeek', secret: false },
+      { id: 'baseURL', label: '接口地址', placeholder: 'https://api.deepseek.com/v1', secret: false },
+      { id: 'key', label: 'API Key', placeholder: 'sk-…', secret: true },
+      { id: 'model', label: '模型名', placeholder: 'deepseek-chat', secret: false }
+    ];
+
+    for (const field of defs) {
+      const wrap = document.createElement('div');
+      wrap.className = 'field';
+
+      const label = document.createElement('label');
+      label.textContent = field.label;
+
+      const input = document.createElement('input');
+      input.type = field.secret ? 'password' : 'text';
+      input.placeholder = field.placeholder;
+      input.value = item[field.id] ?? '';
+      input.spellcheck = false;
+      input.autocomplete = 'off';
+      input.addEventListener('input', () => {
+        item[field.id] = input.value;
+        pill.hidden = !(item.key && item.baseURL);
+        refreshKeyStatus();
+      });
+
+      wrap.append(label, input);
+      fields.appendChild(wrap);
+    }
+
+    card.append(head, fields);
+    host.appendChild(card);
+  });
+
+  refreshKeyStatus();
+}
+
+$('addCustom').addEventListener('click', () => {
+  customs.push({
+    id: `c${Date.now().toString(36)}`,
+    name: '',
+    key: '',
+    baseURL: '',
+    model: ''
+  });
+  renderCustoms();
+});
+
+/* ── 保存 ─────────────────────────────────────────── */
 
 /** @param {string} value */
 function setStyle(value) {
@@ -133,16 +314,36 @@ function parseGlossary(text) {
 }
 
 function collect() {
+  /** @type {Record<string, any>} */
+  const keys = {};
+
+  for (const provider of PROVIDERS) {
+    /** @type {Record<string, string>} */
+    const credential = {};
+    for (const field of provider.fields ?? []) {
+      const input = document.querySelector(`input[data-provider="${provider.id}"][data-field="${field.id}"]`);
+      if (input?.value.trim()) credential[field.id] = input.value.trim();
+    }
+    const required = (provider.fields ?? []).filter((f) => f.id !== 'endpoint');
+    if (required.length && required.every((f) => credential[f.id])) {
+      keys[provider.id] = credential;
+    }
+  }
+
+  const cleanCustoms = customs
+    .filter((item) => item.key?.trim() && item.baseURL?.trim())
+    .map((item) => ({
+      id: item.id,
+      name: item.name?.trim() || item.model?.trim() || '自定义接口',
+      key: item.key.trim(),
+      baseURL: item.baseURL.trim(),
+      model: item.model?.trim() || 'deepseek-chat'
+    }));
+
+  if (cleanCustoms.length) keys.customs = cleanCustoms;
+
   return {
-    keys: {
-      groq: $('groq').value.trim() || undefined,
-      deepl: $('deepl').value.trim() || undefined,
-      deeplEndpoint: $('deeplEndpoint').value.trim() || undefined,
-      google: $('google').value.trim() || undefined,
-      llm: $('llm').value.trim() || undefined,
-      llmBaseURL: $('llmBaseURL').value.trim() || undefined,
-      llmModel: $('llmModel').value.trim() || undefined
-    },
+    keys,
     settings: {
       ...store.settings,
       defaultTarget: $('defaultTarget').value,
@@ -151,22 +352,30 @@ function collect() {
       allowDirectSend: $('allowDirectSend').checked,
       previewOnLowConfidence: $('previewOnLowConfidence').checked,
       longSentenceThreshold: Number($('longSentenceThreshold').value),
+      dailyCharLimit: Number($('dailyCharLimit').value),
       glossary: parseGlossary($('glossary').value)
     },
-    chats: store.chats ?? {}
+    chats: store.chats ?? {},
+    usage: store.usage ?? {}
   };
 }
 
 /** 密钥徽标 + 分组计数 */
 function refreshKeyStatus() {
-  const ids = ['groq', 'deepl', 'google', 'llm'];
   let configured = 0;
-  for (const id of ids) {
-    const filled = Boolean($(id).value.trim());
+  for (const provider of PROVIDERS) {
+    const pill = document.querySelector(`.provider[data-id="${provider.id}"] .pill`);
+    const required = (provider.fields ?? []).filter((f) => f.id !== 'endpoint');
+    const filled = required.every((field) => {
+      const input = document.querySelector(`input[data-provider="${provider.id}"][data-field="${field.id}"]`);
+      return Boolean(input?.value.trim());
+    });
+    if (pill) pill.hidden = !filled;
     if (filled) configured += 1;
-    $(`pill-${id}`).hidden = !filled;
   }
-  $('svcCount').textContent = `${configured} / ${ids.length}`;
+
+  $('freeCount').textContent = `${configured} / ${PROVIDERS.length}`;
+  $('customCount').textContent = `${customs.filter((c) => c.key && c.baseURL).length} 个`;
 }
 
 function updateGlossaryCount() {
@@ -202,9 +411,9 @@ function setStatus(message, kind = 'info') {
 
 async function save() {
   const next = collect();
-  const hasAnyKey = next.keys.google || next.keys.deepl || next.keys.groq || next.keys.llm;
-  if (!hasAnyKey) {
-    setStatus('至少要填一个密钥，否则没法翻译', 'err');
+  const hasAny = Object.keys(next.keys).length > 0;
+  if (!hasAny) {
+    setStatus('至少要填一个服务商，否则没法翻译', 'err');
     return;
   }
   try {
@@ -215,7 +424,7 @@ async function save() {
   }
   store = next;
   refreshKeyStatus();
-  setStatus('已保存，刷新 WhatsApp 页面后生效', 'ok');
+  setStatus('已保存，刷新页面后生效', 'ok');
 
   const button = $('save');
   button.classList.add('is-done');
@@ -227,7 +436,7 @@ async function save() {
   }, 1600);
 }
 
-// ── 事件绑定 ───────────────────────────────────────
+/* ── 事件绑定 ─────────────────────────────────────── */
 
 $('save').addEventListener('click', save);
 
@@ -240,31 +449,19 @@ $('clearCache').addEventListener('click', async () => {
   }
 });
 
-// 密钥输入 → 徽标实时亮
-for (const id of ['groq', 'deepl', 'google', 'llm']) {
-  $(id).addEventListener('input', refreshKeyStatus);
-}
-
-// 显示 / 隐藏密钥
-for (const button of document.querySelectorAll('.reveal')) {
-  button.addEventListener('click', () => {
-    const input = $(button.dataset.reveal);
-    const show = input.type === 'password';
-    input.type = show ? 'text' : 'password';
-    if (show) button.setAttribute('data-on', '');
-    else button.removeAttribute('data-on');
-    button.title = show ? '隐藏密钥' : '显示密钥';
-  });
-}
-
 // 语气分段 → 说明文字跟随
 for (const radio of document.querySelectorAll('input[name="style"]')) {
   radio.addEventListener('change', () => setStyle(radio.value));
 }
 
-// 长句阈值
+// 滑杆
 $('longSentenceThreshold').addEventListener('input', (event) => {
   $('thresholdLabel').textContent = event.target.value;
+  updateRangeFill(event.target);
+});
+$('dailyCharLimit').addEventListener('input', (event) => {
+  const value = Number(event.target.value);
+  $('limitLabel').textContent = value ? `${value} 字` : '不限制';
   updateRangeFill(event.target);
 });
 

@@ -2,23 +2,15 @@
   "manifest_version": 3,
   "name": "微翻 WeiFan",
   "version": "0.2.0",
-  "description": "WhatsApp Web 即时翻译：对方消息自动出中文，输入框里的中文一键变对方语言。",
+  "description": "浏览器即时翻译：选区、划词、悬停、整段文档都能翻；密钥只留在本机。",
   "icons": {
     "16": "src/icons/icon16.png",
     "32": "src/icons/icon32.png",
     "48": "src/icons/icon48.png",
     "128": "src/icons/icon128.png"
   },
-  "permissions": ["storage"],
-  "host_permissions": [
-    "https://web.whatsapp.com/*",
-    "https://translation.googleapis.com/*",
-    "https://api-free.deepl.com/*",
-    "https://api.deepl.com/*",
-    "https://api.groq.com/*",
-    "https://api.deepseek.com/*",
-    "https://api.openai.com/*"
-  ],
+  "permissions": ["storage", "clipboardRead"],
+  "host_permissions": ["<all_urls>"],
   "background": {
     "service_worker": "src/background.js",
     "type": "module"
@@ -29,6 +21,12 @@
       "js": ["src/content/whatsapp.js"],
       "css": ["src/content/content.css"],
       "run_at": "document_idle"
+    },
+    {
+      "matches": ["<all_urls>"],
+      "js": ["src/content/pageagent.js"],
+      "run_at": "document_idle",
+      "all_frames": false
     }
   ],
   "options_ui": {
@@ -36,7 +34,8 @@
     "open_in_tab": true
   },
   "action": {
-    "default_title": "微翻 · 设置",
+    "default_title": "微翻",
+    "default_popup": "src/popup/popup.html",
     "default_icon": {
       "16": "src/icons/icon16.png",
       "32": "src/icons/icon32.png",

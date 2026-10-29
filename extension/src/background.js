@@ -4,10 +4,16 @@
  * 为什么不在 content script 里直接 fetch：
  * 1. MV3 的 content script 受页面 CORS 约束，打翻译 API 会被拦；
  * 2. 密钥不能暴露在页面上下文里（页面脚本理论上能读到 content script 的变量）。
+ *
+ * 后台同时负责：
+ * - 发件 / 收件两条管道（WhatsApp 专用，术语保护 + 风险判定）
+ * - 通用翻译（文本翻译、划词、悬停、文档翻译共用同一入口）
+ * - 每日额度保护：单个服务商当天用超上限就跳过它，别让用户在平台那边被计费
  */
 
 import { translateForSending, translateIncoming, DEFAULT_SETTINGS } from './core/core.js';
 import { LANGUAGES } from './core/language.js';
+import { PROVIDERS, listProviders, translate } from './core/providers.js';
 import { EXT } from './shared/ext.js';
 
 const STORAGE_KEY = 'weifan';
@@ -16,7 +22,7 @@ const CACHE_LIMIT = 300;
 /** @type {Map<string, any>} */
 const cache = new Map();
 
-/** @typedef {{keys: any, settings: any, chats: Record<string, {language: string, updatedAt: number}>}} Store */
+/** @typedef {{keys: any, settings: any, chats: Record<string, {language: string, updatedAt: number}>, usage: Record<string, Record<string, number>>}} Store */
 
 /** @returns {Promise<Store>} */
 async function loadStore() {
@@ -25,7 +31,8 @@ async function loadStore() {
   return {
     keys: value.keys ?? {},
     settings: { ...DEFAULT_SETTINGS, ...(value.settings ?? {}) },
-    chats: value.chats ?? {}
+    chats: value.chats ?? {},
+    usage: value.usage ?? {}
   };
 }
 
@@ -46,6 +53,76 @@ function cacheSet(key, value) {
 /** @param {string} text */
 const fingerprint = (text) => text.length + ':' + text.slice(0, 64);
 
+/** 今天的日期键（本地时区） */
+function today() {
+  const now = new Date();
+  const pad = (n) => String(n).padStart(2, '0');
+  return `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())}`;
+}
+
+/**
+ * 今天已超限额的服务商。
+ * @param {Store} store
+ * @param {number} limit
+ */
+function blockedProviders(store, limit) {
+  if (!limit) return [];
+  const used = store.usage[today()] ?? {};
+  return Object.keys(used).filter((id) => used[id] >= limit);
+}
+
+/**
+ * 记一笔用量。
+ * @param {Store} store
+ * @param {string} providerId
+ * @param {number} chars
+ * @param {number} limit
+ */
+async function trackUsage(store, providerId, chars, limit) {
+  if (!providerId || !limit) return;
+  const day = today();
+  store.usage[day] = store.usage[day] ?? {};
+  store.usage[day][providerId] = (store.usage[day][providerId] ?? 0) + chars;
+  await saveStore(store);
+}
+
+/**
+ * 通用的翻译入口：文本翻译、划词、悬停、文档翻译都走这里。
+ * @param {Store} store
+ * @param {Object} req
+ */
+async function translateText(store, req) {
+  const settings = store.settings;
+  const style = req.style ?? settings.style;
+  const selection = req.selection ?? settings.selection;
+  const mode = req.mode ?? settings.mode;
+  const blocked = blockedProviders(store, settings.dailyCharLimit);
+
+  const key = `t|${mode}|${selection}|${req.source ?? ''}|${req.target}|${style}|${fingerprint(req.text)}`;
+  if (cache.has(key)) return cache.get(key);
+
+  const result = await translate(
+    {
+      text: req.text,
+      source: req.source ?? null,
+      target: req.target,
+      style,
+      route: style === 'business' ? 'llm' : 'mt',
+      keys: store.keys
+    },
+    { selection, mode, blocked }
+  );
+
+  cacheSet(key, result);
+
+  // 记用量（按实际使用的服务商算）
+  await trackUsage(store, result.providerId, req.text.length, settings.dailyCharLimit);
+  if (blockedProviders(store, settings.dailyCharLimit).includes(result.providerId)) {
+    result.note = '这家今天已到上限，下次自动换一家';
+  }
+  return result;
+}
+
 EXT.runtime.onMessage.addListener((message, _sender, sendResponse) => {
   handle(message)
     .then((data) => sendResponse({ ok: true, data }))
@@ -61,13 +138,34 @@ async function handle(message) {
     case 'ping':
       return { version: EXT.runtime.getManifest().version };
 
-    case 'getConfig':
-      // 只回给 content script 需要的部分，密钥不出 background
+    case 'getConfig': {
+      const providers = listProviders(store.keys);
       return {
         settings: store.settings,
         languages: LANGUAGES,
-        hasKeys: Boolean(store.keys.google || store.keys.deepl || store.keys.groq || store.keys.llm)
+        hasKeys: providers.length > 0,
+        providers: providers.map((p) => ({ id: p.id, label: p.label, mode: p.mode, kind: p.kind })),
+        catalog: PROVIDERS.map((p) => ({
+          id: p.id,
+          label: p.label,
+          mode: p.mode,
+          kind: p.kind,
+          freeNote: p.freeNote ?? '',
+          docs: p.docs ?? '',
+          fields: p.fields ?? []
+        }))
       };
+    }
+
+    case 'setSettings': {
+      const patch = message.patch ?? {};
+      store.settings = { ...store.settings, ...patch };
+      await saveStore(store);
+      return store.settings;
+    }
+
+    case 'usage':
+      return { day: today(), usage: store.usage[today()] ?? {}, limit: store.settings.dailyCharLimit };
 
     case 'incoming': {
       const text = String(message.text ?? '').trim();
@@ -75,7 +173,11 @@ async function handle(message) {
       const key = `in|${fingerprint(text)}`;
       if (cache.has(key)) return cache.get(key);
 
-      const result = await translateIncoming(text, { settings: store.settings, keys: store.keys });
+      const result = await translateIncoming(text, {
+        settings: store.settings,
+        keys: store.keys,
+        blocked: blockedProviders(store, store.settings.dailyCharLimit)
+      });
       cacheSet(key, result);
       return result;
     }
@@ -93,7 +195,8 @@ async function handle(message) {
         chatLanguage: chat?.language ?? null,
         contextSample: message.contextSample ?? null,
         settings: store.settings,
-        keys: store.keys
+        keys: store.keys,
+        blocked: blockedProviders(store, store.settings.dailyCharLimit)
       });
       cacheSet(key, result);
 
@@ -103,6 +206,47 @@ async function handle(message) {
         await saveStore(store);
       }
       return result;
+    }
+
+    case 'translateText': {
+      const text = String(message.text ?? '').trim();
+      if (!text) throw new Error('没有可翻译的内容');
+      return translateText(store, {
+        text,
+        source: message.source ?? null,
+        target: String(message.target ?? store.settings.defaultTarget),
+        style: message.style,
+        selection: message.selection,
+        mode: message.mode
+      });
+    }
+
+    case 'translateBatch': {
+      const items = Array.isArray(message.items) ? message.items : [];
+      if (!items.length) return [];
+      const results = [];
+      for (const item of items) {
+        const index = item.index ?? results.length;
+        try {
+          const result = await translateText(store, {
+            text: String(item.text ?? ''),
+            source: item.source ?? null,
+            target: String(item.target ?? store.settings.defaultTarget),
+            style: item.style,
+            selection: item.selection,
+            mode: item.mode
+          });
+          results.push({ ok: true, index, ...result });
+        } catch (error) {
+          results.push({
+            ok: false,
+            index,
+            text: String(item.text ?? ''),
+            error: error?.message ?? String(error)
+          });
+        }
+      }
+      return results;
     }
 
     case 'setChatLanguage': {
@@ -133,9 +277,4 @@ async function handle(message) {
 EXT.runtime.onInstalled.addListener(async () => {
   const store = await loadStore();
   await saveStore(store);
-});
-
-// 点扩展图标直接打开设置页（没有 popup，减少一次点击）
-EXT.action.onClicked.addListener(() => {
-  EXT.runtime.openOptionsPage();
 });

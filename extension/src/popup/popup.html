@@ -1,0 +1,151 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <title>微翻</title>
+  <link rel="stylesheet" href="../shared/theme.css" />
+  <link rel="stylesheet" href="popup.css" />
+</head>
+<body>
+<div class="app" id="app">
+
+  <!-- 顶栏 -->
+  <header class="hd">
+    <div class="hd-brand">
+      <svg class="mark" viewBox="159 301 1462 1462" role="img" aria-label="微翻标识">
+        <defs>
+          <linearGradient id="wf-gw" gradientUnits="userSpaceOnUse" x1="1545" y1="521" x2="375" y2="1415"><stop offset="0" stop-color="#FF4353"/><stop offset=".42" stop-color="#FD6C4E"/><stop offset=".8" stop-color="#FF9064"/><stop offset="1" stop-color="#FFC4A6"/></linearGradient>
+          <linearGradient id="wf-gc" gradientUnits="userSpaceOnUse" x1="1177" y1="649" x2="235" y2="1475"><stop offset="0" stop-color="#4C9BF7"/><stop offset=".45" stop-color="#2FB6FF"/><stop offset="1" stop-color="#00E9DD"/></linearGradient>
+        </defs>
+        <g><path d="M1141 1345L1335.1 1521.8A14 14 0 0 0 1358.5 1511.4L1359 1345Z" fill="url(#wf-gw)"/><path d="M703 521H1217A328 328 0 0 1 1545 849V1087A328 328 0 0 1 1217 1415H703A328 328 0 0 1 375 1087V849A328 328 0 0 1 703 521Z" fill="url(#wf-gw)"/></g>
+        <g><path d="M400 1355L396.9 1529.6A14 14 0 0 0 420.9 1539.6L600 1355Z" fill="url(#wf-gc)"/><path d="M706 649C966.1 649 1177 833.9 1177 1062C1177 1290.1 966.1 1475 706 1475C445.9 1475 235 1290.1 235 1062C235 833.9 445.9 649 706 649Z" fill="url(#wf-gc)"/></g>
+      </svg>
+      <div class="hd-text">
+        <strong>微翻</strong>
+        <span id="statusLine">正在连接…</span>
+      </div>
+    </div>
+    <label class="compact-toggle" title="简洁模式：只留语言和翻译按钮">
+      <span>简洁</span>
+      <span class="switch"><input type="checkbox" id="compact" /><span class="track"></span></span>
+    </label>
+  </header>
+
+  <!-- 语言 -->
+  <section class="langs">
+    <div class="select-wrap">
+      <select id="sourceLang" aria-label="源语言"></select>
+      <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m7 10 5 5 5-5z"/></svg>
+    </div>
+    <span class="arrow" aria-hidden="true">→</span>
+    <div class="select-wrap">
+      <select id="targetLang" aria-label="目标语言"></select>
+      <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m7 10 5 5 5-5z"/></svg>
+    </div>
+  </section>
+
+  <!-- 模式与服务商 -->
+  <section class="modes">
+    <div class="segmented" role="radiogroup" aria-label="翻译模式">
+      <label><input type="radio" name="mode" value="free" /><span>免费额度</span></label>
+      <label><input type="radio" name="mode" value="custom" /><span>自定义 API</span></label>
+    </div>
+
+    <div class="row">
+      <span class="row-label">翻译服务</span>
+      <div class="select-wrap grow">
+        <select id="service" aria-label="翻译服务"></select>
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m7 10 5 5 5-5z"/></svg>
+      </div>
+    </div>
+
+    <div class="row" id="styleRow">
+      <span class="row-label">语气</span>
+      <div class="select-wrap grow">
+        <select id="style" aria-label="翻译语气">
+          <option value="business">商务</option>
+          <option value="casual">日常</option>
+          <option value="literal">直译</option>
+        </select>
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m7 10 5 5 5-5z"/></svg>
+      </div>
+    </div>
+
+    <p class="row-hint" id="modeHint"></p>
+  </section>
+
+  <!-- 主按钮 -->
+  <button type="button" id="translate" class="primary">
+    <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 5h9v2H6v3h6v2H6v4H4V5Zm11 0h2v6h3l-4 6-4-6h3V5Z"/></svg>
+    <span id="primaryLabel">翻译选区 / 剪贴板</span>
+  </button>
+
+  <!-- 结果 -->
+  <section class="result" id="result" hidden>
+    <div class="result-head">
+      <span class="tag" id="resultProvider">—</span>
+      <span class="tag ghost" id="resultLatency"></span>
+    </div>
+    <p class="src" id="resultSrc"></p>
+    <p class="dst" id="resultDst"></p>
+    <p class="degraded" id="resultDegraded" hidden></p>
+    <div class="result-actions">
+      <button type="button" class="mini-btn" id="copyResult">复制译文</button>
+      <button type="button" class="mini-btn" id="replaceSelection">替换原文</button>
+    </div>
+  </section>
+
+  <!-- 提示条 -->
+  <p class="notice" id="notice" hidden></p>
+
+  <!-- 四个功能 -->
+  <section class="tiles" id="tiles">
+    <button type="button" class="tile" data-action="doc">
+      <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 2h7l5 5v15H6V2Zm7 1.5V7h3.5L13 3.5ZM8.5 11h7v1.6h-7V11Zm0 3.4h7V16h-7v-1.6Z"/></svg>
+      <span>文档翻译</span>
+    </button>
+    <button type="button" class="tile" data-action="text">
+      <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 4h9l7 7v9h-7v-3.2l2.8-2.8H13V5.8L11.2 4H4v16h6v-2H6V4Zm12.5 9.5 4 4-1 1 1 1-1 1-1-1-1 1-1-1 1-1-1-1 1-1Z"/></svg>
+      <span>文本翻译</span>
+    </button>
+    <button type="button" class="tile" data-action="hover" data-toggle="hoverTranslate">
+      <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 2a4 4 0 0 1 4 4v6a4 4 0 0 1-8 0V6a4 4 0 0 1 4-4Zm-1 4a1 1 0 0 0-2 0v6a1 1 0 0 0 2 0V6Zm-4 7.9A6 6 0 0 0 11 18.9V21h2v-2.1a6 6 0 0 0 4-5.1V14h-2v2a4 4 0 0 1-8 0v-2H3v2Z"/></svg>
+      <span>鼠标悬停</span>
+      <i class="state" aria-hidden="true"></i>
+    </button>
+    <button type="button" class="tile" data-action="selection" data-toggle="selectionTranslate">
+      <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 4h7v2H6v3h3v2H4V4Zm9 0h7v7h-2V6h-5V4Zm-9 9h2v3h3v2H4v-5Zm13 0h2v7h-7v-2h5v-5Z"/></svg>
+      <span>划词翻译</span>
+      <i class="state" aria-hidden="true"></i>
+    </button>
+  </section>
+
+  <!-- 底栏 -->
+  <footer class="ft">
+    <button type="button" class="ft-btn" id="openOptions">
+      <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 8a4 4 0 1 0 0 8 4 4 0 0 0 0-8Zm9 4c0-.5 0-1-.1-1.4l2-1.6-2-3.4-2.4 1a8.6 8.6 0 0 0-2.4-1.4L15.7 3h-4l-.4 2.4c-.9.3-1.7.8-2.4 1.4l-2.4-1-2 3.4 2 1.6a8.7 8.7 0 0 0 0 2.8l-2 1.6 2 3.4 2.4-1c.7.6 1.5 1.1 2.4 1.4l.4 2.4h4l.4-2.4c.9-.3 1.7-.8 2.4-1.4l2.4 1 2-3.4-2-1.6c.1-.4.1-.9.1-1.4Z"/></svg>
+      <span>设置</span>
+    </button>
+    <span class="ver" id="version">v0.2.0</span>
+    <div class="more-wrap">
+      <button type="button" class="ft-btn" id="more">
+        <span>更多功能</span>
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m7 10 5 5 5-5z"/></svg>
+      </button>
+      <div class="menu" id="moreMenu" hidden>
+        <button type="button" data-menu="about">关于微翻</button>
+        <button type="button" data-menu="releases">更新日志</button>
+        <button type="button" data-menu="issues">问题反馈</button>
+        <button type="button" data-menu="usage">今日用量</button>
+        <button type="button" data-menu="cache">清空翻译缓存</button>
+        <button type="button" data-menu="reset">恢复默认设置</button>
+      </div>
+    </div>
+  </footer>
+
+  <div class="toast" id="toast" hidden></div>
+</div>
+
+<script src="popup.js" type="module"></script>
+</body>
+</html>

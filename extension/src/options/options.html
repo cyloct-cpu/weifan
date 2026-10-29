@@ -25,97 +25,30 @@
   <main class="page">
     <div class="hero">
       <h1>设置</h1>
-      <p class="lede">填好密钥、刷新 WhatsApp 页面即可生效。颜色就是方向：<b class="d d-warm">暖色是发件</b>，<b class="d d-cool">冷色是收件</b>，<b class="d d-mix">混色是双向通用</b>。</p>
+      <p class="lede">免费额度模式：自己去大厂申请密钥填进来，额度用完自动换下一家。自定义 API 模式：接任何 OpenAI 兼容接口。</p>
     </div>
 
-    <!-- ── 翻译服务（双向通用） ─────────────────────────── -->
+    <!-- ── 免费额度服务商（双向通用） ─────────────────── -->
     <section class="group" data-dir="mix">
       <div class="group-head">
         <i class="dot"></i>
-        <h2>翻译服务</h2>
-        <span class="group-count" id="svcCount">0 / 4</span>
+        <h2>免费额度服务商</h2>
+        <span class="group-count" id="freeCount">0 / 6</span>
       </div>
-      <p class="group-note">至少填一个。路由规则：短句走机翻，长句和含金额/数字的消息走大模型。</p>
+      <p class="group-note">六家都能用，填一个就能开张。密钥不上传，全部留在本机浏览器里。</p>
+      <div id="providerList"></div>
+    </section>
 
-      <div class="field">
-        <div class="field-head">
-          <label for="groq">Groq · 大模型</label>
-          <span class="pill" id="pill-groq" hidden>已配置</span>
-        </div>
-        <div class="input-wrap">
-          <input type="password" id="groq" placeholder="gsk_..." autocomplete="off" spellcheck="false" />
-          <button type="button" class="reveal" data-reveal="groq" title="显示密钥" aria-label="显示密钥">
-            <svg class="i-eye" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5c-5 0-9 4.5-10 7 1 2.5 5 7 10 7s9-4.5 10-7c-1-2.5-5-7-10-7Zm0 11.5A4.5 4.5 0 1 1 16.5 12 4.5 4.5 0 0 1 12 16.5Zm0-7.5A3 3 0 1 0 15 12a3 3 0 0 0-3-3Z"/></svg>
-            <svg class="i-eye-off" viewBox="0 0 24 24" aria-hidden="true"><path d="M2 3.6 3.6 2l18 18L20 21.6l-4.2-4.2a11.6 11.6 0 0 1-4.8 1.1c-5 0-9-4.5-10-7a12.4 12.4 0 0 1 4-4.7ZM12 5c-5 0-9 4.5-10 7 .5 1.2 1.8 3.3 4 4.9l2-2A4.5 4.5 0 0 1 12 7.5c.5 0 1 .08 1.4.22l1.7-1.7A11 11 0 0 0 12 5Zm0 4.5a3 3 0 0 0-3 3l3-3Zm10 2.5c-1 2.5-5 7-10 7a11.2 11.2 0 0 1-2.6-.3l2.3-2.3a4.5 4.5 0 0 0 5.9-5.9l2.9-2.9A12.4 12.4 0 0 1 22 12Z"/></svg>
-          </button>
-        </div>
-        <p class="hint">推荐，延迟低。到 console.groq.com 申请。</p>
+    <!-- ── 自定义 API（双向通用） ─────────────────────── -->
+    <section class="group" data-dir="mix">
+      <div class="group-head">
+        <i class="dot"></i>
+        <h2>自定义 API</h2>
+        <span class="group-count" id="customCount">0 个</span>
       </div>
-
-      <div class="field">
-        <div class="field-head">
-          <label for="deepl">DeepL · 机翻</label>
-          <span class="pill" id="pill-deepl" hidden>已配置</span>
-        </div>
-        <div class="input-wrap">
-          <input type="password" id="deepl" placeholder="xxxxxxxx-xxxx-...:fx" autocomplete="off" spellcheck="false" />
-          <button type="button" class="reveal" data-reveal="deepl" title="显示密钥" aria-label="显示密钥">
-            <svg class="i-eye" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5c-5 0-9 4.5-10 7 1 2.5 5 7 10 7s9-4.5 10-7c-1-2.5-5-7-10-7Zm0 11.5A4.5 4.5 0 1 1 16.5 12 4.5 4.5 0 0 1 12 16.5Zm0-7.5A3 3 0 1 0 15 12a3 3 0 0 0-3-3Z"/></svg>
-            <svg class="i-eye-off" viewBox="0 0 24 24" aria-hidden="true"><path d="M2 3.6 3.6 2l18 18L20 21.6l-4.2-4.2a11.6 11.6 0 0 1-4.8 1.1c-5 0-9-4.5-10-7a12.4 12.4 0 0 1 4-4.7ZM12 5c-5 0-9 4.5-10 7 .5 1.2 1.8 3.3 4 4.9l2-2A4.5 4.5 0 0 1 12 7.5c.5 0 1 .08 1.4.22l1.7-1.7A11 11 0 0 0 12 5Zm0 4.5a3 3 0 0 0-3 3l3-3Zm10 2.5c-1 2.5-5 7-10 7a11.2 11.2 0 0 1-2.6-.3l2.3-2.3a4.5 4.5 0 0 0 5.9-5.9l2.9-2.9A12.4 12.4 0 0 1 22 12Z"/></svg>
-          </button>
-        </div>
-        <p class="hint">中→欧语质量最稳，免费额度 50 万字符/月。</p>
-      </div>
-
-      <div class="field">
-        <div class="field-head">
-          <label for="deeplEndpoint">DeepL 端点</label>
-        </div>
-        <input type="text" id="deeplEndpoint" placeholder="https://api-free.deepl.com/v2/translate" spellcheck="false" />
-      </div>
-
-      <div class="field">
-        <div class="field-head">
-          <label for="google">Google Cloud Translation · 机翻</label>
-          <span class="pill" id="pill-google" hidden>已配置</span>
-        </div>
-        <div class="input-wrap">
-          <input type="password" id="google" placeholder="AIza..." autocomplete="off" spellcheck="false" />
-          <button type="button" class="reveal" data-reveal="google" title="显示密钥" aria-label="显示密钥">
-            <svg class="i-eye" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5c-5 0-9 4.5-10 7 1 2.5 5 7 10 7s9-4.5 10-7c-1-2.5-5-7-10-7Zm0 11.5A4.5 4.5 0 1 1 16.5 12 4.5 4.5 0 0 1 12 16.5Zm0-7.5A3 3 0 1 0 15 12a3 3 0 0 0-3-3Z"/></svg>
-            <svg class="i-eye-off" viewBox="0 0 24 24" aria-hidden="true"><path d="M2 3.6 3.6 2l18 18L20 21.6l-4.2-4.2a11.6 11.6 0 0 1-4.8 1.1c-5 0-9-4.5-10-7a12.4 12.4 0 0 1 4-4.7ZM12 5c-5 0-9 4.5-10 7 .5 1.2 1.8 3.3 4 4.9l2-2A4.5 4.5 0 0 1 12 7.5c.5 0 1 .08 1.4.22l1.7-1.7A11 11 0 0 0 12 5Zm0 4.5a3 3 0 0 0-3 3l3-3Zm10 2.5c-1 2.5-5 7-10 7a11.2 11.2 0 0 1-2.6-.3l2.3-2.3a4.5 4.5 0 0 0 5.9-5.9l2.9-2.9A12.4 12.4 0 0 1 22 12Z"/></svg>
-          </button>
-        </div>
-        <p class="hint">DeepL 不支持的语种靠它兜底。</p>
-      </div>
-
-      <div class="field">
-        <div class="field-head">
-          <label for="llm">备用大模型 · OpenAI 兼容</label>
-          <span class="pill" id="pill-llm" hidden>已配置</span>
-        </div>
-        <div class="input-wrap">
-          <input type="password" id="llm" placeholder="sk-..." autocomplete="off" spellcheck="false" />
-          <button type="button" class="reveal" data-reveal="llm" title="显示密钥" aria-label="显示密钥">
-            <svg class="i-eye" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5c-5 0-9 4.5-10 7 1 2.5 5 7 10 7s9-4.5 10-7c-1-2.5-5-7-10-7Zm0 11.5A4.5 4.5 0 1 1 16.5 12 4.5 4.5 0 0 1 12 16.5Zm0-7.5A3 3 0 1 0 15 12a3 3 0 0 0-3-3Z"/></svg>
-            <svg class="i-eye-off" viewBox="0 0 24 24" aria-hidden="true"><path d="M2 3.6 3.6 2l18 18L20 21.6l-4.2-4.2a11.6 11.6 0 0 1-4.8 1.1c-5 0-9-4.5-10-7a12.4 12.4 0 0 1 4-4.7ZM12 5c-5 0-9 4.5-10 7 .5 1.2 1.8 3.3 4 4.9l2-2A4.5 4.5 0 0 1 12 7.5c.5 0 1 .08 1.4.22l1.7-1.7A11 11 0 0 0 12 5Zm0 4.5a3 3 0 0 0-3 3l3-3Zm10 2.5c-1 2.5-5 7-10 7a11.2 11.2 0 0 1-2.6-.3l2.3-2.3a4.5 4.5 0 0 0 5.9-5.9l2.9-2.9A12.4 12.4 0 0 1 22 12Z"/></svg>
-          </button>
-        </div>
-        <p class="hint">DeepSeek / 自建网关。Groq 不可用时兜底。</p>
-      </div>
-
-      <div class="field-row">
-        <div class="field">
-          <div class="field-head"><label for="llmBaseURL">接口地址</label></div>
-          <input type="text" id="llmBaseURL" placeholder="https://api.deepseek.com/v1" spellcheck="false" />
-        </div>
-        <div class="field">
-          <div class="field-head"><label for="llmModel">模型名</label></div>
-          <input type="text" id="llmModel" placeholder="deepseek-chat" spellcheck="false" />
-        </div>
-      </div>
-
-      <p class="warn">密钥以明文保存在本机浏览器配置中，不经过任何服务器。共用电脑时注意。</p>
+      <p class="group-note">任意 OpenAI 兼容接口：DeepSeek、硅基流动、OpenAI、自建网关都行。大模型翻译在术语与语气上更准。</p>
+      <div id="customList"></div>
+      <button type="button" id="addCustom" class="btn-ghost" style="margin: 12px 0 6px;">+ 添加一个接口</button>
     </section>
 
     <!-- ── 发件（暖） ─────────────────────────── -->
@@ -124,7 +57,7 @@
         <i class="dot"></i>
         <h2>发件 · 你打的中文怎么变出去</h2>
       </div>
-      <p class="group-note">输入框里写中文，点「译」或按 Ctrl+Enter，发出去的是对方语言。</p>
+      <p class="group-note">WhatsApp 输入框里写中文，点「译」或按 Ctrl+Enter，发出去的是对方语言。</p>
 
       <div class="field">
         <div class="field-head"><label for="defaultTarget">兜底目标语言</label></div>
@@ -186,6 +119,24 @@
         </span>
         <span class="switch"><input type="checkbox" id="autoIncoming" /><span class="track"></span></span>
       </label>
+    </section>
+
+    <!-- ── 额度保护（双向通用） ─────────────────────── -->
+    <section class="group" data-dir="mix">
+      <div class="group-head">
+        <i class="dot"></i>
+        <h2>额度保护</h2>
+      </div>
+      <p class="group-note">免费额度是有上限的，超了平台可能开始计费。这里设一个每日上限，到线就自动跳过那家。</p>
+
+      <div class="field">
+        <div class="field-head">
+          <label for="dailyCharLimit">单个服务商每日字符上限</label>
+          <span class="value-badge" id="limitLabel">不限制</span>
+        </div>
+        <input type="range" id="dailyCharLimit" min="0" max="20000" step="1000" />
+        <p class="hint">0 = 不限制。设了之后达到上限当天就不再用这家，自动换下一家。</p>
+      </div>
     </section>
 
     <!-- ── 术语（双向通用） ─────────────────────────── -->

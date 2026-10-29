@@ -6,6 +6,9 @@
 
 WhatsApp 跨境沟通的自动翻译工具：**你打中文，发出去的是对方的语言；对方说什么，你看到的是中文。**
 
+点扩展图标弹出一个面板，选好语言和服务就能用：**选区、划词、鼠标悬停、整份文档**都能翻。
+翻译走你自己申请的大厂免费额度（百度 / 腾讯云 / Google / DeepL / 火山引擎 / 阿里云），也能接任何 OpenAI 兼容接口。密钥只留在本机。
+
 - 范围：**三端** —— 浏览器扩展 / Android / iOS（macOS 原生不做）
 - 当前状态：**浏览器扩展已可运行**；Android、iOS 未开工（缺工具链，见下）
 - 顺序：扩展 → Android → iOS（决策见 `docs/07-方案修订-2026-10-29.md`）
@@ -20,9 +23,45 @@ WhatsApp 跨境沟通的自动翻译工具：**你打中文，发出去的是对
 
 | 端 | 读对方消息 | 改写输入框 | 要切键盘 | 交付门槛 | 状态 |
 |---|---|---|---|---|---|
-| **浏览器扩展** | ✅ DOM 直读 | ✅ 直接改 | ❌ 不用 | 无 | ✅ 可运行 |
+| **浏览器扩展** | ✅ DOM 直读 | ✅ 直接改 | ❌ 不用 | 无 | ✅ 可运行（面板 + 划词/悬停/文档翻译） |
 | Android | ⚠️ v0.1 未做 | ✅ `ACTION_SET_TEXT` | ❌ 不用 | JDK + Android SDK | 🚧 可编译，未真机验证 |
 | iOS | ❌ 读不到 | ⚠️ 只能改输入框 | ✅ 每次切两次 | Xcode + 真机 + 签名 | ⏸ 最后做 |
+
+## 面板与两种模式
+
+点扩展图标弹出面板（360px，浅色品牌风）：
+
+```
+微翻 · 简洁开关
+[自动检测] → [英语]
+┌ 免费额度 | 自定义 API ┐      ← 分段开关
+翻译服务 [自动（按语种优选）]
+语气     [商务]
+[ 翻译选区 / 剪贴板 ]            ← 暖色主按钮
+[文档翻译][文本翻译]
+[鼠标悬停][划词翻译]
+⚙ 设置        v0.2.0      更多功能 ⌄
+```
+
+**两种模式**
+
+| 模式 | 用什么 | 特点 |
+|---|---|---|
+| 免费额度 | 自己去大厂申请 key：百度 / 腾讯云 / Google / DeepL / 火山引擎 / 阿里云 | 零成本；用户自取 key，扩展只做路由与降级 |
+| 自定义 API | 任意 OpenAI 兼容接口（key + 接口地址 + 模型名） | 大模型翻译，术语与语气更准；可加多个档案 |
+
+**降级**：用户选的服务商优先，失败（超时/报错/额度用完）自动换下一家「已配置 + 支持该目标语言」的服务，结果里会写明这次是谁翻的、原先那家为什么没用上。
+
+**四个功能**
+
+| 功能 | 行为 |
+|---|---|
+| 文档翻译 | txt / md / csv 直读；PDF 内置 pdf.js 抽文字；docx 解 zip 逐段翻译后写回新 docx。**文件全程留在本机** |
+| 文本翻译 | 独立页面，左原文右译文，可对调 |
+| 鼠标悬停 | 停 0.6 秒弹只读译文气泡，同一个词不重复请求 |
+| 划词翻译 | 选中即弹可操作气泡：可编辑译文、复制、一键替换原文 |
+
+**额度保护**：设置页能给单个服务商设每日字符上限（默认不限）。达到上限当天自动跳过那家 —— 免得用户绑了信用卡的 Google key 被超量计费。
 
 ## 直接下载（不用自己构建）
 
@@ -49,10 +88,12 @@ node scripts/build.mjs      # 生成 dist/chrome、dist/firefox、dist/safari
 
 1. 打开 `chrome://extensions`，开启「开发者模式」
 2. 「加载已解压的扩展程序」→ 选 **`extension/dist/chrome`**
-3. 点扩展图标 → 填一个密钥（Groq / DeepL / Google 任一）
+3. 点扩展图标 → 弹面板 → 点底部「设置」填密钥（百度 / 腾讯云 / Google / DeepL / 火山 / 阿里 任一，或自定义 API）
 4. 打开 https://web.whatsapp.com 并刷新
 
 用法：对方消息下方自动出现中文；输入框右下角点「译」或 `Ctrl/Cmd + Enter`，中文原地变对方语言，**不会自动发送**。
+
+面板用法：选中一段文字点「翻译选区 / 剪贴板」；任何页面上划词或悬停都能弹译文气泡；文档翻译支持 PDF 与 Word。
 
 Firefox：`about:debugging#/runtime/this-firefox` → 临时载入 → 选 `extension/dist/firefox/manifest.json`。
 Safari：代码已就绪，但必须用 Xcode 包装，当前机器没有 Xcode。
@@ -77,11 +118,19 @@ weifan/
 │   ├── manifest.base.json        # manifest 的唯一来源
 │   ├── scripts/build.mjs         # 生成 chrome / firefox / safari 三个产物
 │   ├── src/core/                 # 纯逻辑：检测 / 术语 / 路由 / 服务商 / 门面
+│   │   ├── providers.js          # 六家大厂 + 自定义 API 的注册表与降级链
+│   │   ├── langs.js              # 各家语种代码映射（决定谁支持哪种语言）
+│   │   └── signing.js            # MD5 / 腾讯 TC3 / 火山 V4 / 阿里 RPC 签名
+│   ├── src/shared/theme.css       # 设计 token（popup 与设置页共用一份）
 │   ├── src/shared/ext.js         # 跨浏览器 API 兼容层（browser.* / chrome.*）
 │   ├── src/background.js         # 所有网络请求与密钥都在这里
-│   ├── src/content/              # 唯一依赖 WhatsApp DOM 的适配层
-│   ├── src/options/              # 设置页
-│   ├── tests/selftest.mjs        # 内核断言集（33 项）
+│   ├── src/popup/                # ★ 点图标弹出的面板
+│   ├── src/content/              # whatsapp.js（唯一依赖 WhatsApp DOM）+ pageagent.js（划词/悬停）
+│   ├── src/text/                 # 文本翻译页
+│   ├── src/doc/                  # 文档翻译页（pdf.js 抽文 + docx 解 zip 回写）
+│   ├── src/options/              # 设置页（六家密钥表单由注册表自动生成）
+│   ├── src/vendor/               # fflate + pdf.js（本地解析文档，不上传）
+│   ├── tests/selftest.mjs        # 内核断言集（70 项）
 │   └── dist/                     # 打包产物（已 gitignore）
 ├── core/                         # Swift 版内核：作为「行为规格 / 未来 iOS 的参考实现」
 ├── ios/                          # iOS 三 target 源码（键盘/分享/主 App），归档待用
@@ -93,7 +142,7 @@ weifan/
 │   ├── 04-待验证清单.md
 │   ├── 05-交接说明.md
 │   ├── 06-参考项目.md            # 调研：KeyboardKit / SwiftSlate / wa-translator 等
-│   └── 07-方案修订-2026-10-29.md  # ★ 当前有效的决策（含两轮修订）
+│   └── 07-方案修订-2026-10-29.md  # ★ 当前有效的决策（含四轮修订）
 └── README.md
 ```
 
@@ -112,10 +161,15 @@ WhatsApp 对个人号**没有**任何插件接口。能真正长在 WhatsApp 里
 | Safari 交付被 Xcode 阻塞 | 打包命令已备好，装 Xcode 后约 30 分钟能通 |
 | iOS 未开工 | 需要 Xcode（本机没有），且 iOS 键盘读不到对方消息，形态待定 |
 | 语音未支持 | 按修订后的 D-23 后置 |
-| Swift 版内核未编译验证 | 本机 Swift 工具链有 SDK 版本错配，只能用 `swiftc -parse` 做语法检查 |
+| Swift 版内核未编译验证 | 本机 Swift 工具链有 SDK 版本错配，只能用 `swiftc -parse` 做语法检查；Swift 版 providers 已被 JS 版取代，仅作规格存档 |
+| 扩展体积 2.8MB | 内置 pdf.js + worker（+1.7MB），为了 PDF 文档翻译能离线用 |
+| Word/PDF 只保文字 | docx 保留段落结构与数量，字体/表格/分栏不保留；PDF 版式不保留，只给纯文本 |
+| 安装时会提示"读取所有网站数据" | 划词/悬停需要全站注入，面板里可随时关掉这两项 |
+| Android 端服务商层未同步 | Android 仍是原来的四家（Google / DeepL / Groq / OpenAI 兼容），本轮新增的六家只在扩展侧（见 D-42） |
 
 ## 合规与隐私
 
 - 不修改、不注入、不自动化 WhatsApp 本体；不做群发、不做自动回复、不代替用户点击发送。
-- 聊天内容会发给你自己配置的第三方翻译服务（Groq / DeepL / Google / DeepSeek）；密钥只存在本机浏览器（`chrome.storage.local`），不经过任何自建服务器。
+- 聊天内容会发给你自己配置的第三方翻译服务（百度 / 腾讯云 / Google / DeepL / 火山 / 阿里 / 你自己的大模型接口）；密钥只存在本机浏览器（`chrome.storage.local`），不经过任何自建服务器。
+- 文档翻译全程在本机解析（pdf.js / fflate），文件不会上传到任何服务器。
 - 翻译缓存在内存里（上限 300 条），浏览器重启即清。

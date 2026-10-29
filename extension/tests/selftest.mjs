@@ -9,6 +9,9 @@ import { detectLanguage } from '../src/core/language.js';
 import { protect, restore } from '../src/core/glossary.js';
 import { route, assessRisk, signals } from '../src/core/routing.js';
 import { resolveTarget, DEFAULT_SETTINGS } from '../src/core/core.js';
+import { md5 } from '../src/core/signing.js';
+import { supportsTarget, targetCode, fromPlatformCode } from '../src/core/langs.js';
+import { planCandidates, listProviders, credentialOf, AUTO_ORDER } from '../src/core/providers.js';
 
 let failures = 0;
 let checks = 0;
@@ -112,6 +115,81 @@ check(
   resolveTarget(null, { language: 'es', confidence: 0.2, basis: 'lexicon' }, 'fr', DEFAULT_SETTINGS).target === 'fr',
   '置信度不足时不用检测结果'
 );
+
+// MARK: 签名与语言映射（新增的服务商层）
+
+section('MD5 签名');
+
+check(md5('') === 'd41d8cd98f00b204e9800998ecf8427e', '空串');
+check(md5('abc') === '900150983cd24fb0d6963f7d28e17f72', 'abc');
+check(md5('message digest') === 'f96b697d7cb7938d525a2f31aaf161d0', 'message digest');
+check(md5('The quick brown fox jumps over the lazy dog') === '9e107d9d372bb6826bd81d3542a419d6', '绕口令');
+check(md5('百度翻译签名测试') === md5('百度翻译签名测试'), '中文稳定');
+check(md5('a') !== md5('b'), '不同输入不同结果');
+
+section('语种映射');
+
+check(targetCode('baidu', 'zh-Hans') === 'zh', '百度简体 → zh');
+check(targetCode('baidu', 'zh-Hant') === 'cht', '百度繁体 → cht');
+check(targetCode('google', 'zh-Hans') === 'zh-CN', 'Google 简体 → zh-CN');
+check(targetCode('google', 'zh-Hant') === 'zh-TW', 'Google 繁体 → zh-TW');
+check(targetCode('deepl', 'zh-Hans') === 'ZH-HANS', 'DeepL 全大写');
+check(targetCode('google', 'fil') === 'tl', 'Google 他加禄语 → tl');
+check(targetCode('baidu', 'nl') === null, '百度不支持荷兰语');
+check(supportsTarget('baidu', 'nl') === false, '不支持时返回 false');
+check(supportsTarget('google', 'hi') === true, 'Google 支持印地语');
+check(supportsTarget('tencent', 'zh-Hant') === false, '腾讯云不支持繁体');
+check(fromPlatformCode('google', 'zh-TW') === 'zh-Hant', '平台码 → 我们的码');
+check(fromPlatformCode('baidu', 'cht') === 'zh-Hant', '百度繁体回译');
+check(fromPlatformCode('deepl', 'EN') === 'en', 'DeepL 大小写回译');
+
+section('服务商降级链');
+
+// 一家已配置
+const onlyBaidu = { baidu: { appid: '1', secret: 'x' } };
+check(planCandidates({ target: 'en', keys: onlyBaidu }).length === 1, '只有一家可用');
+check(planCandidates({ target: 'en', keys: onlyBaidu })[0].id === 'baidu', '就是那一家');
+
+// 两家：自动优选按 AUTO_ORDER
+const twoProviders = { baidu: { appid: '1', secret: 'x' }, deepl: { key: 'k' } };
+const autoOrder = planCandidates({ target: 'en', keys: twoProviders }).map((p) => p.id);
+check(autoOrder[0] === 'deepl', '自动优选：DeepL 优先');
+check(autoOrder[1] === 'baidu', '自动优选：百度其次');
+
+// 用户显式选择 → 排最前
+const picked = planCandidates({ target: 'en', keys: twoProviders, selection: 'baidu' }).map((p) => p.id);
+check(picked[0] === 'baidu', '用户选的服务商排最前');
+check(picked[1] === 'deepl', '其余仍留在链上做降级');
+
+// 选中的不支持该语言 → 退回自动优选
+const fallback = planCandidates({ target: 'zh-Hant', keys: { baidu: { appid: '1', secret: 'x' }, tencent: { secretId: 'a', secretKey: 'b' } }, selection: 'tencent' }).map((p) => p.id);
+check(fallback.length === 1 && fallback[0] === 'baidu', '腾讯云不支持繁体 → 只剩百度');
+
+// 模式隔离
+const withCustom = {
+  baidu: { appid: '1', secret: 'x' },
+  customs: [{ id: 'c1', name: 'DeepSeek', key: 'sk-x', baseURL: 'https://api.deepseek.com/v1', model: 'deepseek-chat' }]
+};
+check(planCandidates({ target: 'en', keys: withCustom, mode: 'free' }).every((p) => p.mode === 'free'), '免费模式不含自定义');
+check(planCandidates({ target: 'en', keys: withCustom, mode: 'custom' }).every((p) => p.mode === 'custom'), '自定义模式不含免费');
+check(planCandidates({ target: 'en', keys: withCustom, mode: 'custom' })[0].id === 'custom:c1', '自定义接口 id 带前缀');
+
+// 超限的服务商被跳过
+const blocked = planCandidates({ target: 'en', keys: twoProviders, blocked: ['deepl'] }).map((p) => p.id);
+check(blocked.length === 1 && blocked[0] === 'baidu', '超限的服务商被跳过');
+
+// 没配置任何一家 → 空链
+check(planCandidates({ target: 'en', keys: {} }).length === 0, '没配置时没有候选');
+
+// 只列出已配置的
+check(listProviders(onlyBaidu).length === 1, 'listProviders 只返回已配置的');
+check(listProviders(twoProviders).length === 2, '两家都配置时返回两家');
+
+// 旧格式兼容
+check(credentialOf('google', { google: 'AIza-x' })?.key === 'AIza-x', '兼容旧的字符串格式');
+check(credentialOf('deepl', { deepl: 'k:fx' })?.key === 'k:fx', '兼容旧的 DeepL 字符串');
+check(credentialOf('baidu', { baidu: { appid: '1' } }) === null, '缺字段不算已配置');
+check(AUTO_ORDER.length === 6, '免费池六家');
 
 console.log(`\n${checks - failures}/${checks} 通过`);
 process.exit(failures === 0 ? 0 : 1);

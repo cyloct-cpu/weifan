@@ -7,6 +7,6 @@
   "scripts": {
     "build": "node scripts/build.mjs",
     "test": "node tests/selftest.mjs",
-    "check": "node --check src/background.js && node --check src/content/whatsapp.js && node --check src/options/options.js && node --check src/shared/ext.js && node --check src/core/core.js && node --check src/core/language.js && node --check src/core/glossary.js && node --check src/core/routing.js && node --check src/core/providers.js && node --check scripts/build.mjs && echo 'syntax ok'"
+    "check": "node scripts/check.mjs"
   }
 }

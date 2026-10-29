@@ -1,60 +1,7 @@
 /* 微翻 · 设置页样式
-   色板来自品牌规范（brand/brand-spec.png）：
-   暖 #FD6C4E = 发件，冷 #2FB6FF = 收件，强调 #00E9DD，正文 #161B22，深底 #0F1720。
-   界面里唯一的彩色就是「方向」，结构一律中性。 */
+   设计 token 抽到 ../shared/theme.css，popup 与设置页共用一份，改色只改一处。 */
 
-:root {
-  color-scheme: light;
-
-  --bg: #f4f6f8;
-  --surface: #ffffff;
-  --surface-2: #f5f7f9;
-  --line: rgba(22, 27, 34, 0.09);
-  --line-strong: rgba(22, 27, 34, 0.16);
-
-  --text: #161b22;
-  --text-2: #55606e;
-  --text-3: #8b97a5;
-
-  --warm: #fd6c4e;
-  --warm-deep: #ff4353;
-  --cool: #2fb6ff;
-  --teal: #00e9dd;
-  --teal-ink: #00806f;
-  --warn-ink: #b06a1f;
-
-  --warm-grad: linear-gradient(135deg, #ff4353, #fd6c4e 45%, #ff9064);
-  --cool-grad: linear-gradient(135deg, #4c9bf7, #2fb6ff 45%, #00e9dd);
-
-  --shadow-card: 0 1px 2px rgba(22, 27, 34, 0.04), 0 10px 28px -18px rgba(22, 27, 34, 0.16);
-  --shadow-pop: 0 1px 3px rgba(22, 27, 34, 0.14);
-  --ease: cubic-bezier(0.22, 0.9, 0.31, 1);
-
-  --sans: -apple-system, BlinkMacSystemFont, "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", sans-serif;
-  --mono: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
-}
-
-@media (prefers-color-scheme: dark) {
-  :root {
-    color-scheme: dark;
-
-    --bg: #0f1720;
-    --surface: #161c24;
-    --surface-2: #1d242e;
-    --line: #2a333f;
-    --line-strong: #3a4552;
-
-    --text: #e6eaf0;
-    --text-2: #a9b4c2;
-    --text-3: #8b96a6;
-
-    --teal-ink: #00e9dd;
-    --warn-ink: #f1a45c;
-
-    --shadow-card: 0 1px 2px rgba(0, 0, 0, 0.3), 0 12px 30px -18px rgba(0, 0, 0, 0.6);
-    --shadow-pop: 0 1px 3px rgba(0, 0, 0, 0.4);
-  }
-}
+@import url('../shared/theme.css');
 
 * { box-sizing: border-box; }
 
@@ -421,6 +368,78 @@ input[type="range"]::-moz-range-thumb {
   border-radius: 50%;
   background: var(--surface);
   border: 2px solid var(--dir);
+}
+
+/* ── 服务商卡片（免费额度 / 自定义 API） ─────────── */
+
+.provider {
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  padding: 12px 13px 4px;
+  margin-top: 10px;
+  background: var(--surface-2);
+}
+.provider:first-child { margin-top: 4px; }
+
+.provider-head {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  flex-wrap: wrap;
+}
+.provider-head strong { font-size: 13px; font-weight: 650; }
+.provider-note { font-size: 11px; color: var(--text-3); }
+.provider-link {
+  margin-left: auto;
+  font-size: 11.5px;
+  color: var(--text-2);
+  text-decoration: none;
+  border-bottom: 1px solid var(--line-strong);
+}
+.provider-link:hover { color: var(--text); border-bottom-color: var(--text-2); }
+.provider-remove {
+  margin-left: auto;
+  background: none;
+  border: 1px solid var(--line);
+  border-radius: 7px;
+  padding: 3px 9px;
+  font: 11px/1.3 var(--sans);
+  color: var(--text-3);
+  cursor: pointer;
+}
+.provider-remove:hover { color: #e5484d; border-color: color-mix(in srgb, #e5484d 40%, var(--line)); }
+
+.provider-fields {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(190px, 1fr));
+  gap: 0 12px;
+}
+.provider-fields .field { margin-top: 10px; }
+.provider-fields label {
+  display: block;
+  font-size: 11.5px;
+  font-weight: 600;
+  color: var(--text-3);
+  margin-bottom: 4px;
+}
+.provider-fields input {
+  width: 100%;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 9px;
+  color: var(--text);
+  padding: 7px 10px;
+  font: 12.5px/1.5 var(--mono);
+  outline: none;
+  transition: border-color 0.15s, box-shadow 0.15s;
+}
+.provider-fields input:focus {
+  border-color: var(--cool);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--cool) 18%, transparent);
+}
+
+@media (max-width: 640px) {
+  .provider-fields { grid-template-columns: 1fr; }
 }
 
 /* ── 术语 ───────────────────────────────────────── */
