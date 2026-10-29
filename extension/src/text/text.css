@@ -214,3 +214,19 @@ textarea {
 .barrow { display: flex; gap: 14px; flex-wrap: wrap; }
 
 .panes.single { grid-template-columns: 1fr; }
+
+/* 原文独占一行；语言行放在原文与译文之间 */
+.pane.solo { margin-bottom: 12px; }
+.pane.solo textarea { min-height: 150px; }
+
+.langbar { margin: 12px 0; }
+
+.panes { margin-bottom: 12px; }
+
+/* 原文独占一行；语言行放在原文与译文之间 */
+.pane.solo { margin-bottom: 12px; }
+.pane.solo textarea { min-height: 150px; }
+
+.langbar { margin: 12px 0; }
+
+.panes { margin-bottom: 12px; }

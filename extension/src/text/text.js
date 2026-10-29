@@ -102,7 +102,11 @@ function secondTarget() {
 }
 
 function syncSecondPane() {
-  $('pane2').hidden = !secondTarget();
+  // 第二块译文一直显示；没填第二个目标语言时给一句提示
+  const has = Boolean(secondTarget());
+  $('output2').placeholder = has
+    ? '这里会同时给出第二种语言的译文'
+    : '填了第二个目标语言，这里会同时给出另一份译文';
 }
 
 /** 源语言 ⇄ 目标语言：语言和原文/译文内容一起换 */

@@ -39,7 +39,6 @@ class TranslateActivity : Activity() {
     private lateinit var input: EditText
     private lateinit var output1: TextView
     private lateinit var output2: TextView
-    private lateinit var output2Label: TextView
     private lateinit var statusText: TextView
     private lateinit var subtitle: TextView
     private lateinit var replaceButton: Button
@@ -93,23 +92,23 @@ class TranslateActivity : Activity() {
         }
         root.addView(subtitle)
 
-        // 输出框先建好，语言框的回调要用到（第二个目标填了才显示第二块译文）
-        output1 = Ui.resultBox(ctx)
-        output2 = Ui.resultBox(ctx)
-        output2.visibility = View.GONE
+        // 原文（**只有原文能输入**，译文都是只读输出）
+        root.addView(Ui.label(ctx, "原文", p.text2, 12.5f, true))
+        input = Ui.input(ctx, "要翻译的文字", lines = 4)
+        root.addView(Ui.withMargin(ctx, input, 6, 0))
 
-        // 语言行：源 ⇄ 目标 ⇄ 第二目标
+        // 翻译按钮
+        root.addView(Ui.withMargin(ctx, Ui.button(ctx, "翻译", true) { translate() }, 12, 0))
+
+        // 语言行放在中间：源 ⇄ 目标 ⇄ 第二个目标
+        root.addView(Ui.label(ctx, "语言", p.text2, 12.5f, true))
         val langRow = LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL
             gravity = Gravity.CENTER_VERTICAL
         }
         sourceField = LanguageField(ctx, "auto")
         targetField = LanguageField(ctx, prefs.defaultTarget)
-        target2Field = LanguageField(ctx, "") { code ->
-            val has = code.isNotBlank()
-            output2.visibility = if (has) View.VISIBLE else View.GONE
-            output2Label.visibility = if (has) View.VISIBLE else View.GONE
-        }
+        target2Field = LanguageField(ctx, "")
         sourceField.view.hint = "源语言"
         targetField.view.hint = "目标语言"
         target2Field.view.hint = "第二个目标"
@@ -121,23 +120,16 @@ class TranslateActivity : Activity() {
         langRow.addView(target2Field.view, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
         root.addView(langRow)
 
-        // 原文
-        root.addView(Ui.label(ctx, "原文", p.text2, 12.5f, true))
-        input = Ui.input(ctx, "要翻译的文字", lines = 4)
-        root.addView(Ui.withMargin(ctx, input, 6, 0))
+        // 译文一：自带复制按钮
+        val card1 = outputCard("译文") { copyResult(1) }
+        output1 = card1.second
+        root.addView(Ui.withMargin(ctx, card1.first, 10, 0))
 
-        // 翻译按钮
-        root.addView(Ui.withMargin(ctx, Ui.button(ctx, "翻译", true) { translate() }, 12, 0))
-
-        // 译文（目标语言）
-        root.addView(Ui.label(ctx, "译文", p.text2, 12.5f, true))
-        root.addView(Ui.withMargin(ctx, output1, 6, 0))
-
-        // 译文（第二个目标语言）
-        output2Label = Ui.label(ctx, "译文（第二个目标语言）", p.text2, 12.5f, true)
-        output2Label.visibility = View.GONE
-        root.addView(output2Label)
-        root.addView(Ui.withMargin(ctx, output2, 6, 0))
+        // 译文二：填了第二个目标语言才有内容
+        val card2 = outputCard("译文（第二个目标语言）") { copyResult(2) }
+        output2 = card2.second
+        output2.hint = "填了第二个目标语言，这里会同时给出另一份译文"
+        root.addView(Ui.withMargin(ctx, card2.first, 10, 0))
 
         statusText = TextView(this).apply {
             textSize = 11.5f
@@ -146,21 +138,37 @@ class TranslateActivity : Activity() {
         }
         root.addView(statusText)
 
-        // 操作行
-        val actions = LinearLayout(this).apply {
-            orientation = LinearLayout.HORIZONTAL
-            gravity = Gravity.CENTER_VERTICAL
-        }
-        actions.addView(Ui.button(ctx, "复制译文", false) { copyResult(1) })
+        // 划词时的替换按钮
         replaceButton = Ui.button(ctx, "替换原文", false) { replaceSelection() }
         replaceButton.visibility = if (canReplace) View.VISIBLE else View.GONE
-        actions.addView(replaceButton)
-        root.addView(Ui.withMargin(ctx, actions, 10, 0))
+        root.addView(Ui.withMargin(ctx, replaceButton, 10, 0))
 
         return ScrollView(this).apply {
             isFillViewport = true
             addView(root)
         }
+    }
+
+    /** 一张译文卡片：标题 + 复制按钮 + 只读译文框 */
+    private fun outputCard(title: String, onCopy: () -> Unit): Pair<View, TextView> {
+        val wrap = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
+        val head = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER_VERTICAL
+        }
+        head.addView(TextView(this).apply {
+            text = title
+            textSize = 12.5f
+            setTextColor(p.text2)
+            setTypeface(typeface, Typeface.BOLD)
+            layoutParams = LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f)
+        })
+        head.addView(Ui.button(ctx, "复制", false) { onCopy() })
+        wrap.addView(head)
+
+        val box = Ui.resultBox(ctx)
+        wrap.addView(box)
+        return wrap to box
     }
 
     /** 「⇄」小按钮 */

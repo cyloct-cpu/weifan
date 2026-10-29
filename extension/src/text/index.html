@@ -17,8 +17,22 @@
 </header>
 
 <main class="page">
-  <section class="bar">
-    <!-- 语言行：源 ⇄ 目标 ⇄ 第二个目标，三个都能直接打字 -->
+  <!-- 原文：只有它能输入 -->
+  <section class="pane solo">
+    <div class="pane-head">
+      <span>原文</span>
+      <button type="button" class="mini" id="paste">粘贴</button>
+    </div>
+    <textarea id="input" placeholder="把要翻译的文本粘进来，或点「粘贴」从剪贴板读取"></textarea>
+  </section>
+
+  <div class="actions">
+    <button type="button" class="btn-primary" id="run">翻译</button>
+    <span id="status" role="status"></span>
+  </div>
+
+  <!-- 语言行放在中间：源 ⇄ 目标 ⇄ 第二个目标，三个都能直接打字 -->
+  <section class="bar langbar">
     <div class="langrow">
       <input class="langinput" id="srcLang" list="langlist" placeholder="源语言" autocomplete="off" spellcheck="false" />
       <button type="button" class="swap" id="swap1" title="互换源语言与目标语言（原文译文一起换）">⇄</button>
@@ -44,35 +58,22 @@
     </div>
   </section>
 
-  <section class="panes">
-    <div class="pane">
-      <div class="pane-head"><span>原文</span></div>
-      <textarea id="input" placeholder="把要翻译的文本粘进来，或点「粘贴」从剪贴板读取"></textarea>
+  <!-- 译文：每个都自带复制按钮 -->
+  <section class="pane">
+    <div class="pane-head">
+      <span>译文</span>
+      <button type="button" class="mini" id="copy">复制</button>
     </div>
-    <div class="pane">
-      <div class="pane-head">
-        <span>译文</span>
-        <button type="button" class="mini" id="copy">复制</button>
-      </div>
-      <textarea id="output" readonly placeholder="译文会出现在这里"></textarea>
-    </div>
+    <textarea id="output" readonly placeholder="译文会出现在这里"></textarea>
   </section>
 
-  <section class="panes single" id="pane2" hidden>
-    <div class="pane">
-      <div class="pane-head">
-        <span>译文（第二个目标语言）</span>
-        <button type="button" class="mini" id="copy2">复制</button>
-      </div>
-      <textarea id="output2" readonly placeholder="填了第二个目标语言，这里会同时给出另一份译文"></textarea>
+  <section class="pane">
+    <div class="pane-head">
+      <span>译文（第二个目标语言）</span>
+      <button type="button" class="mini" id="copy2">复制</button>
     </div>
+    <textarea id="output2" readonly placeholder="填了第二个目标语言，这里会同时给出另一份译文"></textarea>
   </section>
-
-  <div class="actions">
-    <button type="button" class="btn-primary" id="run">翻译</button>
-    <button type="button" class="btn-ghost" id="paste">粘贴</button>
-    <span id="status" role="status"></span>
-  </div>
 </main>
 
 <script src="text.js" type="module"></script>
