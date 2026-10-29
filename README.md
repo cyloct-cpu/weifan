@@ -7,7 +7,7 @@
 WhatsApp 跨境沟通的自动翻译工具：**你打中文，发出去的是对方的语言；对方说什么，你看到的是中文。**
 
 点扩展图标弹出一个面板，选好语言和服务就能用：**选区、划词、鼠标悬停、整份文档**都能翻。
-翻译走你自己申请的大厂免费额度（百度 / 腾讯云 / Google / DeepL / 火山引擎 / 阿里云），也能接任何 OpenAI 兼容接口。密钥只留在本机。
+翻译走你自己申请的大厂免费额度（百度 / 腾讯云 / Google / DeepL / Azure / 火山 / 阿里 / Yandex），也能接任何 OpenAI 兼容接口。密钥只留在本机。
 
 - 范围：**三端** —— 浏览器扩展 / Android / iOS（macOS 原生不做）
 - 当前状态：**浏览器扩展已可运行**；Android、iOS 未开工（缺工具链，见下）
@@ -47,7 +47,7 @@ WhatsApp 跨境沟通的自动翻译工具：**你打中文，发出去的是对
 
 | 模式 | 用什么 | 特点 |
 |---|---|---|
-| 免费额度 | 自己去大厂申请 key：百度 / 腾讯云 / Google / DeepL / 火山引擎 / 阿里云 | 零成本；用户自取 key，扩展只做路由与降级 |
+| 免费额度 | 自己去大厂申请 key：百度 / 腾讯云 / Google / DeepL / Azure / 火山 / 阿里 / Yandex | 零成本；用户自取 key，扩展只做路由与降级 |
 | 自定义 API | 任意 OpenAI 兼容接口（key + 接口地址 + 模型名） | 大模型翻译，术语与语气更准；可加多个档案 |
 
 **降级**：用户选的服务商优先，失败（超时/报错/额度用完）自动换下一家「已配置 + 支持该目标语言」的服务，结果里会写明这次是谁翻的、原先那家为什么没用上。
@@ -88,7 +88,7 @@ node scripts/build.mjs      # 生成 dist/chrome、dist/firefox、dist/safari
 
 1. 打开 `chrome://extensions`，开启「开发者模式」
 2. 「加载已解压的扩展程序」→ 选 **`extension/dist/chrome`**
-3. 点扩展图标 → 弹面板 → 点底部「设置」填密钥（百度 / 腾讯云 / Google / DeepL / 火山 / 阿里 任一，或自定义 API）
+3. 点扩展图标 → 弹面板 → 点底部「设置」填密钥（百度 / 腾讯云 / Google / DeepL / Azure / 火山 / 阿里 / Yandex 任一，或自定义 API）
 4. 打开 https://web.whatsapp.com 并刷新
 
 用法：对方消息下方自动出现中文；输入框右下角点「译」或 `Ctrl/Cmd + Enter`，中文原地变对方语言，**不会自动发送**。
@@ -118,7 +118,7 @@ weifan/
 │   ├── manifest.base.json        # manifest 的唯一来源
 │   ├── scripts/build.mjs         # 生成 chrome / firefox / safari 三个产物
 │   ├── src/core/                 # 纯逻辑：检测 / 术语 / 路由 / 服务商 / 门面
-│   │   ├── providers.js          # 六家大厂 + 自定义 API 的注册表与降级链
+│   │   ├── providers.js          # 八家大厂 + 自定义 API 的注册表与降级链
 │   │   ├── langs.js              # 各家语种代码映射（决定谁支持哪种语言）
 │   │   └── signing.js            # MD5 / 腾讯 TC3 / 火山 V4 / 阿里 RPC 签名
 │   ├── src/shared/theme.css       # 设计 token（popup 与设置页共用一份）
@@ -128,7 +128,7 @@ weifan/
 │   ├── src/content/              # whatsapp.js（唯一依赖 WhatsApp DOM）+ pageagent.js（划词/悬停）
 │   ├── src/text/                 # 文本翻译页
 │   ├── src/doc/                  # 文档翻译页（pdf.js 抽文 + docx 解 zip 回写）
-│   ├── src/options/              # 设置页（六家密钥表单由注册表自动生成）
+│   ├── src/options/              # 设置页（八家密钥表单由注册表自动生成）
 │   ├── src/vendor/               # fflate + pdf.js（本地解析文档，不上传）
 │   ├── tests/selftest.mjs        # 内核断言集（70 项）
 │   └── dist/                     # 打包产物（已 gitignore）
@@ -165,11 +165,11 @@ WhatsApp 对个人号**没有**任何插件接口。能真正长在 WhatsApp 里
 | 扩展体积 2.8MB | 内置 pdf.js + worker（+1.7MB），为了 PDF 文档翻译能离线用 |
 | Word/PDF 只保文字 | docx 保留段落结构与数量，字体/表格/分栏不保留；PDF 版式不保留，只给纯文本 |
 | 安装时会提示"读取所有网站数据" | 划词/悬停需要全站注入，面板里可随时关掉这两项 |
-| Android 端服务商层未同步 | Android 仍是原来的四家（Google / DeepL / Groq / OpenAI 兼容），本轮新增的六家只在扩展侧（见 D-42） |
+| Android 端不支持自定义 API 多档案 | 扩展可加多个，Android 端只有一个（DeepSeek 这类够用） |
 
 ## 合规与隐私
 
 - 不修改、不注入、不自动化 WhatsApp 本体；不做群发、不做自动回复、不代替用户点击发送。
-- 聊天内容会发给你自己配置的第三方翻译服务（百度 / 腾讯云 / Google / DeepL / 火山 / 阿里 / 你自己的大模型接口）；密钥只存在本机浏览器（`chrome.storage.local`），不经过任何自建服务器。
+- 聊天内容会发给你自己配置的第三方翻译服务（百度 / 腾讯云 / Google / DeepL / Azure / 火山 / 阿里 / Yandex / 你自己的大模型接口）；密钥只存在本机浏览器（`chrome.storage.local`），不经过任何自建服务器。
 - 文档翻译全程在本机解析（pdf.js / fflate），文件不会上传到任何服务器。
 - 翻译缓存在内存里（上限 300 条），浏览器重启即清。

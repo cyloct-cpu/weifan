@@ -16,6 +16,7 @@ object Engine {
         val target: String,
         val route: String,
         val provider: String,
+        val degradedFrom: String?,
         val risk: Routing.Risk,
         val latencyMs: Long,
         val languageSource: String
@@ -25,6 +26,7 @@ object Engine {
         val translated: String,
         val sourceLanguage: String?,
         val provider: String,
+        val degradedFrom: String?,
         val alreadyChinese: Boolean,
         val latencyMs: Long
     )
@@ -51,14 +53,7 @@ object Engine {
         val decision = Routing.route(protectedText.masked, style, prefs.longSentenceThreshold)
 
         // ④ 翻译
-        val result = Providers.translate(
-            text = protectedText.masked,
-            source = "zh-Hans",
-            target = resolved.first,
-            style = style,
-            route = decision.route,
-            keys = keys(prefs)
-        )
+        val result = translate(protectedText.masked, "zh-Hans", resolved.first, style, decision.route, prefs)
 
         // ⑤ 还原
         val translated = Glossary.restore(result.text, protectedText.units)
@@ -78,6 +73,7 @@ object Engine {
             target = resolved.first,
             route = decision.route,
             provider = result.provider,
+            degradedFrom = result.degradedFrom,
             risk = risk,
             latencyMs = System.currentTimeMillis() - started,
             languageSource = resolved.second
@@ -89,27 +85,46 @@ object Engine {
         val detection = Detector.detect(text)
 
         if (detection != null && Lang.isChinese(detection.language)) {
-            return IncomingOutcome(text, detection.language, "none", true,
+            return IncomingOutcome(text, detection.language, "none", null, true,
                 System.currentTimeMillis() - started)
         }
 
         val decision = Routing.route(text, "casual", prefs.longSentenceThreshold)
-        val result = Providers.translate(
-            text = text,
-            source = detection?.language,
-            target = "zh-Hans",
-            style = "casual",
-            route = decision.route,
-            keys = keys(prefs)
-        )
+        val result = translate(text, detection?.language, "zh-Hans", "casual", decision.route, prefs)
 
         return IncomingOutcome(
             translated = result.text,
             sourceLanguage = detection?.language ?: result.detectedSource,
             provider = result.provider,
+            degradedFrom = result.degradedFrom,
             alreadyChinese = false,
             latencyMs = System.currentTimeMillis() - started
         )
+    }
+
+    /** 翻译 + 记用量（额度保护） */
+    private fun translate(
+        text: String,
+        source: String?,
+        target: String,
+        style: String,
+        route: String,
+        prefs: Prefs
+    ): Providers.Result {
+        val result = Providers.translate(
+            text = text,
+            source = source,
+            target = target,
+            style = style,
+            route = route,
+            creds = prefs.allCredentials(),
+            custom = prefs.customProfile(),
+            selection = prefs.selection,
+            mode = prefs.mode,
+            blocked = prefs.blockedProviders()
+        )
+        prefs.addUsage(result.providerId, text.length)
+        return result
     }
 
     private fun resolveTarget(
@@ -127,14 +142,4 @@ object Engine {
         }
         return fallback to "fallback"
     }
-
-    private fun keys(prefs: Prefs) = Providers.Keys(
-        google = prefs.googleKey,
-        deepL = prefs.deepLKey,
-        deepLEndpoint = prefs.deepLEndpoint,
-        groq = prefs.groqKey,
-        llm = prefs.llmKey,
-        llmBaseUrl = prefs.llmBaseUrl,
-        llmModel = prefs.llmModel
-    )
 }

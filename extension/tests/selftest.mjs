@@ -142,6 +142,13 @@ check(supportsTarget('tencent', 'zh-Hant') === false, '腾讯云不支持繁体'
 check(fromPlatformCode('google', 'zh-TW') === 'zh-Hant', '平台码 → 我们的码');
 check(fromPlatformCode('baidu', 'cht') === 'zh-Hant', '百度繁体回译');
 check(fromPlatformCode('deepl', 'EN') === 'en', 'DeepL 大小写回译');
+check(targetCode('azure', 'zh-Hans') === 'zh-Hans', 'Azure 简体 → zh-Hans');
+check(targetCode('azure', 'zh-Hant') === 'zh-Hant', 'Azure 繁体 → zh-Hant');
+check(targetCode('azure', 'fil') === 'tl', 'Azure 他加禄语 → tl');
+check(targetCode('yandex', 'zh-Hans') === 'zh', 'Yandex 简体 → zh');
+check(supportsTarget('azure', 'he') === true, 'Azure 支持希伯来语');
+check(supportsTarget('yandex', 'zh-Hant') === false, 'Yandex 不支持繁体');
+check(supportsTarget('yandex', 'fil') === true, 'Yandex 支持他加禄语（tl）');
 
 section('服务商降级链');
 
@@ -189,7 +196,14 @@ check(listProviders(twoProviders).length === 2, '两家都配置时返回两家'
 check(credentialOf('google', { google: 'AIza-x' })?.key === 'AIza-x', '兼容旧的字符串格式');
 check(credentialOf('deepl', { deepl: 'k:fx' })?.key === 'k:fx', '兼容旧的 DeepL 字符串');
 check(credentialOf('baidu', { baidu: { appid: '1' } }) === null, '缺字段不算已配置');
-check(AUTO_ORDER.length === 6, '免费池六家');
+
+// 选填字段不影响"已配置"判定
+check(credentialOf('azure', { azure: { key: 'k' } })?.key === 'k', 'Azure 只有密钥也算已配置');
+check(credentialOf('azure', { azure: { key: 'k' } })?.region === undefined, 'Azure 区域留空也能用');
+check(credentialOf('tencent', { tencent: { secretId: 'a', secretKey: 'b' } }) !== null, '腾讯地域留空也算已配置');
+check(credentialOf('yandex', { yandex: { key: 'k' } }) === null, 'Yandex 缺 folderId 不算已配置');
+check(credentialOf('yandex', { yandex: { key: 'k', folderId: 'f' } }) !== null, 'Yandex 填齐即算已配置');
+check(AUTO_ORDER.length === 8, '免费池八家');
 
 console.log(`\n${checks - failures}/${checks} 通过`);
 process.exit(failures === 0 ? 0 : 1);

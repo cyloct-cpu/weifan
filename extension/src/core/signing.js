@@ -1,13 +1,12 @@
 /**
  * 各家云翻译 API 的签名工具。
  *
- * 六家大厂六种鉴权：
+ * 八家大厂，五种签名方式：
  *   百度        MD5(appid + q + salt + secret)          —— WebCrypto 没有 MD5，用纯 JS 实现
  *   腾讯云      TC3-HMAC-SHA256                          —— 三段派生密钥
- *   Google      直接 API Key
- *   DeepL       直接 API Key
  *   火山引擎    V4 签名（HMAC-SHA256，四段派生）
  *   阿里云      RPC 风格 HMAC-SHA1
+ *   Google / DeepL / Azure / Yandex   直接 API Key（Yandex 是 Authorization: Api-Key）
  *   自定义 API   Bearer Token
  *
  * 全部在浏览器 / Node 22 里可跑：HMAC 走 WebCrypto（node 22 自带 crypto.subtle）。

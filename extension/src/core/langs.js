@@ -44,6 +44,20 @@ const ALIYUN = {
   vi: 'vi', th: 'th', ms: 'ms', id: 'id', tr: 'tr', ja: 'ja', ko: 'ko'
 };
 
+/** Azure 微软翻译：与 Google 同体系，中文用 zh-Hans / zh-Hant，他加禄语是 tl */
+const AZURE = {
+  'zh-Hans': 'zh-Hans', 'zh-Hant': 'zh-Hant', en: 'en', es: 'es', pt: 'pt', fr: 'fr', de: 'de',
+  it: 'it', nl: 'nl', ru: 'ru', ar: 'ar', tr: 'tr', vi: 'vi', th: 'th', id: 'id', ms: 'ms',
+  hi: 'hi', ja: 'ja', ko: 'ko', pl: 'pl', he: 'he', fil: 'tl'
+};
+
+/** Yandex Cloud：中文只有 zh（不分简繁），他加禄语是 tl */
+const YANDEX = {
+  'zh-Hans': 'zh', en: 'en', es: 'es', pt: 'pt', fr: 'fr', de: 'de', it: 'it', nl: 'nl',
+  ru: 'ru', ar: 'ar', tr: 'tr', vi: 'vi', th: 'th', id: 'id', ms: 'ms', hi: 'hi',
+  ja: 'ja', ko: 'ko', pl: 'pl', he: 'he', fil: 'tl'
+};
+
 /** @type {Record<string, Record<string,string>>} */
 export const PROVIDER_LANG_CODES = {
   baidu: BAIDU,
@@ -51,7 +65,9 @@ export const PROVIDER_LANG_CODES = {
   google: GOOGLE,
   deepl: DEEPL,
   volc: VOLC,
-  aliyun: ALIYUN
+  aliyun: ALIYUN,
+  azure: AZURE,
+  yandex: YANDEX
 };
 
 /**

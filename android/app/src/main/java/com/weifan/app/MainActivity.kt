@@ -18,6 +18,8 @@ import android.widget.Button
 import android.widget.EditText
 import android.widget.ImageView
 import android.widget.LinearLayout
+import android.widget.RadioButton
+import android.widget.RadioGroup
 import android.widget.ScrollView
 import android.widget.Spinner
 import android.widget.Switch
@@ -25,6 +27,7 @@ import android.widget.TextView
 import android.widget.Toast
 import com.weifan.app.core.Engine
 import com.weifan.app.core.Lang
+import com.weifan.app.core.Providers
 import com.weifan.app.core.Routing
 import com.weifan.app.service.WeiFanAccessibilityService
 
@@ -35,24 +38,35 @@ import com.weifan.app.service.WeiFanAccessibilityService
  * - 暖 #FD6C4E = 发件（触发词、阈值、自动替换）；冷 #2FB6FF = 收件；
  *   #00E9DD = 双向通用（服务、术语）。界面里唯一的彩色就是「方向」。
  * - 浅色为默认，深色跟随系统（uiMode），两套 token 见 [palette]。
+ *
+ * 服务商表单由 Providers.DEFS 自动生成 —— 加一家服务商不用改这个文件。
  */
 class MainActivity : Activity() {
 
     private lateinit var prefs: Prefs
 
     private lateinit var statusText: TextView
-    private lateinit var groqField: EditText
-    private lateinit var deepLField: EditText
-    private lateinit var googleField: EditText
-    private lateinit var llmField: EditText
-    private lateinit var llmBaseField: EditText
-    private lateinit var llmModelField: EditText
     private lateinit var triggerField: EditText
     private lateinit var thresholdField: EditText
     private lateinit var glossaryField: EditText
+    private lateinit var limitField: EditText
     private lateinit var autoReplaceSwitch: Switch
     private lateinit var targetSpinner: Spinner
+    private lateinit var serviceSpinner: Spinner
+    private lateinit var modeGroup: RadioGroup
     private lateinit var resultText: TextView
+
+    private lateinit var customNameField: EditText
+    private lateinit var customBaseField: EditText
+    private lateinit var customKeyField: EditText
+    private lateinit var customModelField: EditText
+
+    /** "providerId:fieldId" → 输入框 */
+    private val providerFields = mutableMapOf<String, EditText>()
+    /** "providerId" → 已配置徽标 */
+    private val providerBadges = mutableMapOf<String, TextView>()
+    /** 服务商下拉里的 id，顺序与 [serviceSpinner] 一致 */
+    private var serviceIds = listOf<String>()
 
     // MARK: - 品牌色板
 
@@ -186,15 +200,38 @@ class MainActivity : Activity() {
         root.addView(card(listOf(statusText, openAccess)))
 
         // 翻译服务（双向通用）
-        root.addView(groupCard("翻译服务", "至少填一个。短句走机翻，长句和含数字的消息走大模型。", p.mixGrad) {
-            groqField = field("Groq API Key（推荐，长句/含数字走这里）", secret = true)
-            deepLField = field("DeepL API Key（中→欧语最稳）", secret = true)
-            googleField = field("Google Translation API Key（小语种兜底）", secret = true)
-            llmField = field("备用大模型 Key（OpenAI 兼容，可留空）", secret = true)
-            llmBaseField = field("大模型 Base URL", secret = false)
-            llmModelField = field("模型名，如 deepseek-chat", secret = false)
-            addView(groqField); addView(deepLField); addView(googleField); addView(llmField)
-            addView(llmBaseField); addView(llmModelField)
+        root.addView(groupCard(
+            "翻译服务",
+            "自己去大厂申请密钥填进来，额度用完自动换下一家。自定义 API 接任何 OpenAI 兼容接口。",
+            p.mixGrad
+        ) {
+            // 模式
+            addView(label("模式"))
+            modeGroup = RadioGroup(this@MainActivity).apply { orientation = RadioGroup.HORIZONTAL }
+            modeGroup.addView(radioButton("免费额度", "free"))
+            modeGroup.addView(radioButton("自定义 API", "custom"))
+            addView(modeGroup)
+
+            // 翻译服务商
+            addView(label("翻译服务（失败会自动降级到下一家）"))
+            serviceSpinner = spinner(emptyList())
+            addView(serviceSpinner)
+
+            // 八家大厂，表单自动生成
+            for (def in Providers.DEFS) {
+                addView(providerCard(def))
+            }
+
+            // 自定义 API
+            addView(subLabel("自定义 API · OpenAI 兼容（DeepSeek / 硅基流动 / 自建网关）"))
+            customNameField = field("名称，如 DeepSeek", secret = false)
+            customBaseField = field("接口地址", secret = false)
+            customKeyField = field("API Key", secret = true)
+            customModelField = field("模型名", secret = false)
+            addView(customNameField)
+            addView(customBaseField)
+            addView(customKeyField)
+            addView(customModelField)
         })
 
         // 发件（暖）
@@ -208,6 +245,18 @@ class MainActivity : Activity() {
             }
             addView(triggerField); addView(thresholdField)
             autoReplaceSwitch = switchRow("命中后直接替换输入框", "关掉则只把译文复制到剪贴板。含金额时仍会拦下。")
+        })
+
+        // 额度保护（双向通用）
+        root.addView(groupCard(
+            "额度保护",
+            "免费额度有上限，超了平台可能开始计费。设个每日上限，到线当天自动换下一家。",
+            p.mixGrad
+        ) {
+            limitField = field("单个服务商每日字符上限，0 = 不限制", secret = false).apply {
+                inputType = InputType.TYPE_CLASS_NUMBER
+            }
+            addView(limitField)
         })
 
         // 术语（双向通用）
@@ -240,6 +289,58 @@ class MainActivity : Activity() {
             addView(root)
         }
         return scroll
+    }
+
+    /**
+     * 一个服务商的卡片：标题 + 免费额度说明 + 已配置徽标 + 字段。
+     * 表单来自 [Providers.DEFS]，加服务商不用改这里。
+     */
+    private fun providerCard(def: Providers.Def): View {
+        val card = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            background = roundBg(p.surface2, 12, 1, p.line)
+            setPadding(dp(12), dp(10), dp(12), dp(2))
+            layoutParams = LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT
+            ).apply { topMargin = dp(8) }
+        }
+
+        val head = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER_VERTICAL
+        }
+        head.addView(TextView(this).apply {
+            text = def.label
+            textSize = 13.5f
+            setTextColor(p.text)
+            setTypeface(typeface, Typeface.BOLD)
+        })
+        head.addView(TextView(this).apply {
+            text = def.freeNote
+            textSize = 11f
+            setTextColor(p.text3)
+            setPadding(dp(8), 0, 0, 0)
+        })
+        val badge = TextView(this).apply {
+            text = "已配置"
+            textSize = 10.5f
+            setTextColor(p.teal)
+            setPadding(dp(8), dp(2), dp(8), dp(2))
+            background = roundBg(p.surface, 8, 1, p.line)
+            visibility = View.GONE
+        }
+        providerBadges[def.id] = badge
+        head.addView(badge)
+        card.addView(head)
+
+        for (field in def.fields) {
+            val input = field(field.label + (if (field.optional) "（选填）" else ""), secret = field.secret)
+            input.hint = field.placeholder
+            providerFields["${def.id}:${field.id}"] = input
+            card.addView(input)
+        }
+
+        return card
     }
 
     // MARK: - 组件工厂
@@ -337,6 +438,14 @@ class MainActivity : Activity() {
         setPadding(0, dp(10), 0, dp(6))
     }
 
+    /** 卡片内的小标题 */
+    private fun subLabel(text: String) = TextView(this).apply {
+        this.text = text
+        textSize = 12f
+        setTextColor(p.text3)
+        setPadding(0, dp(14), 0, dp(2))
+    }
+
     private fun field(hintText: String, secret: Boolean): EditText {
         val edit = EditText(this)
         edit.hint = hintText
@@ -344,12 +453,22 @@ class MainActivity : Activity() {
         edit.setTextColor(p.text)
         edit.setHintTextColor(p.text3)
         edit.setSingleLine(true)
-        edit.background = roundBg(p.surface2, 10, 1, p.line)
+        edit.background = roundBg(p.surface, 10, 1, p.line)
         edit.setPadding(dp(12), dp(11), dp(12), dp(11))
         if (secret) {
             edit.inputType = InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_VARIATION_PASSWORD
         }
         return withMargin(edit, dp(8), dp(8)) as EditText
+    }
+
+    private fun radioButton(text: String, value: String): RadioButton {
+        val rb = RadioButton(this)
+        rb.text = text
+        rb.textSize = 13f
+        rb.setTextColor(p.text2)
+        rb.tag = value
+        rb.id = View.generateViewId()
+        return rb
     }
 
     private fun spinner(items: List<String>): Spinner {
@@ -417,36 +536,101 @@ class MainActivity : Activity() {
     // MARK: - 数据
 
     private fun loadValues() {
-        groqField.setText(prefs.groqKey)
-        deepLField.setText(prefs.deepLKey)
-        googleField.setText(prefs.googleKey)
-        llmField.setText(prefs.llmKey)
-        llmBaseField.setText(prefs.llmBaseUrl)
-        llmModelField.setText(prefs.llmModel)
+        for ((key, input) in providerFields) {
+            val (providerId, fieldId) = key.split(":")
+            input.setText(prefs.credential(providerId)[fieldId] ?: "")
+        }
+        customNameField.setText(prefs.customName)
+        customBaseField.setText(prefs.customBaseUrl)
+        customKeyField.setText(prefs.customKey)
+        customModelField.setText(prefs.customModel)
+
         triggerField.setText(prefs.trigger)
         thresholdField.setText(prefs.longSentenceThreshold.toString())
+        limitField.setText(prefs.dailyCharLimit.toString())
         glossaryField.setText(prefs.glossary)
         autoReplaceSwitch.isChecked = prefs.autoReplace
 
         val index = Lang.sendTargets.indexOf(prefs.defaultTarget)
         if (index >= 0) targetSpinner.setSelection(index)
+
+        // 模式
+        for (i in 0 until modeGroup.childCount) {
+            val child = modeGroup.getChildAt(i) as RadioButton
+            child.isChecked = child.tag == prefs.mode
+        }
+        modeGroup.setOnCheckedChangeListener { _, _ -> refreshServiceSpinner() }
+        refreshServiceSpinner()
+        refreshBadges()
+    }
+
+    /** 服务商下拉：按当前模式列出已配置的服务商，第一项永远是「自动」 */
+    private fun refreshServiceSpinner() {
+        val mode = currentMode()
+        val items = mutableListOf("自动（按语种优选）")
+        val ids = mutableListOf("auto")
+
+        if (mode == "custom") {
+            if (prefs.customProfile().isComplete) {
+                items.add(prefs.customProfile().displayName)
+                ids.add("custom:custom")
+            }
+        } else {
+            for (def in Providers.DEFS) {
+                if (prefs.isConfigured(def.id)) {
+                    items.add(def.label)
+                    ids.add(def.id)
+                }
+            }
+        }
+
+        serviceIds = ids
+        serviceSpinner.adapter =
+            ArrayAdapter(this, android.R.layout.simple_spinner_dropdown_item, items)
+
+        val saved = prefs.selection
+        val position = ids.indexOf(saved)
+        if (position >= 0) serviceSpinner.setSelection(position)
+    }
+
+    private fun currentMode(): String {
+        for (i in 0 until modeGroup.childCount) {
+            val child = modeGroup.getChildAt(i) as RadioButton
+            if (child.isChecked) return child.tag as String
+        }
+        return "free"
+    }
+
+    private fun refreshBadges() {
+        for (def in Providers.DEFS) {
+            val badge = providerBadges[def.id] ?: continue
+            badge.visibility = if (prefs.isConfigured(def.id)) View.VISIBLE else View.GONE
+        }
     }
 
     private fun save() {
-        prefs.groqKey = groqField.text.toString().trim()
-        prefs.deepLKey = deepLField.text.toString().trim()
-        prefs.googleKey = googleField.text.toString().trim()
-        prefs.llmKey = llmField.text.toString().trim()
-        prefs.llmBaseUrl = llmBaseField.text.toString().trim().ifBlank { "https://api.deepseek.com/v1" }
-        prefs.llmModel = llmModelField.text.toString().trim().ifBlank { "deepseek-chat" }
+        for ((key, input) in providerFields) {
+            val (providerId, fieldId) = key.split(":")
+            prefs.setCredential(providerId, fieldId, input.text.toString().trim())
+        }
+        prefs.customName = customNameField.text.toString().trim()
+        prefs.customBaseUrl = customBaseField.text.toString().trim().ifBlank { "https://api.deepseek.com/v1" }
+        prefs.customKey = customKeyField.text.toString().trim()
+        prefs.customModel = customModelField.text.toString().trim().ifBlank { "deepseek-chat" }
+
+        prefs.mode = currentMode()
+        prefs.selection = serviceIds.getOrNull(serviceSpinner.selectedItemPosition) ?: "auto"
         prefs.trigger = triggerField.text.toString().ifBlank { "?译" }
         prefs.longSentenceThreshold = thresholdField.text.toString().toIntOrNull() ?: 60
+        prefs.dailyCharLimit = limitField.text.toString().toIntOrNull() ?: 0
         prefs.glossary = glossaryField.text.toString()
         prefs.autoReplace = autoReplaceSwitch.isChecked
         prefs.defaultTarget = Lang.sendTargets.getOrNull(targetSpinner.selectedItemPosition) ?: "en"
 
         Toast.makeText(this, "已保存", Toast.LENGTH_SHORT).show()
         refreshStatus()
+        refreshBadges()
+        refreshServiceSpinner()
     }
 
     private fun refreshStatus() {
@@ -458,6 +642,7 @@ class MainActivity : Activity() {
             append("　")
             append(if (hasKey) "✅ 已配置密钥" else "⚠️ 还没填翻译密钥")
             append("\n触发词：${prefs.trigger}　兜底语言：${Lang.name(prefs.defaultTarget)}")
+            append("\n已配置服务商：${prefs.configuredProviders().size} 家")
         }
         statusText.setTextColor(if (ok) p.teal else p.err)
     }
@@ -479,12 +664,13 @@ class MainActivity : Activity() {
             val output = try {
                 val incoming = Engine.translateIncoming(sample, prefs)
                 val route = Routing.route(sample)
-                """
-                原文：$sample
-                译文：${incoming.translated}
-                语言：${incoming.sourceLanguage ?: "未知"} → 简体中文
-                引擎：${incoming.provider}（${route.route}）· ${incoming.latencyMs}ms
-                """.trimIndent()
+                buildString {
+                    appendLine("原文：$sample")
+                    appendLine("译文：${incoming.translated}")
+                    appendLine("语言：${incoming.sourceLanguage ?: "未知"} → 简体中文")
+                    appendLine("引擎：${incoming.provider}（${route.route}）· ${incoming.latencyMs}ms")
+                    incoming.degradedFrom?.let { appendLine("（已从 $it 自动降级）") }
+                }.trimIndent()
             } catch (t: Throwable) {
                 "失败：${t.message ?: "未知错误"}\n先检查密钥与网络。"
             }

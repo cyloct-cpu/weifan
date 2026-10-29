@@ -1,9 +1,11 @@
 /**
  * 翻译服务商适配层。
  *
- * 七种通道，六家大厂免费额度 + 自定义 API：
- *   百度 / 腾讯云 / Google / DeepL / 火山引擎 / 阿里云  —— 用户自己申请免费额度，填 key 即可用
- *   自定义 API                                          —— 任意 OpenAI 兼容接口（key + baseURL + model）
+ * 九种通道，八家大厂免费额度 + 自定义 API：
+ *   百度翻译开放平台 / 腾讯云机器翻译 TMT / Google Cloud Translation / DeepL API Free
+ *   / Azure 微软翻译 / 火山引擎翻译 / 阿里云翻译 / Yandex Translate
+ *   —— 用户自己申请免费额度，填 key 即可用
+ *   自定义 API —— 任意 OpenAI 兼容接口（key + baseURL + model）
  *
  * 全部在 background service worker 里跑（MV3 content script 受 CORS 限制，且密钥不能进页面上下文）。
  *
@@ -269,6 +271,75 @@ async function aliyunRun(cred, { text, target }) {
 }
 
 /**
+ * Azure 微软翻译。
+ * 头 `Ocp-Apim-Subscription-Key` + 查询参数 api-version=3.0，请求体是数组。
+ * @param {any} cred @param {{text: string, source: string|null, target: string}} args
+ */
+async function azureRun(cred, { text, source, target }) {
+  const to = targetCode('azure', target);
+  if (!to) throw new Error('不支持该目标语言');
+  const from = source && source !== 'auto' ? (targetCode('azure', source) ?? null) : null;
+
+  const base = (cred.endpoint || 'https://api.cognitive.microsofttranslator.com').replace(/\/$/, '');
+  const params = new URLSearchParams({ 'api-version': '3.0', to });
+  if (from) params.set('from', from);
+
+  /** @type {Record<string, string>} */
+  const headers = { 'Ocp-Apim-Subscription-Key': cred.key, 'Content-Type': 'application/json' };
+  if (cred.region) headers['Ocp-Apim-Subscription-Region'] = cred.region;
+
+  const { signal, done } = await withTimeout(TIMEOUT_MS.mt);
+  try {
+    const res = await fetch(`${base}/translate?${params}`, {
+      method: 'POST',
+      headers,
+      body: JSON.stringify([{ text }]),
+      signal
+    });
+    const data = await readJson(res);
+    if (!res.ok) throw new Error(`HTTP ${res.status}：${data?.error?.message ?? data?.message ?? '请求失败'}`);
+    const first = Array.isArray(data) ? data[0] : null;
+    const dst = first?.translations?.[0]?.text;
+    if (!dst) throw new Error('返回空结果');
+    return { text: dst, detectedSource: fromPlatformCode('azure', first?.detectedLanguage?.language) };
+  } finally {
+    done();
+  }
+}
+
+/**
+ * Yandex Cloud 翻译。
+ * `Authorization: Api-Key <key>`，请求体必须带 folderId。
+ * @param {any} cred @param {{text: string, source: string|null, target: string}} args
+ */
+async function yandexRun(cred, { text, source, target }) {
+  const to = targetCode('yandex', target);
+  if (!to) throw new Error('不支持该目标语言');
+  const from = source && source !== 'auto' ? (targetCode('yandex', source) ?? null) : null;
+
+  /** @type {any} */
+  const body = { folderId: cred.folderId, texts: [text], targetLanguageCode: to };
+  if (from) body.sourceLanguageCode = from;
+
+  const { signal, done } = await withTimeout(TIMEOUT_MS.mt);
+  try {
+    const res = await fetch('https://translate.api.cloud.yandex.net/translate/v2/translate', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Authorization: `Api-Key ${cred.key}` },
+      body: JSON.stringify(body),
+      signal
+    });
+    const data = await readJson(res);
+    if (!res.ok) throw new Error(`HTTP ${res.status}：${data?.message ?? data?.error?.message ?? '请求失败'}`);
+    const dst = data?.translations?.[0]?.text;
+    if (!dst) throw new Error('返回空结果');
+    return { text: dst, detectedSource: fromPlatformCode('yandex', data?.translations?.[0]?.detectedLanguageCode) };
+  } finally {
+    done();
+  }
+}
+
+/**
  * OpenAI 兼容的大模型（自定义 API）。
  * @param {{key: string, baseURL: string, model: string, label?: string}} cred
  * @param {{text: string, target: string, style: string}} args
@@ -302,7 +373,7 @@ async function customRun(cred, { text, target, style }) {
 export const PROVIDERS = [
   {
     id: 'deepl',
-    label: 'DeepL',
+    label: 'DeepL API Free',
     mode: 'free',
     kind: 'mt',
     freeNote: '每月 50 万字符免费（免费版 key 以 :fx 结尾）',
@@ -316,7 +387,7 @@ export const PROVIDERS = [
   },
   {
     id: 'google',
-    label: 'Google 翻译',
+    label: 'Google Cloud Translation',
     mode: 'free',
     kind: 'mt',
     freeNote: '每月 50 万字符免费额度',
@@ -326,8 +397,23 @@ export const PROVIDERS = [
     run: (cred, args) => googleRun(cred, args)
   },
   {
+    id: 'azure',
+    label: 'Azure 微软翻译',
+    mode: 'free',
+    kind: 'mt',
+    freeNote: 'F0 每月 200 万字符免费',
+    docs: 'https://learn.microsoft.com/azure/ai-services/translator/',
+    fields: [
+      { id: 'key', label: '订阅密钥', placeholder: '32 位十六进制', secret: true },
+      { id: 'region', label: '区域（选填）', placeholder: 'eastasia', optional: true },
+      { id: 'endpoint', label: '终结点（选填）', placeholder: 'https://api.cognitive.microsofttranslator.com', optional: true }
+    ],
+    configured: (keys) => Boolean(keys.azure?.key),
+    run: (cred, args) => azureRun(cred, args)
+  },
+  {
     id: 'baidu',
-    label: '百度翻译',
+    label: '百度翻译开放平台',
     mode: 'free',
     kind: 'mt',
     freeNote: '每月 100 万字符免费（标准版，需实名）',
@@ -341,7 +427,7 @@ export const PROVIDERS = [
   },
   {
     id: 'tencent',
-    label: '腾讯云翻译',
+    label: '腾讯云机器翻译 TMT',
     mode: 'free',
     kind: 'mt',
     freeNote: '每月 500 万字符免费额度（需实名）',
@@ -349,7 +435,7 @@ export const PROVIDERS = [
     fields: [
       { id: 'secretId', label: 'SecretId', placeholder: 'AKID……' },
       { id: 'secretKey', label: 'SecretKey', placeholder: '……', secret: true },
-      { id: 'region', label: '地域', placeholder: 'ap-guangzhou' }
+      { id: 'region', label: '地域（选填）', placeholder: 'ap-guangzhou', optional: true }
     ],
     configured: (keys) => Boolean(keys.tencent?.secretId && keys.tencent?.secretKey),
     run: (cred, args) => tencentRun(cred, args)
@@ -381,11 +467,25 @@ export const PROVIDERS = [
     ],
     configured: (keys) => Boolean(keys.aliyun?.accessKeyId && keys.aliyun?.accessKeySecret),
     run: (cred, args) => aliyunRun(cred, args)
+  },
+  {
+    id: 'yandex',
+    label: 'Yandex Translate',
+    mode: 'free',
+    kind: 'mt',
+    freeNote: '按字符计费（新号有试用金），不是固定免费额度',
+    docs: 'https://cloud.yandex.com/en/docs/translate/quickstart',
+    fields: [
+      { id: 'key', label: 'API Key', placeholder: 'AQVN…', secret: true },
+      { id: 'folderId', label: 'Folder ID', placeholder: 'b1g……' }
+    ],
+    configured: (keys) => Boolean(keys.yandex?.key && keys.yandex?.folderId),
+    run: (cred, args) => yandexRun(cred, args)
   }
 ];
 
 /** 自动优选时的优先级（也是下拉框里的顺序） */
-export const AUTO_ORDER = ['deepl', 'google', 'baidu', 'tencent', 'volc', 'aliyun'];
+export const AUTO_ORDER = ['deepl', 'google', 'azure', 'baidu', 'tencent', 'volc', 'aliyun', 'yandex'];
 
 /**
  * 取某个服务商的凭据。
@@ -413,8 +513,8 @@ export function credentialOf(id, keys) {
 
   if (!credential) return null;
 
-  // 必填字段缺一个就不算配好了（endpoint 是选填）
-  const required = (provider.fields ?? []).filter((field) => field.id !== 'endpoint');
+  // 必填字段缺一个就不算配好了（选填字段：标了 optional 的，以及端点）
+  const required = (provider.fields ?? []).filter((field) => field.id !== 'endpoint' && !field.optional);
   if (!required.every((field) => credential[field.id])) return null;
 
   return credential;

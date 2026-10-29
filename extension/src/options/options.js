@@ -91,7 +91,7 @@ function render() {
 
 /* ── 免费额度服务商表单 ───────────────────────────── */
 
-/** 从注册表自动生成六家表单，改服务商只要改 core/providers.js */
+/** 从注册表自动生成八家表单，改服务商只要改 core/providers.js */
 function renderProviders() {
   const host = $('providerList');
   host.innerHTML = '';
@@ -324,7 +324,7 @@ function collect() {
       const input = document.querySelector(`input[data-provider="${provider.id}"][data-field="${field.id}"]`);
       if (input?.value.trim()) credential[field.id] = input.value.trim();
     }
-    const required = (provider.fields ?? []).filter((f) => f.id !== 'endpoint');
+    const required = (provider.fields ?? []).filter((f) => f.id !== 'endpoint' && !f.optional);
     if (required.length && required.every((f) => credential[f.id])) {
       keys[provider.id] = credential;
     }
@@ -365,7 +365,7 @@ function refreshKeyStatus() {
   let configured = 0;
   for (const provider of PROVIDERS) {
     const pill = document.querySelector(`.provider[data-id="${provider.id}"] .pill`);
-    const required = (provider.fields ?? []).filter((f) => f.id !== 'endpoint');
+    const required = (provider.fields ?? []).filter((f) => f.id !== 'endpoint' && !f.optional);
     const filled = required.every((field) => {
       const input = document.querySelector(`input[data-provider="${provider.id}"][data-field="${field.id}"]`);
       return Boolean(input?.value.trim());
