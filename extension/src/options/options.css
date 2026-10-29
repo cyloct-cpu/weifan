@@ -851,3 +851,6 @@ kbd {
 
 /* 空状态说明占满整行 */
 .grid-full { grid-column: 1 / -1; }
+
+/* 空状态说明占满整行 */
+.grid-full { grid-column: 1 / -1; }
