@@ -83,7 +83,7 @@ object Providers {
         ),
         Def(
             "baidu", "百度翻译开放平台", "free", "mt",
-            "标准版 5 万/月；个人认证（高级版）100 万/月",
+            "通用版 5 万/月（高级版 100 万）；大模型版要另开通",
             "https://fanyi-api.baidu.com/doc/21",
             listOf(
                 Field("appid", "App ID", "2024……"),
@@ -367,7 +367,7 @@ object Providers {
         cand.id == "google" -> googleRun(cand.values, text, source, target)
         cand.id == "deepl" -> deepLRun(cand.values, text, source, target)
         cand.id == "azure" -> azureRun(cand.values, text, source, target)
-        cand.id == "baidu" -> baiduRun(cand.values, text, source, target)
+        cand.id == "baidu" -> baiduRun(cand.values, text, source, target, style)
         cand.id == "tencent" -> tencentRun(cand.values, text, target)
         cand.id == "volc" -> volcRun(cand.values, text, target)
         cand.id == "aliyun" -> aliyunRun(cand.values, text, target)
@@ -437,7 +437,7 @@ object Providers {
     private val BAIDU_ERRORS = mapOf(
         52001 to "请求超时，检查文本或语种是否正常",
         52002 to "系统错误，稍后重试",
-        52003 to "未授权：APP ID 不对，或「通用翻译 API」还没开通（管理控制台 → 总览 → 开通服务）",
+        52003 to "未授权：APP ID 不对，或这个翻译服务还没开通（管理控制台 → 总览 → 开通服务）",
         54000 to "必填参数为空",
         54001 to "签名错误：密钥不对，或 APP ID 填错了",
         54003 to "访问频率超限：标准版 1 QPS，个人认证切高级版可到 10 QPS",
@@ -447,22 +447,43 @@ object Providers {
         58001 to "该语种不支持：标准版/高级版只支持 28 个常见语种",
         58002 to "服务当前已关闭，去管理控制台开启",
         58003 to "此 IP 今日已被封禁：同一 IP 当天用了多个 APP ID，次日自动解封",
+        58004 to "模型参数错误：model_type 只能是 llm 或 nmt",
+        59002 to "翻译指令太长（reference 上限 500 字符）",
+        59003 to "请求文本太长（q 上限 6000 字符）",
+        59004 to "QPS 超限",
+        59005 to "tag_handling 只能是 0 或 1",
+        59006 to "标签解析失败：标签没闭合或是空的",
+        59007 to "ignore_tags 最多 20 个标签",
         90107 to "认证未通过或未生效，去「我的认证」看进度"
     )
 
-    private fun baiduRun(v: Map<String, String>, text: String, source: String?, target: String): Result {
-        val to = targetCode("baidu", target) ?: throw IOException("不支持该目标语言")
-        val from = if (source.isNullOrBlank()) "auto" else (targetCode("baidu", source) ?: "auto")
+    /** 百度「大模型文本翻译」的翻译指令（reference）——把我们的语气设置映射过去 */
+    private fun baiduReference(style: String): String = when (style) {
+        "business" -> "使用正式、专业的商务语气翻译，简洁得体，不使用缩略语"
+        "literal" -> "忠实直译，保留原文结构与数字格式，不做润色"
+        else -> "使用自然、口语化的语气翻译，像日常聊天那样"
+    }
 
-        val appid = v["appid"] ?: ""
-        val salt = (Math.random() * 1_000_000_000).toInt().toString()
-        // 官方要求：拼接签名时 q 不做 URL encode，生成 sign 之后再编码
-        val sign = Signing.md5(appid + text + salt + (v["secret"] ?: ""))
+    /**
+     * 百度两家端点：
+     *   大模型文本翻译 /ait/api/aiTextTranslate —— 质量更好，支持翻译指令（JSON 请求体）
+     *   通用文本翻译   /api/trans/vip/translate  —— 老牌机翻（表单请求体）
+     * 两家要分别开通；先试大模型，没开通就退回通用。
+     */
+    private fun baiduRequest(endpoint: String, payload: Map<String, String>, json: Boolean): Result {
+        val contentType = if (json) "application/json" else "application/x-www-form-urlencoded"
+        val body = if (json) {
+            JSONObject().apply {
+                for ((k, v) in payload) {
+                    // 大模型端点要求 salt 是 uint64 数字，写成字符串会报 53001
+                    if (k == "salt") put(k, v.toLongOrNull() ?: 0L) else put(k, v)
+                }
+            }.toString()
+        } else {
+            payload.entries.joinToString("&") { "${enc(it.key)}=${enc(it.value)}" }
+        }
 
-        val form = "q=${enc(text)}&from=${enc(from)}&to=${enc(to)}&appid=${enc(appid)}&salt=$salt&sign=$sign"
-        val raw = post("https://fanyi-api.baidu.com/api/trans/vip/translate",
-            "application/x-www-form-urlencoded", form, mapOf("Content-Type" to "application/x-www-form-urlencoded"))
-
+        val raw = post(endpoint, contentType, body, mapOf("Content-Type" to contentType))
         val data = JSONObject(raw)
         if (data.has("error_code")) {
             val code = data.opt("error_code").toString()
@@ -480,6 +501,36 @@ object Providers {
         }
         if (sb.isEmpty()) throw IOException("返回空结果")
         return Result(sb.toString(), "百度", fromPlatformCode("baidu", data.optString("from")))
+    }
+
+    private fun baiduRun(v: Map<String, String>, text: String, source: String?, target: String, style: String): Result {
+        val to = targetCode("baidu", target) ?: throw IOException("不支持该目标语言")
+        val from = if (source.isNullOrBlank()) "auto" else (targetCode("baidu", source) ?: "auto")
+
+        val appid = v["appid"] ?: ""
+        val salt = (Math.random() * 1_000_000_000).toLong().toString()
+        // 官方要求：拼接签名时 q 不做 URL encode，生成 sign 之后再编码
+        val sign = Signing.md5(appid + text + salt + (v["secret"] ?: ""))
+        val payload = mapOf(
+            "appid" to appid, "q" to text, "from" to from, "to" to to, "salt" to salt, "sign" to sign
+        )
+
+        return try {
+            baiduRequest(
+                "https://fanyi-api.baidu.com/ait/api/aiTextTranslate",
+                payload + mapOf("model_type" to "llm", "reference" to baiduReference(style)),
+                json = true
+            )
+        } catch (e: IOException) {
+            // 只有"服务没开通"才退回通用端点；签名错、余额不足这类错误直接抛
+            val message = e.message ?: ""
+            if (!message.contains("52003") && !message.contains("58002")) throw e
+            baiduRequest(
+                "https://fanyi-api.baidu.com/api/trans/vip/translate",
+                payload,
+                json = false
+            )
+        }
     }
 
     private fun tencentRun(v: Map<String, String>, text: String, target: String): Result {

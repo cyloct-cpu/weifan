@@ -79,7 +79,7 @@ async function readJson(res) {
 const BAIDU_ERRORS = {
   52001: '请求超时，检查文本或语种是否正常',
   52002: '系统错误，稍后重试',
-  52003: '未授权：APP ID 不对，或「通用翻译 API」还没开通（管理控制台 → 总览 → 开通服务）',
+  52003: '未授权：APP ID 不对，或这个翻译服务还没开通（管理控制台 → 总览 → 开通服务）',
   54000: '必填参数为空',
   54001: '签名错误：密钥不对，或 APP ID 填错了',
   54003: '访问频率超限：标准版 1 QPS，个人认证切高级版可到 10 QPS',
@@ -89,11 +89,66 @@ const BAIDU_ERRORS = {
   58001: '该语种不支持：标准版/高级版只支持 28 个常见语种',
   58002: '服务当前已关闭，去管理控制台开启',
   58003: '此 IP 今日已被封禁：同一 IP 当天用了多个 APP ID，次日自动解封',
+  58004: '模型参数错误：model_type 只能是 llm 或 nmt',
+  59002: '翻译指令太长（reference 上限 500 字符）',
+  59003: '请求文本太长（q 上限 6000 字符）',
+  59004: 'QPS 超限',
+  59005: 'tag_handling 只能是 0 或 1',
+  59006: '标签解析失败：标签没闭合或是空的',
+  59007: 'ignore_tags 最多 20 个标签',
   90107: '认证未通过或未生效，去「我的认证」看进度'
 };
 
-/** @param {any} cred @param {{text: string, source: string|null, target: string}} args */
-async function baiduRun(cred, { text, source, target }) {
+/**
+ * 百度「大模型文本翻译」的翻译指令（reference）。
+ * 把我们的语气设置原样翻译成百度的指令 —— 这是百度大模型独有的能力。
+ * @param {string} style
+ */
+function baiduReference(style) {
+  if (style === 'business') return '使用正式、专业的商务语气翻译，简洁得体，不使用缩略语';
+  if (style === 'literal') return '忠实直译，保留原文结构与数字格式，不做润色';
+  return '使用自然、口语化的语气翻译，像日常聊天那样';
+}
+
+/**
+ * 百度两家端点：
+ *   大模型文本翻译  /ait/api/aiTextTranslate   —— 质量更好，支持翻译指令（JSON 请求体）
+ *   通用文本翻译    /api/trans/vip/translate    —— 老牌机翻（表单请求体）
+ * 两家都要单独开通；先试大模型，没开通就退回通用。
+ */
+async function baiduRequest(endpoint, payload, contentType) {
+  const { signal, done } = await withTimeout(TIMEOUT_MS.mt);
+  try {
+    const res = await fetch(endpoint, {
+      method: 'POST',
+      headers: { 'Content-Type': contentType },
+      body:
+        contentType === 'application/json'
+          ? // 大模型端点要求 salt 是 uint64 数字，写成字符串会报 53001
+            JSON.stringify({ ...payload, salt: Number(payload.salt) })
+          : new URLSearchParams(payload),
+      signal
+    });
+    const data = await readJson(res);
+
+    if (data?.error_code) {
+      const code = String(data.error_code);
+      const hint = BAIDU_ERRORS[code] ?? '';
+      throw new Error(`错误 ${code}：${data.error_msg ?? ''}${hint ? ` —— ${hint}` : ''}`);
+    }
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+
+    const array = data?.trans_result ?? [];
+    const dst = array.map((item) => item.dst).join('\n');
+    if (!dst) throw new Error('返回空结果');
+    return { text: dst, detectedSource: fromPlatformCode('baidu', data.from) };
+  } finally {
+    done();
+  }
+}
+
+/** @param {any} cred @param {{text: string, source: string|null, target: string, style: string}} args */
+async function baiduRun(cred, { text, source, target, style }) {
   const to = targetCode('baidu', target);
   if (!to) throw new Error('不支持该目标语言');
   const from = source && source !== 'auto' ? (targetCode('baidu', source) ?? 'auto') : 'auto';
@@ -101,28 +156,22 @@ async function baiduRun(cred, { text, source, target }) {
   const salt = String(Math.floor(Math.random() * 1_000_000_000));
   // 官方要求：拼接签名时 q 不做 URL encode，生成 sign 之后再编码
   const sign = md5(`${cred.appid}${text}${salt}${cred.secret}`);
+  const payload = { appid: cred.appid, q: text, from, to, salt, sign };
 
-  const body = new URLSearchParams({ q: text, from, to, appid: cred.appid, salt, sign });
-  const { signal, done } = await withTimeout(TIMEOUT_MS.mt);
   try {
-    const res = await fetch('https://fanyi-api.baidu.com/api/trans/vip/translate', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-      body,
-      signal
-    });
-    const data = await readJson(res);
-    if (data?.error_code) {
-      const code = String(data.error_code);
-      const hint = BAIDU_ERRORS[code] ?? '';
-      throw new Error(`错误 ${code}：${data.error_msg ?? ''}${hint ? ` —— ${hint}` : ''}`);
-    }
-    if (!res.ok) throw new Error(`HTTP ${res.status}`);
-    const dst = (data?.trans_result ?? []).map((item) => item.dst).join('\n');
-    if (!dst) throw new Error('返回空结果');
-    return { text: dst, detectedSource: fromPlatformCode('baidu', data.from) };
-  } finally {
-    done();
+    return await baiduRequest(
+      'https://fanyi-api.baidu.com/ait/api/aiTextTranslate',
+      { ...payload, model_type: 'llm', reference: baiduReference(style) },
+      'application/json'
+    );
+  } catch (error) {
+    // 只有"服务没开通"才退回通用端点；签名错、余额不足这类错误直接抛
+    if (!/52003|58002/.test(error?.message ?? '')) throw error;
+    return await baiduRequest(
+      'https://fanyi-api.baidu.com/api/trans/vip/translate',
+      payload,
+      'application/x-www-form-urlencoded'
+    );
   }
 }
 
@@ -441,7 +490,7 @@ export const PROVIDERS = [
     label: '百度翻译开放平台',
     mode: 'free',
     kind: 'mt',
-    freeNote: '标准版 5 万/月；个人认证（高级版）100 万/月',
+    freeNote: '通用版 5 万/月（高级版 100 万）；大模型版要另开通',
     docs: 'https://fanyi-api.baidu.com/doc/21',
     fields: [
       { id: 'appid', label: 'App ID', placeholder: '2024……' },

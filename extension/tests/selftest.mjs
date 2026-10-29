@@ -127,6 +127,17 @@ check(md5('The quick brown fox jumps over the lazy dog') === '9e107d9d372bb6826b
 check(md5('百度翻译签名测试') === md5('百度翻译签名测试'), '中文稳定');
 check(md5('a') !== md5('b'), '不同输入不同结果');
 
+// 百度官方文档《通用翻译API接入文档》给出的两组签名样例 —— 签名实现的回归护栏
+// doc_bd/21：appid+q+salt+密钥 → MD5
+check(
+  md5('2015063000000001' + 'apple' + '1435660288' + '12345678') === 'f89f9594663708c1605f3d736d01d2d4',
+  '百度签名样例一（官方文档）'
+);
+check(
+  md5('2015063000000001' + 'apple' + '65478' + '1234567890') === 'a1a7461d92e5194c5cae3182b5b24de1',
+  '百度签名样例二（官方文档）'
+);
+
 section('语种映射');
 
 check(targetCode('baidu', 'zh-Hans') === 'zh', '百度简体 → zh');
