@@ -848,3 +848,6 @@ kbd {
 @media (max-width: 560px) {
   .provider-grid { grid-template-columns: 1fr; }
 }
+
+/* 空状态说明占满整行 */
+.grid-full { grid-column: 1 / -1; }

@@ -56,8 +56,10 @@ async function load() {
 
 function render() {
   const { settings } = store;
-  renderProviders();
-  renderCustoms();
+  const modeRadio = document.querySelector(`input[name="svcMode"][value="${settings.mode ?? 'free'}"]`);
+  if (modeRadio) modeRadio.checked = true;
+  renderServiceGrid();
+  renderServiceSelect();
 
   const select = $('defaultTarget');
   select.innerHTML = '';
@@ -126,44 +128,102 @@ function providerCapsule({ title, note, configured }) {
   return capsule;
 }
 
-function renderProviders() {
+/**
+ * 服务商网格 + 下拉。层级：**模式 → 翻译服务下拉 → 网格**。
+ * 自定义接口是「自定义 API」模式下的网格成员，不再另开一个同名分组（避免两处入口）。
+ */
+function renderServiceGrid() {
   const host = $('providerList');
   host.innerHTML = '';
-  for (const provider of PROVIDERS) {
-    const capsule = providerCapsule({
-      title: provider.label,
-      note: provider.freeNote,
-      configured: isProviderConfigured(provider.id)
+  const mode = currentSvcMode();
+
+  if (mode === 'custom') {
+    if (!customs.length) {
+      const empty = document.createElement('p');
+      empty.className = 'hint grid-full';
+      empty.textContent = '还没有自定义接口。填一个 key + 接口地址 + 模型名，就能接任何 OpenAI 兼容服务。';
+      host.appendChild(empty);
+    }
+    customs.forEach((item, index) => {
+      const capsule = providerCapsule({
+        title: item.name || item.model || '自定义接口',
+        note: item.baseURL || '还没填接口地址',
+        configured: Boolean(item.key && item.baseURL)
+      });
+      capsule.addEventListener('click', () => openCustomDialog(index));
+      host.appendChild(capsule);
     });
-    capsule.addEventListener('click', () => openProviderDialog(provider.id));
-    host.appendChild(capsule);
+
+    const add = document.createElement('button');
+    add.type = 'button';
+    add.className = 'provider-capsule provider-add';
+    add.innerHTML = '<span class="capsule-top"><strong>+ 添加接口</strong></span>'
+      + '<span class="capsule-note">DeepSeek / 硅基流动 / 自建网关</span>';
+    add.addEventListener('click', () => {
+      customs.push({ id: `c${Date.now().toString(36)}`, name: '', key: '', baseURL: '', model: '' });
+      renderServiceGrid();
+      openCustomDialog(customs.length - 1);
+    });
+    host.appendChild(add);
+  } else {
+    for (const provider of PROVIDERS) {
+      const capsule = providerCapsule({
+        title: provider.label,
+        note: provider.freeNote,
+        configured: isProviderConfigured(provider.id)
+      });
+      capsule.addEventListener('click', () => openProviderDialog(provider.id));
+      host.appendChild(capsule);
+    }
   }
 }
 
-function renderCustoms() {
-  const host = $('customList');
-  host.innerHTML = '';
+/** 翻译服务下拉：按当前模式列出已配置的服务商，第一项永远是「自动」 */
+function renderServiceSelect() {
+  const select = $('serviceSelect');
+  select.innerHTML = '';
 
-  if (!customs.length) {
-    const empty = document.createElement('p');
-    empty.className = 'hint';
-    empty.textContent = '还没有自定义接口。填一个 key + 接口地址 + 模型名，就能接任何 OpenAI 兼容服务。';
-    host.appendChild(empty);
-    refreshKeyStatus();
-    return;
+  const auto = document.createElement('option');
+  auto.value = 'auto';
+  auto.textContent = '自动（按语种优选）';
+  select.appendChild(auto);
+
+  const ids = ['auto'];
+  const mode = currentSvcMode();
+
+  if (mode === 'custom') {
+    for (const item of customs) {
+      if (!item.key || !item.baseURL) continue;
+      const option = document.createElement('option');
+      option.value = `custom:${item.id}`;
+      option.textContent = item.name || item.model || '自定义接口';
+      select.appendChild(option);
+      ids.push(option.value);
+    }
+  } else {
+    for (const provider of PROVIDERS) {
+      if (!isProviderConfigured(provider.id)) continue;
+      const option = document.createElement('option');
+      option.value = provider.id;
+      option.textContent = provider.label;
+      select.appendChild(option);
+      ids.push(option.value);
+    }
   }
 
-  customs.forEach((item, index) => {
-    const capsule = providerCapsule({
-      title: item.name || item.model || '自定义接口',
-      note: item.baseURL || '还没填接口地址',
-      configured: Boolean(item.key && item.baseURL)
-    });
-    capsule.addEventListener('click', () => openCustomDialog(index));
-    host.appendChild(capsule);
-  });
+  const saved = store.settings.selection ?? 'auto';
+  select.value = ids.includes(saved) ? saved : 'auto';
 
-  refreshKeyStatus();
+  select.onchange = async () => {
+    store.settings = { ...store.settings, selection: select.value };
+    await storage.set({ [STORAGE_KEY]: store });
+  };
+}
+
+/** 当前模式：免费额度 / 自定义 API */
+function currentSvcMode() {
+  const radio = document.querySelector('input[name="svcMode"]:checked');
+  return radio?.value ?? 'free';
 }
 
 /** 某家是否已配置（必填字段齐了） */
@@ -342,8 +402,8 @@ async function applyDialogValues() {
 async function saveDialog() {
   await applyDialogValues();
   refreshKeyStatus();
-  renderProviders();
-  renderCustoms();
+  renderServiceGrid();
+  renderServiceSelect();
   $('providerDialog').close();
   setStatus('已保存', 'ok');
 }
@@ -460,8 +520,11 @@ function refreshKeyStatus() {
     if (isProviderConfigured(provider.id)) configured += 1;
   }
 
-  $('freeCount').textContent = `${configured} / ${PROVIDERS.length}`;
-  $('customCount').textContent = `${customs.filter((c) => c.key && c.baseURL).length} 个`;
+  if (currentSvcMode() === 'custom') {
+    $('svcCount').textContent = `${customs.filter((c) => c.key && c.baseURL).length} 个自定义接口`;
+  } else {
+    $('svcCount').textContent = `${configured} / ${PROVIDERS.length}`;
+  }
 }
 
 function updateGlossaryCount() {
@@ -526,22 +589,22 @@ async function save() {
 
 $('save').addEventListener('click', save);
 
+// 模式切换：立即生效并重绘网格与下拉
+for (const radio of document.querySelectorAll('input[name="svcMode"]')) {
+  radio.addEventListener('change', async () => {
+    if (!radio.checked) return;
+    store.settings = { ...store.settings, mode: radio.value, selection: 'auto' };
+    await storage.set({ [STORAGE_KEY]: store });
+    renderServiceGrid();
+    renderServiceSelect();
+    refreshKeyStatus();
+  });
+}
+
 $('pdSave').addEventListener('click', saveDialog);
 $('pdCancel').addEventListener('click', () => $('providerDialog').close());
 $('pdClose').addEventListener('click', () => $('providerDialog').close());
 $('pdTest').addEventListener('click', runDialogTest);
-
-$('addCustom').addEventListener('click', () => {
-  customs.push({
-    id: `c${Date.now().toString(36)}`,
-    name: '',
-    key: '',
-    baseURL: '',
-    model: ''
-  });
-  renderCustoms();
-  openCustomDialog(customs.length - 1);
-});
 
 $('clearCache').addEventListener('click', async () => {
   try {

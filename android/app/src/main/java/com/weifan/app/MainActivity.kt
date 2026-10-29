@@ -55,6 +55,7 @@ class MainActivity : Activity() {
     private lateinit var autoReplaceSwitch: Switch
     private lateinit var targetSpinner: Spinner
     private lateinit var serviceSpinner: Spinner
+    private lateinit var providerGridView: GridLayout
     private lateinit var modeGroup: RadioGroup
     private lateinit var resultText: TextView
 
@@ -212,16 +213,8 @@ class MainActivity : Activity() {
             addView(serviceSpinner)
 
             // 服务商胶囊：两列排布，点开才是配置表单（竖着排九家太长）
-            addView(providerGrid())
-        })
-
-        // 自定义 API（胶囊 + 弹窗）
-        root.addView(groupCard(
-            "自定义 API",
-            "任意 OpenAI 兼容接口：DeepSeek / 硅基流动 / 自建网关都行。",
-            p.mixGrad
-        ) {
-            addView(customGrid())
+            providerGridView = providerGrid()
+            addView(providerGridView)
         })
 
         // 发件（暖）
@@ -283,10 +276,31 @@ class MainActivity : Activity() {
 
     /* ── 服务商胶囊（两列排布，点开弹配置框） ─────────────── */
 
-    private fun providerGrid(): View {
+    /** 模式切换后重建网格（免费额度 ↔ 自定义 API 显示不同成员） */
+    private fun rebuildProviderGrid() {
+        if (!::providerGridView.isInitialized) return
+        val parent = providerGridView.parent as? ViewGroup ?: return
+        val index = parent.indexOfChild(providerGridView)
+        val fresh = providerGrid()
+        parent.removeView(providerGridView)
+        parent.addView(fresh, index)
+        providerGridView = fresh
+    }
+
+    /**
+     * 服务商网格：按当前模式显示。
+     * 免费额度 → 九家大厂；自定义 API → 自定义接口胶囊 + 添加按钮。
+     * （自定义接口是这一组的成员，不再另开一个同名分组）
+     */
+    private fun providerGrid(): GridLayout {
         val grid = GridLayout(this).apply { columnCount = 2 }
-        for (def in Providers.DEFS) {
-            grid.addView(providerCapsule(def))
+        if (currentMode() == "custom") {
+            grid.addView(customCapsule())
+            grid.addView(addCustomButton())
+        } else {
+            for (def in Providers.DEFS) {
+                grid.addView(providerCapsule(def))
+            }
         }
         return grid
     }
@@ -345,9 +359,7 @@ class MainActivity : Activity() {
     }
 
     /** 自定义接口的胶囊（目前一个档案） */
-    private fun customGrid(): View {
-        val grid = GridLayout(this).apply { columnCount = 2 }
-
+    private fun customCapsule(): View {
         val configured = prefs.customKey.isNotBlank() && prefs.customBaseUrl.isNotBlank()
         val box = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
@@ -393,9 +405,11 @@ class MainActivity : Activity() {
             height = ViewGroup.LayoutParams.WRAP_CONTENT
             setMargins(dp(4), dp(4), dp(4), dp(4))
         }
-        grid.addView(box)
+        return box
+    }
 
-        // 添加按钮占第二格
+    /** 「+ 添加接口」按钮 */
+    private fun addCustomButton(): View {
         val add = Button(this).apply {
             text = "+ 添加接口"
             textSize = 12f
@@ -413,9 +427,7 @@ class MainActivity : Activity() {
             height = ViewGroup.LayoutParams.WRAP_CONTENT
             setMargins(dp(4), dp(4), dp(4), dp(4))
         }
-        grid.addView(add)
-
-        return grid
+        return add
     }
 
     /** 弹窗里的一个字段：独立标签 + 输入框（hint 只当占位提示） */
@@ -853,7 +865,10 @@ class MainActivity : Activity() {
             val child = modeGroup.getChildAt(i) as RadioButton
             child.isChecked = child.tag == prefs.mode
         }
-        modeGroup.setOnCheckedChangeListener { _, _ -> refreshServiceSpinner() }
+        modeGroup.setOnCheckedChangeListener { _, _ ->
+            refreshServiceSpinner()
+            rebuildProviderGrid()
+        }
         refreshServiceSpinner()
     }
 
