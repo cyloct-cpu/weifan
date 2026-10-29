@@ -1,6 +1,8 @@
 # 微翻 WeiFan
 
-![ci](https://github.com/cyloct-cpu/weifan/actions/workflows/ci.yml/badge.svg)
+<p align="center"><img src="brand/lockup-horizontal.svg" alt="微翻 WeiFan" width="360" /></p>
+
+<p align="center"><img src="https://github.com/cyloct-cpu/weifan/actions/workflows/ci.yml/badge.svg" alt="ci" /></p>
 
 WhatsApp 跨境沟通的自动翻译工具：**你打中文，发出去的是对方的语言；对方说什么，你看到的是中文。**
 

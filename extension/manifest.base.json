@@ -1,8 +1,14 @@
 {
   "manifest_version": 3,
   "name": "微翻 WeiFan",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "WhatsApp Web 即时翻译：对方消息自动出中文，输入框里的中文一键变对方语言。",
+  "icons": {
+    "16": "src/icons/icon16.png",
+    "32": "src/icons/icon32.png",
+    "48": "src/icons/icon48.png",
+    "128": "src/icons/icon128.png"
+  },
   "permissions": ["storage"],
   "host_permissions": [
     "https://web.whatsapp.com/*",
@@ -30,6 +36,12 @@
     "open_in_tab": true
   },
   "action": {
-    "default_title": "微翻 · 设置"
+    "default_title": "微翻 · 设置",
+    "default_icon": {
+      "16": "src/icons/icon16.png",
+      "32": "src/icons/icon32.png",
+      "48": "src/icons/icon48.png",
+      "128": "src/icons/icon128.png"
+    }
   }
 }

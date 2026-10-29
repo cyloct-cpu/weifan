@@ -2,145 +2,218 @@
 <html lang="zh-CN">
 <head>
   <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>微翻 · 设置</title>
-  <style>
-    :root { color-scheme: dark; }
-    * { box-sizing: border-box; }
-    body {
-      margin: 0;
-      padding: 32px 20px 64px;
-      background: #0b141a;
-      color: #e9edef;
-      font: 14px/1.6 -apple-system, "PingFang SC", "Microsoft YaHei", sans-serif;
-    }
-    .wrap { max-width: 720px; margin: 0 auto; }
-    h1 { font-size: 20px; margin: 0 0 4px; }
-    .sub { color: #8696a0; font-size: 12.5px; margin-bottom: 28px; }
-    section {
-      background: #111b21;
-      border: 1px solid #22303a;
-      border-radius: 12px;
-      padding: 18px;
-      margin-bottom: 16px;
-    }
-    h2 { font-size: 14px; margin: 0 0 14px; color: #d1d7db; font-weight: 600; }
-    label { display: block; font-size: 12.5px; color: #8696a0; margin: 12px 0 4px; }
-    label:first-of-type { margin-top: 0; }
-    input[type="text"], input[type="password"], input[type="number"], select, textarea {
-      width: 100%;
-      background: #0b141a;
-      border: 1px solid #2a3942;
-      border-radius: 8px;
-      color: #e9edef;
-      padding: 9px 11px;
-      font: inherit;
-      font-size: 13px;
-      outline: none;
-    }
-    input:focus, select:focus, textarea:focus { border-color: #00a884; }
-    textarea { min-height: 88px; resize: vertical; font-family: ui-monospace, Menlo, monospace; font-size: 12.5px; }
-    .row { display: flex; gap: 12px; }
-    .row > div { flex: 1; }
-    .check { display: flex; align-items: center; gap: 8px; margin: 10px 0; font-size: 13px; color: #d1d7db; }
-    .check input { width: 16px; height: 16px; accent-color: #00a884; }
-    .hint { font-size: 12px; color: #667781; margin-top: 6px; }
-    .warn { font-size: 12px; color: #f1a45c; margin-top: 8px; }
-    .actions { display: flex; align-items: center; gap: 12px; margin-top: 8px; }
-    button {
-      background: #00a884;
-      color: #06231d;
-      border: none;
-      border-radius: 8px;
-      padding: 10px 20px;
-      font: inherit;
-      font-weight: 600;
-      cursor: pointer;
-    }
-    button.ghost { background: rgba(233,237,239,.1); color: #e9edef; font-weight: 400; }
-    #status { font-size: 12.5px; color: #00a884; }
-    code { background: #0b141a; border: 1px solid #2a3942; border-radius: 4px; padding: 1px 5px; font-size: 12px; }
-  </style>
+  <link rel="icon" href="../icons/favicon.ico" sizes="any" />
+  <link rel="icon" href="../icons/favicon-32.png" type="image/png" />
+  <link rel="stylesheet" href="options.css" />
 </head>
 <body>
-  <div class="wrap">
-    <h1>微翻 · 设置</h1>
-    <div class="sub">密钥只保存在本机浏览器里（chrome.storage.local），不经过任何服务器。填完刷新 WhatsApp 页面即可生效。</div>
+  <header class="topbar" id="topbar">
+    <div class="topbar-inner">
+      <svg class="mark" viewBox="159 301 1462 1462" role="img" aria-label="微翻标识">
+      <defs><linearGradient id="wf-gw" gradientUnits="userSpaceOnUse" x1="1545" y1="521" x2="375" y2="1415"><stop offset="0" stop-color="#FF4353"/><stop offset=".42" stop-color="#FD6C4E"/><stop offset=".8" stop-color="#FF9064"/><stop offset="1" stop-color="#FFC4A6"/></linearGradient><linearGradient id="wf-gc" gradientUnits="userSpaceOnUse" x1="1177" y1="649" x2="235" y2="1475"><stop offset="0" stop-color="#4C9BF7"/><stop offset=".45" stop-color="#2FB6FF"/><stop offset="1" stop-color="#00E9DD"/></linearGradient></defs><g><path d="M1141 1345L1335.1 1521.8A14 14 0 0 0 1358.5 1511.4L1359 1345Z" fill="url(#wf-gw)"/><path d="M703 521H1217A328 328 0 0 1 1545 849V1087A328 328 0 0 1 1217 1415H703A328 328 0 0 1 375 1087V849A328 328 0 0 1 703 521Z" fill="url(#wf-gw)"/></g><g><path d="M400 1355L396.9 1529.6A14 14 0 0 0 420.9 1539.6L600 1355Z" fill="url(#wf-gc)"/><path d="M706 649C966.1 649 1177 833.9 1177 1062C1177 1290.1 966.1 1475 706 1475C445.9 1475 235 1290.1 235 1062C235 833.9 445.9 649 706 649Z" fill="url(#wf-gc)"/></g>
+    </svg>
+      <div class="wordmark">
+        <strong>微翻</strong>
+        <span>WEIFAN</span>
+      </div>
+      <span class="topbar-note">密钥只留在本机</span>
+    </div>
+  </header>
 
-    <section>
-      <h2>翻译服务（至少填一个）</h2>
+  <main class="page">
+    <div class="hero">
+      <h1>设置</h1>
+      <p class="lede">填好密钥、刷新 WhatsApp 页面即可生效。颜色就是方向：<b class="d d-warm">暖色是发件</b>，<b class="d d-cool">冷色是收件</b>，<b class="d d-mix">混色是双向通用</b>。</p>
+    </div>
 
-      <label>大模型 · Groq（推荐，低延迟）</label>
-      <input type="password" id="groq" placeholder="gsk_..." autocomplete="off" />
-      <div class="hint">长句、含金额/数字的消息走这里。到 console.groq.com 申请。</div>
+    <!-- ── 翻译服务（双向通用） ─────────────────────────── -->
+    <section class="group" data-dir="mix">
+      <div class="group-head">
+        <i class="dot"></i>
+        <h2>翻译服务</h2>
+        <span class="group-count" id="svcCount">0 / 4</span>
+      </div>
+      <p class="group-note">至少填一个。路由规则：短句走机翻，长句和含金额/数字的消息走大模型。</p>
 
-      <label>机翻 · DeepL（中→欧语质量最稳）</label>
-      <input type="password" id="deepl" placeholder="xxxxxxxx-xxxx-...:fx" autocomplete="off" />
-      <label>DeepL 端点</label>
-      <input type="text" id="deeplEndpoint" placeholder="https://api-free.deepl.com/v2/translate" />
-
-      <label>机翻 · Google Cloud Translation（DeepL 不支持的语种靠它兜底）</label>
-      <input type="password" id="google" placeholder="AIza..." autocomplete="off" />
-
-      <label>备用大模型（OpenAI 兼容：DeepSeek / 自建）</label>
-      <div class="row">
-        <div>
-          <input type="password" id="llm" placeholder="sk-..." autocomplete="off" />
+      <div class="field">
+        <div class="field-head">
+          <label for="groq">Groq · 大模型</label>
+          <span class="pill" id="pill-groq" hidden>已配置</span>
         </div>
-        <div>
-          <input type="text" id="llmBaseURL" placeholder="https://api.deepseek.com/v1" />
+        <div class="input-wrap">
+          <input type="password" id="groq" placeholder="gsk_..." autocomplete="off" spellcheck="false" />
+          <button type="button" class="reveal" data-reveal="groq" title="显示密钥" aria-label="显示密钥">
+            <svg class="i-eye" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5c-5 0-9 4.5-10 7 1 2.5 5 7 10 7s9-4.5 10-7c-1-2.5-5-7-10-7Zm0 11.5A4.5 4.5 0 1 1 16.5 12 4.5 4.5 0 0 1 12 16.5Zm0-7.5A3 3 0 1 0 15 12a3 3 0 0 0-3-3Z"/></svg>
+            <svg class="i-eye-off" viewBox="0 0 24 24" aria-hidden="true"><path d="M2 3.6 3.6 2l18 18L20 21.6l-4.2-4.2a11.6 11.6 0 0 1-4.8 1.1c-5 0-9-4.5-10-7a12.4 12.4 0 0 1 4-4.7ZM12 5c-5 0-9 4.5-10 7 .5 1.2 1.8 3.3 4 4.9l2-2A4.5 4.5 0 0 1 12 7.5c.5 0 1 .08 1.4.22l1.7-1.7A11 11 0 0 0 12 5Zm0 4.5a3 3 0 0 0-3 3l3-3Zm10 2.5c-1 2.5-5 7-10 7a11.2 11.2 0 0 1-2.6-.3l2.3-2.3a4.5 4.5 0 0 0 5.9-5.9l2.9-2.9A12.4 12.4 0 0 1 22 12Z"/></svg>
+          </button>
+        </div>
+        <p class="hint">推荐，延迟低。到 console.groq.com 申请。</p>
+      </div>
+
+      <div class="field">
+        <div class="field-head">
+          <label for="deepl">DeepL · 机翻</label>
+          <span class="pill" id="pill-deepl" hidden>已配置</span>
+        </div>
+        <div class="input-wrap">
+          <input type="password" id="deepl" placeholder="xxxxxxxx-xxxx-...:fx" autocomplete="off" spellcheck="false" />
+          <button type="button" class="reveal" data-reveal="deepl" title="显示密钥" aria-label="显示密钥">
+            <svg class="i-eye" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5c-5 0-9 4.5-10 7 1 2.5 5 7 10 7s9-4.5 10-7c-1-2.5-5-7-10-7Zm0 11.5A4.5 4.5 0 1 1 16.5 12 4.5 4.5 0 0 1 12 16.5Zm0-7.5A3 3 0 1 0 15 12a3 3 0 0 0-3-3Z"/></svg>
+            <svg class="i-eye-off" viewBox="0 0 24 24" aria-hidden="true"><path d="M2 3.6 3.6 2l18 18L20 21.6l-4.2-4.2a11.6 11.6 0 0 1-4.8 1.1c-5 0-9-4.5-10-7a12.4 12.4 0 0 1 4-4.7ZM12 5c-5 0-9 4.5-10 7 .5 1.2 1.8 3.3 4 4.9l2-2A4.5 4.5 0 0 1 12 7.5c.5 0 1 .08 1.4.22l1.7-1.7A11 11 0 0 0 12 5Zm0 4.5a3 3 0 0 0-3 3l3-3Zm10 2.5c-1 2.5-5 7-10 7a11.2 11.2 0 0 1-2.6-.3l2.3-2.3a4.5 4.5 0 0 0 5.9-5.9l2.9-2.9A12.4 12.4 0 0 1 22 12Z"/></svg>
+          </button>
+        </div>
+        <p class="hint">中→欧语质量最稳，免费额度 50 万字符/月。</p>
+      </div>
+
+      <div class="field">
+        <div class="field-head">
+          <label for="deeplEndpoint">DeepL 端点</label>
+        </div>
+        <input type="text" id="deeplEndpoint" placeholder="https://api-free.deepl.com/v2/translate" spellcheck="false" />
+      </div>
+
+      <div class="field">
+        <div class="field-head">
+          <label for="google">Google Cloud Translation · 机翻</label>
+          <span class="pill" id="pill-google" hidden>已配置</span>
+        </div>
+        <div class="input-wrap">
+          <input type="password" id="google" placeholder="AIza..." autocomplete="off" spellcheck="false" />
+          <button type="button" class="reveal" data-reveal="google" title="显示密钥" aria-label="显示密钥">
+            <svg class="i-eye" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5c-5 0-9 4.5-10 7 1 2.5 5 7 10 7s9-4.5 10-7c-1-2.5-5-7-10-7Zm0 11.5A4.5 4.5 0 1 1 16.5 12 4.5 4.5 0 0 1 12 16.5Zm0-7.5A3 3 0 1 0 15 12a3 3 0 0 0-3-3Z"/></svg>
+            <svg class="i-eye-off" viewBox="0 0 24 24" aria-hidden="true"><path d="M2 3.6 3.6 2l18 18L20 21.6l-4.2-4.2a11.6 11.6 0 0 1-4.8 1.1c-5 0-9-4.5-10-7a12.4 12.4 0 0 1 4-4.7ZM12 5c-5 0-9 4.5-10 7 .5 1.2 1.8 3.3 4 4.9l2-2A4.5 4.5 0 0 1 12 7.5c.5 0 1 .08 1.4.22l1.7-1.7A11 11 0 0 0 12 5Zm0 4.5a3 3 0 0 0-3 3l3-3Zm10 2.5c-1 2.5-5 7-10 7a11.2 11.2 0 0 1-2.6-.3l2.3-2.3a4.5 4.5 0 0 0 5.9-5.9l2.9-2.9A12.4 12.4 0 0 1 22 12Z"/></svg>
+          </button>
+        </div>
+        <p class="hint">DeepL 不支持的语种靠它兜底。</p>
+      </div>
+
+      <div class="field">
+        <div class="field-head">
+          <label for="llm">备用大模型 · OpenAI 兼容</label>
+          <span class="pill" id="pill-llm" hidden>已配置</span>
+        </div>
+        <div class="input-wrap">
+          <input type="password" id="llm" placeholder="sk-..." autocomplete="off" spellcheck="false" />
+          <button type="button" class="reveal" data-reveal="llm" title="显示密钥" aria-label="显示密钥">
+            <svg class="i-eye" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5c-5 0-9 4.5-10 7 1 2.5 5 7 10 7s9-4.5 10-7c-1-2.5-5-7-10-7Zm0 11.5A4.5 4.5 0 1 1 16.5 12 4.5 4.5 0 0 1 12 16.5Zm0-7.5A3 3 0 1 0 15 12a3 3 0 0 0-3-3Z"/></svg>
+            <svg class="i-eye-off" viewBox="0 0 24 24" aria-hidden="true"><path d="M2 3.6 3.6 2l18 18L20 21.6l-4.2-4.2a11.6 11.6 0 0 1-4.8 1.1c-5 0-9-4.5-10-7a12.4 12.4 0 0 1 4-4.7ZM12 5c-5 0-9 4.5-10 7 .5 1.2 1.8 3.3 4 4.9l2-2A4.5 4.5 0 0 1 12 7.5c.5 0 1 .08 1.4.22l1.7-1.7A11 11 0 0 0 12 5Zm0 4.5a3 3 0 0 0-3 3l3-3Zm10 2.5c-1 2.5-5 7-10 7a11.2 11.2 0 0 1-2.6-.3l2.3-2.3a4.5 4.5 0 0 0 5.9-5.9l2.9-2.9A12.4 12.4 0 0 1 22 12Z"/></svg>
+          </button>
+        </div>
+        <p class="hint">DeepSeek / 自建网关。Groq 不可用时兜底。</p>
+      </div>
+
+      <div class="field-row">
+        <div class="field">
+          <div class="field-head"><label for="llmBaseURL">接口地址</label></div>
+          <input type="text" id="llmBaseURL" placeholder="https://api.deepseek.com/v1" spellcheck="false" />
+        </div>
+        <div class="field">
+          <div class="field-head"><label for="llmModel">模型名</label></div>
+          <input type="text" id="llmModel" placeholder="deepseek-chat" spellcheck="false" />
         </div>
       </div>
-      <input type="text" id="llmModel" placeholder="deepseek-chat" style="margin-top:8px" />
 
-      <div class="warn">签名密钥以明文保存在本机浏览器配置中。共用电脑时请注意。</div>
+      <p class="warn">密钥以明文保存在本机浏览器配置中，不经过任何服务器。共用电脑时注意。</p>
     </section>
 
-    <section>
-      <h2>行为</h2>
-
-      <label>兜底目标语言（检测不出对方语言时用）</label>
-      <select id="defaultTarget"></select>
-
-      <label>默认语气</label>
-      <select id="style">
-        <option value="business">商务：正式、简洁、不用缩略语</option>
-        <option value="casual">日常：口语、简短</option>
-        <option value="literal">直译：单据、合同条款</option>
-      </select>
-
-      <div class="check">
-        <input type="checkbox" id="autoIncoming" />
-        <label for="autoIncoming" style="margin:0">自动翻译对方消息（滚动到哪译到哪）</label>
+    <!-- ── 发件（暖） ─────────────────────────── -->
+    <section class="group" data-dir="warm">
+      <div class="group-head">
+        <i class="dot"></i>
+        <h2>发件 · 你打的中文怎么变出去</h2>
       </div>
-      <div class="check">
-        <input type="checkbox" id="allowDirectSend" />
-        <label for="allowDirectSend" style="margin:0">点「译」直接替换输入框（含金额时仍会先确认）</label>
-      </div>
-      <div class="check">
-        <input type="checkbox" id="previewOnLowConfidence" />
-        <label for="previewOnLowConfidence" style="margin:0">语言判断不确定时先确认再替换</label>
+      <p class="group-note">输入框里写中文，点「译」或按 Ctrl+Enter，发出去的是对方语言。</p>
+
+      <div class="field">
+        <div class="field-head"><label for="defaultTarget">兜底目标语言</label></div>
+        <div class="select-wrap">
+          <select id="defaultTarget"></select>
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m7 10 5 5 5-5z"/></svg>
+        </div>
+        <p class="hint">判断不出对方在说什么语言时，用这一个。</p>
       </div>
 
-      <label>长句阈值（超过就走大模型）：<span id="thresholdLabel">60</span> 字</label>
-      <input type="range" id="longSentenceThreshold" min="20" max="200" step="10" style="width:100%" />
+      <div class="field">
+        <div class="field-head"><label>默认语气</label></div>
+        <div class="segmented" role="radiogroup" aria-label="默认语气">
+          <label><input type="radio" name="style" value="business" /><span>商务</span></label>
+          <label><input type="radio" name="style" value="casual" /><span>日常</span></label>
+          <label><input type="radio" name="style" value="literal" /><span>直译</span></label>
+        </div>
+        <p class="hint" id="styleNote">商务：正式、简洁、不用缩略语。</p>
+      </div>
+
+      <label class="row-switch">
+        <span class="row-switch-text">
+          <strong>点「译」直接替换输入框</strong>
+          <small>关掉则先弹确认面板。含金额时无论如何都会先确认。</small>
+        </span>
+        <span class="switch"><input type="checkbox" id="allowDirectSend" /><span class="track"></span></span>
+      </label>
+
+      <label class="row-switch">
+        <span class="row-switch-text">
+          <strong>语言判断不确定时先确认</strong>
+          <small>拿不准是哪种语言就停下来问你，避免译错方向。</small>
+        </span>
+        <span class="switch"><input type="checkbox" id="previewOnLowConfidence" /><span class="track"></span></span>
+      </label>
+
+      <div class="field">
+        <div class="field-head">
+          <label for="longSentenceThreshold">长句阈值</label>
+          <span class="value-badge" id="thresholdLabel">60</span>
+        </div>
+        <input type="range" id="longSentenceThreshold" min="20" max="200" step="10" />
+        <p class="hint">超过这个字数走大模型（更准但慢）；短句走机翻（快）。</p>
+      </div>
     </section>
 
-    <section>
-      <h2>术语：不要乱译的词</h2>
-      <div class="hint" style="margin-bottom:8px">
-        一行一条。默认原样保留；需要固定译法时写成 <code>原文 =&gt; 语言: 译文</code>，例如<br />
-        <code>轻舟 Pro</code><br />
-        <code>定金 =&gt; es: depósito</code>
+    <!-- ── 收件（冷） ─────────────────────────── -->
+    <section class="group" data-dir="cool">
+      <div class="group-head">
+        <i class="dot"></i>
+        <h2>收件 · 对方说的话怎么变回来</h2>
       </div>
-      <textarea id="glossary" placeholder="轻舟 Pro&#10;Chan&#10;定金 => es: depósito"></textarea>
+      <p class="group-note">译文嵌在对方消息下方，原文保留，随时可以对照。</p>
+
+      <label class="row-switch">
+        <span class="row-switch-text">
+          <strong>自动翻译对方消息</strong>
+          <small>滚动到哪译到哪，只译当前会话，不打扰别的聊天。</small>
+        </span>
+        <span class="switch"><input type="checkbox" id="autoIncoming" /><span class="track"></span></span>
+      </label>
+    </section>
+
+    <!-- ── 术语（双向通用） ─────────────────────────── -->
+    <section class="group" data-dir="mix">
+      <div class="group-head">
+        <i class="dot"></i>
+        <h2>术语 · 不要乱译的词</h2>
+        <span class="group-count" id="glossaryCount">0 条</span>
+      </div>
+      <p class="group-note">一行一条，默认原样保留；要固定译法就写成 <code>原文 =&gt; 语言: 译文</code>。</p>
+      <textarea id="glossary" spellcheck="false" placeholder="轻舟 Pro&#10;Chan&#10;定金 => es: depósito"></textarea>
+      <div class="chips">
+        <button type="button" class="chip" data-add="轻舟 Pro">+ 轻舟 Pro</button>
+        <button type="button" class="chip" data-add="Chan">+ Chan</button>
+        <button type="button" class="chip" data-add="定金 => es: depósito">+ 定金 =&gt; es: depósito</button>
+      </div>
     </section>
 
     <div class="actions">
-      <button id="save">保存</button>
-      <button id="clearCache" class="ghost">清空翻译缓存</button>
-      <span id="status"></span>
+      <button type="button" id="save" class="btn-primary">
+        <svg class="i-check" viewBox="0 0 24 24" aria-hidden="true"><path d="M9 16.2 4.8 12l-1.4 1.4L9 19 21 7l-1.4-1.4z"/></svg>
+        <span class="btn-label">保存</span>
+      </button>
+      <button type="button" id="clearCache" class="btn-ghost">清空翻译缓存</button>
+      <span class="kbd-hint"><kbd>⌘</kbd><kbd>S</kbd></span>
+      <span id="status" role="status"></span>
     </div>
-  </div>
+  </main>
 
   <script src="options.js" type="module"></script>
 </body>

@@ -5,17 +5,46 @@ import { EXT, sendToBackground } from '../shared/ext.js';
 const STORAGE_KEY = 'weifan';
 const $ = (id) => document.getElementById(id);
 
+/**
+ * 存储兜底：扩展里走 chrome.storage.local；
+ * 在普通浏览器里打开（本地预览、没打包扩展）用 localStorage 顶一份，
+ * 否则设置页一打开就白屏，也没法点。
+ */
+const storage =
+  EXT?.storage?.local ??
+  ({
+    async get(key) {
+      const raw = globalThis.localStorage?.getItem(key);
+      return raw ? { [key]: JSON.parse(raw) } : {};
+    },
+    async set(obj) {
+      for (const [key, value] of Object.entries(obj)) {
+        globalThis.localStorage?.setItem(key, JSON.stringify(value));
+      }
+    }
+  });
+
 /** @type {any} */
 let store = { keys: {}, settings: { ...DEFAULT_SETTINGS }, chats: {} };
 
+const STYLE_NOTES = {
+  business: '商务：正式、简洁、不用缩略语。',
+  casual: '日常：口语、简短，像聊天。',
+  literal: '直译：单据、合同条款，逐字对照。'
+};
+
 async function load() {
-  const raw = await EXT.storage.local.get(STORAGE_KEY);
-  const value = raw?.[STORAGE_KEY] ?? {};
-  store = {
-    keys: value.keys ?? {},
-    settings: { ...DEFAULT_SETTINGS, ...(value.settings ?? {}) },
-    chats: value.chats ?? {}
-  };
+  try {
+    const raw = await storage.get(STORAGE_KEY);
+    const value = raw?.[STORAGE_KEY] ?? {};
+    store = {
+      keys: value.keys ?? {},
+      settings: { ...DEFAULT_SETTINGS, ...(value.settings ?? {}) },
+      chats: value.chats ?? {}
+    };
+  } catch {
+    // 读不到也先把页面渲染出来，不能白屏
+  }
   render();
 }
 
@@ -40,13 +69,31 @@ function render() {
   }
   select.value = settings.defaultTarget;
 
-  $('style').value = settings.style;
+  setStyle(settings.style);
   $('autoIncoming').checked = settings.autoIncoming !== false;
   $('allowDirectSend').checked = settings.allowDirectSend !== false;
   $('previewOnLowConfidence').checked = settings.previewOnLowConfidence !== false;
-  $('longSentenceThreshold').value = String(settings.longSentenceThreshold ?? 60);
-  $('thresholdLabel').textContent = String(settings.longSentenceThreshold ?? 60);
+
+  const threshold = settings.longSentenceThreshold ?? 60;
+  $('longSentenceThreshold').value = String(threshold);
+  $('thresholdLabel').textContent = String(threshold);
+  updateRangeFill($('longSentenceThreshold'));
+
   $('glossary').value = formatGlossary(settings.glossary ?? []);
+  updateGlossaryCount();
+  refreshKeyStatus();
+}
+
+/** @param {string} value */
+function setStyle(value) {
+  const radio = document.querySelector(`input[name="style"][value="${value}"]`);
+  if (radio) radio.checked = true;
+  $('styleNote').textContent = STYLE_NOTES[value] ?? STYLE_NOTES.business;
+}
+
+/** @returns {string} */
+function getStyle() {
+  return document.querySelector('input[name="style"]:checked')?.value ?? 'business';
 }
 
 /** @param {any[]} entries */
@@ -99,7 +146,7 @@ function collect() {
     settings: {
       ...store.settings,
       defaultTarget: $('defaultTarget').value,
-      style: $('style').value,
+      style: getStyle(),
       autoIncoming: $('autoIncoming').checked,
       allowDirectSend: $('allowDirectSend').checked,
       previewOnLowConfidence: $('previewOnLowConfidence').checked,
@@ -110,12 +157,46 @@ function collect() {
   };
 }
 
-function setStatus(message, color = '#00a884') {
+/** 密钥徽标 + 分组计数 */
+function refreshKeyStatus() {
+  const ids = ['groq', 'deepl', 'google', 'llm'];
+  let configured = 0;
+  for (const id of ids) {
+    const filled = Boolean($(id).value.trim());
+    if (filled) configured += 1;
+    $(`pill-${id}`).hidden = !filled;
+  }
+  $('svcCount').textContent = `${configured} / ${ids.length}`;
+}
+
+function updateGlossaryCount() {
+  const lines = $('glossary').value.split('\n').filter((line) => line.trim()).length;
+  $('glossaryCount').textContent = `${lines} 条`;
+}
+
+/** @param {HTMLInputElement} input */
+function updateRangeFill(input) {
+  const min = Number(input.min);
+  const max = Number(input.max);
+  const pct = ((Number(input.value) - min) / (max - min)) * 100;
+  input.style.setProperty('--fill', `${pct}%`);
+}
+
+/**
+ * @param {string} message
+ * @param {'ok'|'err'|'info'} [kind]
+ */
+function setStatus(message, kind = 'info') {
   const el = $('status');
   el.textContent = message;
-  el.style.color = color;
-  setTimeout(() => {
-    if (el.textContent === message) el.textContent = '';
+  el.className = kind === 'ok' ? 'is-ok' : kind === 'err' ? 'is-err' : '';
+  el.classList.add('is-show');
+  clearTimeout(setStatus.timer);
+  setStatus.timer = setTimeout(() => {
+    if (el.textContent === message) {
+      el.textContent = '';
+      el.className = '';
+    }
   }, 4000);
 }
 
@@ -123,27 +204,102 @@ async function save() {
   const next = collect();
   const hasAnyKey = next.keys.google || next.keys.deepl || next.keys.groq || next.keys.llm;
   if (!hasAnyKey) {
-    setStatus('至少要填一个密钥，否则没法翻译', '#f15c6d');
+    setStatus('至少要填一个密钥，否则没法翻译', 'err');
     return;
   }
-  await EXT.storage.local.set({ [STORAGE_KEY]: next });
+  try {
+    await storage.set({ [STORAGE_KEY]: next });
+  } catch (error) {
+    setStatus(`保存失败：${error.message}`, 'err');
+    return;
+  }
   store = next;
-  setStatus('已保存，刷新 WhatsApp 页面后生效');
+  refreshKeyStatus();
+  setStatus('已保存，刷新 WhatsApp 页面后生效', 'ok');
+
+  const button = $('save');
+  button.classList.add('is-done');
+  button.querySelector('.btn-label').textContent = '已保存';
+  clearTimeout(save.doneTimer);
+  save.doneTimer = setTimeout(() => {
+    button.classList.remove('is-done');
+    button.querySelector('.btn-label').textContent = '保存';
+  }, 1600);
 }
+
+// ── 事件绑定 ───────────────────────────────────────
 
 $('save').addEventListener('click', save);
 
 $('clearCache').addEventListener('click', async () => {
   try {
     await sendToBackground({ type: 'clearCache' });
-    setStatus('缓存已清空');
+    setStatus('缓存已清空', 'ok');
   } catch (error) {
-    setStatus(`清空失败：${error.message}`, '#f15c6d');
+    setStatus(`清空失败：${error.message}`, 'err');
   }
 });
 
+// 密钥输入 → 徽标实时亮
+for (const id of ['groq', 'deepl', 'google', 'llm']) {
+  $(id).addEventListener('input', refreshKeyStatus);
+}
+
+// 显示 / 隐藏密钥
+for (const button of document.querySelectorAll('.reveal')) {
+  button.addEventListener('click', () => {
+    const input = $(button.dataset.reveal);
+    const show = input.type === 'password';
+    input.type = show ? 'text' : 'password';
+    if (show) button.setAttribute('data-on', '');
+    else button.removeAttribute('data-on');
+    button.title = show ? '隐藏密钥' : '显示密钥';
+  });
+}
+
+// 语气分段 → 说明文字跟随
+for (const radio of document.querySelectorAll('input[name="style"]')) {
+  radio.addEventListener('change', () => setStyle(radio.value));
+}
+
+// 长句阈值
 $('longSentenceThreshold').addEventListener('input', (event) => {
   $('thresholdLabel').textContent = event.target.value;
+  updateRangeFill(event.target);
 });
+
+// 术语计数 + 示例
+$('glossary').addEventListener('input', updateGlossaryCount);
+
+for (const chip of document.querySelectorAll('.chip')) {
+  chip.addEventListener('click', () => {
+    const area = $('glossary');
+    const line = chip.dataset.add;
+    const lines = area.value.split('\n').filter((item) => item.trim());
+    if (lines.includes(line)) {
+      setStatus('这一条已经在表里了', 'info');
+      return;
+    }
+    lines.push(line);
+    area.value = lines.join('\n');
+    updateGlossaryCount();
+    area.focus();
+    area.setSelectionRange(area.value.length, area.value.length);
+  });
+}
+
+// ⌘S / Ctrl+S 保存
+document.addEventListener('keydown', (event) => {
+  if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === 's') {
+    event.preventDefault();
+    save();
+  }
+});
+
+// 顶栏滚动出分隔线
+const topbar = $('topbar');
+const onScroll = () => topbar.classList.toggle('is-scrolled', window.scrollY > 4);
+window.addEventListener('scroll', onScroll, { passive: true });
+onScroll();
 
 load();
