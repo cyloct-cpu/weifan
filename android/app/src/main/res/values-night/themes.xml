@@ -1,0 +1,5 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- 深色：跟随系统夜间模式。系统弹出的 Spinner 下拉、Toast 也会跟着变深 -->
+    <style name="AppTheme" parent="@android:style/Theme.Material.NoActionBar" />
+</resources>

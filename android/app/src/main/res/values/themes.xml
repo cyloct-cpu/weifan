@@ -1,0 +1,5 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- 浅色：Material.Light 无 ActionBar（页面顶部有自己的品牌行，不需要系统标题栏） -->
+    <style name="AppTheme" parent="@android:style/Theme.Material.Light.NoActionBar" />
+</resources>
