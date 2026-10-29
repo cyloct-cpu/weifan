@@ -671,6 +671,46 @@ export async function translate(req, options = {}) {
 }
 
 /**
+ * 单家直测：不走降级链，只测指定的那一家。
+ *
+ * 为什么要单独一个入口：设置页里同时配了多家时，全局试译失败时看不出是哪家的锅。
+ * 这个函数把错误原样抛出（带百度那种错误码 + 官方解法），一眼定位。
+ *
+ * @param {string} providerId 服务商 id，或 `custom:<档案id>`
+ * @param {{text: string, source?: string|null, target: string, style?: string}} req
+ * @param {Keys} keys
+ * @returns {Promise<ProviderResult>}
+ */
+export async function testProvider(providerId, req, keys) {
+  const started = performance.now();
+
+  let provider;
+  if (providerId.startsWith('custom:')) {
+    const custom = customProviders(keys)[0];
+    if (!custom) throw new Error('自定义接口还没填 key 与接口地址');
+    provider = custom;
+  } else {
+    provider = listProviders(keys).find((p) => p.id === providerId);
+    if (!provider) throw new Error('这家还没配置密钥（必填项没填全）');
+  }
+
+  const result = await provider.run(provider.cred ?? {}, {
+    text: req.text,
+    source: req.source ?? null,
+    target: req.target,
+    style: req.style ?? 'casual'
+  });
+
+  return {
+    text: result.text,
+    provider: provider.label,
+    providerId: provider.id,
+    degradedFrom: null,
+    latency: Math.round(performance.now() - started)
+  };
+}
+
+/**
  * 构造大模型提示词。
  * @param {string} text
  * @param {string} target

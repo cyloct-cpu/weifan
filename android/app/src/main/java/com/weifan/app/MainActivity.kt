@@ -60,6 +60,7 @@ class MainActivity : Activity() {
     private lateinit var customBaseField: EditText
     private lateinit var customKeyField: EditText
     private lateinit var customModelField: EditText
+    private lateinit var customStatus: TextView
 
     /** "providerId:fieldId" → 输入框 */
     private val providerFields = mutableMapOf<String, EditText>()
@@ -232,6 +233,24 @@ class MainActivity : Activity() {
             addView(customBaseField)
             addView(customKeyField)
             addView(customModelField)
+
+            customStatus = TextView(this@MainActivity).apply {
+                textSize = 11.5f
+                setTextColor(p.text3)
+                setPadding(0, dp(8), 0, dp(4))
+                visibility = View.GONE
+            }
+            val customTest = Button(this@MainActivity).apply {
+                text = "测试这个接口"
+                textSize = 11.5f
+                setTextColor(p.text2)
+                background = roundBg(p.surface, 7, 1, p.line)
+                isAllCaps = false
+                setPadding(dp(12), dp(4), dp(12), dp(4))
+            }
+            customTest.setOnClickListener { runProviderTest("custom:custom", customStatus, customTest) }
+            addView(customTest)
+            addView(customStatus)
         })
 
         // 发件（暖）
@@ -305,6 +324,7 @@ class MainActivity : Activity() {
             ).apply { topMargin = dp(8) }
         }
 
+        // 第一行：名称占满剩余空间，测试按钮固定在右侧（名称长也不会把按钮顶出去）
         val head = LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL
             gravity = Gravity.CENTER_VERTICAL
@@ -314,12 +334,36 @@ class MainActivity : Activity() {
             textSize = 13.5f
             setTextColor(p.text)
             setTypeface(typeface, Typeface.BOLD)
+            layoutParams = LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f)
         })
-        head.addView(TextView(this).apply {
+
+        val status = TextView(this).apply {
+            textSize = 11.5f
+            setTextColor(p.text3)
+            setPadding(0, dp(8), 0, dp(4))
+            visibility = View.GONE
+        }
+        val test = Button(this).apply {
+            text = "测试"
+            textSize = 11f
+            setTextColor(p.text2)
+            background = roundBg(p.surface, 7, 1, p.line)
+            isAllCaps = false
+            setPadding(dp(12), dp(2), dp(12), dp(2))
+        }
+        test.setOnClickListener { runProviderTest(def.id, status, test) }
+        head.addView(test)
+
+        // 第二行：免费额度说明 + 已配置徽标
+        val meta = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER_VERTICAL
+            setPadding(0, dp(4), 0, 0)
+        }
+        meta.addView(TextView(this).apply {
             text = def.freeNote
             textSize = 11f
             setTextColor(p.text3)
-            setPadding(dp(8), 0, 0, 0)
         })
         val badge = TextView(this).apply {
             text = "已配置"
@@ -328,10 +372,15 @@ class MainActivity : Activity() {
             setPadding(dp(8), dp(2), dp(8), dp(2))
             background = roundBg(p.surface, 8, 1, p.line)
             visibility = View.GONE
+            layoutParams = LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT
+            ).apply { leftMargin = dp(8) }
         }
         providerBadges[def.id] = badge
-        head.addView(badge)
+        meta.addView(badge)
+
         card.addView(head)
+        card.addView(meta)
 
         for (field in def.fields) {
             val input = field(field.label + (if (field.optional) "（选填）" else ""), secret = field.secret)
@@ -339,6 +388,7 @@ class MainActivity : Activity() {
             providerFields["${def.id}:${field.id}"] = input
             card.addView(input)
         }
+        card.addView(status)
 
         return card
     }
@@ -652,6 +702,48 @@ class MainActivity : Activity() {
             ?: return false
         val component = ComponentName(this, WeiFanAccessibilityService::class.java).flattenToString()
         return enabled.split(':').any { it.equals(component, ignoreCase = true) }
+    }
+
+    // MARK: - 单测某一家
+
+    /** 测之前先把输入框里刚填的值存下来，否则测的是上次的旧密钥 */
+    private fun saveProviderFields(providerId: String) {
+        if (providerId.startsWith("custom:")) {
+            prefs.customName = customNameField.text.toString().trim()
+            prefs.customBaseUrl = customBaseField.text.toString().trim().ifBlank { "https://api.deepseek.com/v1" }
+            prefs.customKey = customKeyField.text.toString().trim()
+            prefs.customModel = customModelField.text.toString().trim().ifBlank { "deepseek-chat" }
+            return
+        }
+        for ((key, input) in providerFields) {
+            val (pid, fid) = key.split(":")
+            if (pid != providerId) continue
+            prefs.setCredential(pid, fid, input.text.toString().trim())
+        }
+    }
+
+    /** 只测这一家：不走降级链，出错就是这一家的错 */
+    private fun runProviderTest(providerId: String, status: TextView, button: Button) {
+        button.isEnabled = false
+        status.visibility = View.VISIBLE
+        status.setTextColor(p.text3)
+        status.text = "测试中…"
+
+        Thread {
+            val outcome = try {
+                saveProviderFields(providerId)
+                val result = Engine.testProvider(providerId, prefs)
+                "✓ ${result.text}（${result.provider} · ${result.latencyMs}ms）"
+            } catch (t: Throwable) {
+                "✗ ${t.message ?: "未知错误"}"
+            }
+            val ok = outcome.startsWith("✓")
+            runOnUiThread {
+                status.text = outcome
+                status.setTextColor(if (ok) p.teal else p.err)
+                button.isEnabled = true
+            }
+        }.start()
     }
 
     // MARK: - 试译

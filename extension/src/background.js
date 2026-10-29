@@ -13,7 +13,7 @@
 
 import { translateForSending, translateIncoming, DEFAULT_SETTINGS } from './core/core.js';
 import { LANGUAGES } from './core/language.js';
-import { PROVIDERS, listProviders, translate } from './core/providers.js';
+import { PROVIDERS, listProviders, translate, testProvider } from './core/providers.js';
 import { EXT } from './shared/ext.js';
 
 const STORAGE_KEY = 'weifan';
@@ -219,6 +219,22 @@ async function handle(message) {
         selection: message.selection,
         mode: message.mode
       });
+    }
+
+    case 'testProvider': {
+      // 设置页里「测试这一家」：只测指定服务商，不降级，错误原样抛出
+      const providerId = String(message.providerId ?? '');
+      if (!providerId) throw new Error('缺少 providerId');
+      return testProvider(
+        providerId,
+        {
+          text: String(message.text ?? 'Hello, when can you ship the order?'),
+          source: null,
+          target: String(message.target ?? 'zh-Hans'),
+          style: 'casual'
+        },
+        store.keys
+      );
     }
 
     case 'translateBatch': {

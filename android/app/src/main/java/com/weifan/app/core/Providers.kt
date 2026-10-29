@@ -267,6 +267,31 @@ object Providers {
         throw IOException("翻译失败（已尝试 ${candidates.size} 个服务）→ ${failures.joinToString("；")}")
     }
 
+    /**
+     * 单家直测：不走降级链，只测指定的那一家，出错就是这一家的错。
+     */
+    fun testProvider(
+        providerId: String,
+        text: String,
+        target: String,
+        style: String,
+        creds: Map<String, Map<String, String>>,
+        custom: CustomProfile? = null
+    ): Result {
+        val candidate = if (providerId.startsWith("custom:")) {
+            val p = custom
+            if (p == null || !p.isComplete) throw IOException("自定义接口还没填 key 与接口地址")
+            Candidate("custom:${p.id}", p.displayName, "llm", emptyMap(), p)
+        } else {
+            val def = DEFS.firstOrNull { it.id == providerId } ?: throw IOException("未知服务商 $providerId")
+            val values = creds[def.id] ?: throw IOException("这家还没配置密钥（必填项没填全）")
+            if (!isConfigured(def, values)) throw IOException("这家还没配置密钥（必填项没填全）")
+            Candidate(def.id, def.label, def.kind, values)
+        }
+        val result = runProvider(candidate, text, null, target, style)
+        return result.copy(provider = candidate.label, providerId = candidate.id)
+    }
+
     /** 排出候选顺序（降级链） */
     fun planCandidates(
         target: String,

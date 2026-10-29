@@ -409,6 +409,32 @@ input[type="range"]::-moz-range-thumb {
 }
 .provider-remove:hover { color: #e5484d; border-color: color-mix(in srgb, #e5484d 40%, var(--line)); }
 
+/* 单测按钮：只测这一家，不走降级链 */
+.provider-test {
+  margin-left: auto;
+  background: var(--surface);
+  border: 1px solid var(--line-strong);
+  border-radius: 7px;
+  padding: 3px 11px;
+  font: 11px/1.3 var(--sans);
+  color: var(--text-2);
+  cursor: pointer;
+  transition: color 0.15s, border-color 0.15s;
+}
+.provider-test:hover:not(:disabled) { color: var(--text); border-color: var(--text-3); }
+.provider-test:disabled { opacity: 0.5; cursor: default; }
+.provider-remove + .provider-test { margin-left: 6px; }
+
+.provider-status {
+  margin: 8px 0 4px;
+  font-size: 11.5px;
+  line-height: 1.55;
+  color: var(--text-3);
+  word-break: break-word;
+}
+.provider-status.is-ok { color: var(--teal-ink); }
+.provider-status.is-err { color: #e5484d; }
+
 .provider-fields {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(190px, 1fr));

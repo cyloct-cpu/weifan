@@ -408,6 +408,20 @@ async function runMenu(action) {
     window.close();
     return;
   }
+  if (action === 'test') {
+    const selection = config?.settings?.selection ?? 'auto';
+    if (selection === 'auto') {
+      toast('下拉里选一家具体的再测');
+      return;
+    }
+    try {
+      const result = await sendToBackground({ type: 'testProvider', providerId: selection });
+      toast(`${result.provider} 正常：${result.text.slice(0, 26)}（${result.latency}ms）`);
+    } catch (error) {
+      toast(error.message || '测试失败');
+    }
+    return;
+  }
   if (action === 'usage') {
     try {
       const data = await sendToBackground({ type: 'usage' });

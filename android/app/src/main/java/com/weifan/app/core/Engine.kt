@@ -31,6 +31,22 @@ object Engine {
         val latencyMs: Long
     )
 
+    data class TestOutcome(val text: String, val provider: String, val latencyMs: Long)
+
+    /** 设置页里「测试这一家」 */
+    fun testProvider(providerId: String, prefs: Prefs): TestOutcome {
+        val started = System.currentTimeMillis()
+        val result = Providers.testProvider(
+            providerId = providerId,
+            text = "Hello, when can you ship the order?",
+            target = "zh-Hans",
+            style = "casual",
+            creds = prefs.allCredentials(),
+            custom = prefs.customProfile()
+        )
+        return TestOutcome(result.text, result.provider, System.currentTimeMillis() - started)
+    }
+
     fun translateForSending(
         text: String,
         prefs: Prefs,

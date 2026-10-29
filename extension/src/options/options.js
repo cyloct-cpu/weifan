@@ -155,9 +155,84 @@ function renderProviders() {
       fields.appendChild(wrap);
     }
 
-    card.append(head, fields);
+    const status = document.createElement('p');
+    status.className = 'provider-status';
+    status.hidden = true;
+
+    const test = document.createElement('button');
+    test.type = 'button';
+    test.className = 'provider-test';
+    test.textContent = '测试';
+    test.addEventListener('click', () => runProviderTest(provider.id, status, test));
+    head.appendChild(test);
+
+    card.append(head, fields, status);
     host.appendChild(card);
   }
+}
+
+/**
+ * 只测某一家：不走降级链，出错就是这一家的错。
+ * 测之前先把输入框里**刚填的**值存下来——不然测的是上次的旧密钥。
+ * @param {string} providerId
+ * @param {HTMLElement} statusEl
+ * @param {HTMLButtonElement} button
+ */
+async function runProviderTest(providerId, statusEl, button) {
+  button.disabled = true;
+  statusEl.hidden = false;
+  statusEl.className = 'provider-status';
+  statusEl.textContent = '测试中…';
+
+  try {
+    await saveProviderCredential(providerId);
+    const result = await sendToBackground({ type: 'testProvider', providerId });
+    statusEl.classList.add('is-ok');
+    statusEl.textContent = `✓ ${result.text}（${result.provider} · ${result.latency}ms）`;
+  } catch (error) {
+    statusEl.classList.add('is-err');
+    statusEl.textContent = `✗ ${error.message}`;
+  } finally {
+    button.disabled = false;
+  }
+}
+
+/**
+ * 把某个服务商当前输入框里的值写进存储（不碰其它服务商）。
+ * @param {string} providerId
+ */
+async function saveProviderCredential(providerId) {
+  if (providerId.startsWith('custom:')) {
+    const item = customs.find((c) => c.id === providerId.slice(7));
+    if (!item) return;
+    item.key = item.key?.trim() ?? '';
+    item.baseURL = item.baseURL?.trim() ?? '';
+    item.model = item.model?.trim() || 'deepseek-chat';
+    item.name = item.name?.trim() || '';
+    const clean = customs
+      .filter((c) => c.key && c.baseURL)
+      .map((c) => ({ id: c.id, name: c.name || c.model || '自定义接口', key: c.key, baseURL: c.baseURL, model: c.model || 'deepseek-chat' }));
+    store.keys = { ...store.keys, customs: clean };
+    await storage.set({ [STORAGE_KEY]: store });
+    return;
+  }
+
+  /** @type {Record<string, string>} */
+  const values = {};
+  for (const input of document.querySelectorAll(`input[data-provider="${providerId}"]`)) {
+    if (input.value.trim()) values[input.dataset.field] = input.value.trim();
+  }
+
+  const def = PROVIDERS.find((p) => p.id === providerId);
+  const required = (def?.fields ?? []).filter((f) => f.id !== 'endpoint' && !f.optional);
+  const keys = { ...store.keys };
+  if (required.length && required.every((f) => values[f.id])) {
+    keys[providerId] = values;
+  } else {
+    delete keys[providerId];
+  }
+  store.keys = keys;
+  await storage.set({ [STORAGE_KEY]: store });
 }
 
 /**
@@ -210,7 +285,17 @@ function renderCustoms() {
       renderCustoms();
     });
 
-    head.append(name, pill, remove);
+    const status = document.createElement('p');
+    status.className = 'provider-status';
+    status.hidden = true;
+
+    const test = document.createElement('button');
+    test.type = 'button';
+    test.className = 'provider-test';
+    test.textContent = '测试';
+    test.addEventListener('click', () => runProviderTest(`custom:${item.id}`, status, test));
+
+    head.append(name, pill, test, remove);
 
     const fields = document.createElement('div');
     fields.className = 'provider-fields';
@@ -245,7 +330,7 @@ function renderCustoms() {
       fields.appendChild(wrap);
     }
 
-    card.append(head, fields);
+    card.append(head, fields, status);
     host.appendChild(card);
   });
 
