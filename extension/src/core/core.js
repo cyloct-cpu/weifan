@@ -45,7 +45,9 @@ export const DEFAULT_SETTINGS = {
   dailyCharLimit: 0,
   compact: false,
   hoverTranslate: false,
-  selectionTranslate: true
+  selectionTranslate: true,
+  themeMode: 'auto',
+  themeSchedule: { enabled: false, start: '22:00', end: '07:00' }
 };
 
 /**

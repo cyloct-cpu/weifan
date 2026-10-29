@@ -33,9 +33,8 @@ import com.weifan.app.core.Lang
  *   - 第二个「⇄」在两个目标之间互换（两份译文对调）；
  *   - 填了第二个目标语言，就**同时输出两种语言的译文**。
  */
-class TranslateActivity : Activity() {
+class TranslateActivity : BaseActivity() {
 
-    private lateinit var prefs: Prefs
     private lateinit var input: EditText
     private lateinit var output1: TextView
     private lateinit var output2: TextView
@@ -52,7 +51,7 @@ class TranslateActivity : Activity() {
     private var lastTranslation = ""
     private var lastTranslation2 = ""
 
-    private val p: Palette get() = Brand.palette(this)
+    private val p: Palette get() = palette
     private val ctx: Context get() = this
 
     override fun onCreate(savedInstanceState: Bundle?) {

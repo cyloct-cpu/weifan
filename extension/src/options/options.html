@@ -6,6 +6,13 @@
   <title>微翻 · 设置</title>
   <link rel="icon" href="../icons/favicon.ico" sizes="any" />
   <link rel="icon" href="../icons/favicon-32.png" type="image/png" />
+  <!-- 首屏同步上色：模块脚本是延迟执行的，等它跑到页面已经画过一次了，会闪白 -->
+  <script>
+    try {
+      var t = localStorage.getItem('weifan.theme');
+      if (t === 'light' || t === 'dark') document.documentElement.dataset.theme = t;
+    } catch (e) {}
+  </script>
   <link rel="stylesheet" href="options.css" />
 </head>
 <body>
@@ -141,6 +148,48 @@
         </div>
         <input type="range" id="dailyCharLimit" min="0" max="20000" step="1000" />
         <p class="hint">0 = 不限制。设了之后达到上限当天就不再用这家，自动换下一家。</p>
+      </div>
+    </section>
+
+    <!-- ── 外观（双向通用） ─────────────────────────── -->
+    <section class="group" data-dir="mix">
+      <div class="group-head">
+        <i class="dot"></i>
+        <h2>外观 · 昼夜切换</h2>
+      </div>
+      <p class="group-note">昼是浅色，夜是暗色调。选「跟随系统」会跟着手机 / 浏览器的深浅色自动切；也可以自己定夜间时段。</p>
+
+      <div class="field">
+        <div class="field-head"><label>主题</label></div>
+        <div class="segmented" role="radiogroup" aria-label="主题模式">
+          <label><input type="radio" name="themeMode" value="light" /><span>昼</span></label>
+          <label><input type="radio" name="themeMode" value="dark" /><span>夜</span></label>
+          <label><input type="radio" name="themeMode" value="auto" /><span>跟随系统</span></label>
+        </div>
+        <p class="hint" id="themeNote">跟随系统：跟手机 / 浏览器的深浅色走。</p>
+      </div>
+
+      <label class="row-switch" id="scheduleRow">
+        <span class="row-switch-text">
+          <strong>自定义夜间时段</strong>
+          <small>到这个点自动切夜间，到第二个点切回来。不启用就跟系统走。</small>
+        </span>
+        <span class="switch"><input type="checkbox" id="scheduleEnabled" /><span class="track"></span></span>
+      </label>
+
+      <div class="field" id="scheduleTimes" hidden>
+        <div class="field-head"><label>夜间时段</label></div>
+        <div class="time-row">
+          <label class="time-cell">
+            <span>开始</span>
+            <input type="time" id="scheduleStart" value="22:00" />
+          </label>
+          <label class="time-cell">
+            <span>结束</span>
+            <input type="time" id="scheduleEnd" value="07:00" />
+          </label>
+        </div>
+        <p class="hint" id="scheduleNote">22:00 – 07:00 为夜间，跨过午夜也算。</p>
       </div>
     </section>
 

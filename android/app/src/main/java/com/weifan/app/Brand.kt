@@ -3,10 +3,14 @@ package com.weifan.app
 import android.content.Context
 import android.content.res.Configuration
 import android.graphics.Color
+import com.weifan.app.core.Theme
 
 /**
- * 品牌色板。浅色为默认，深色跟随系统（uiMode）。
+ * 品牌色板。浅色为默认，深色是夜间那一套。
  * 界面里唯一的彩色就是「方向」：暖 = 发件，冷 = 收件，混 = 双向通用。
+ *
+ * 深浅由 Theme.isNight() 判定（不是直接读系统 uiMode）——
+ * 用户可以手动定昼/夜，也可以设自定义夜间时段，所以色板得由上层决定传哪一套。
  */
 class Palette(
     val bg: Int,
@@ -29,41 +33,62 @@ class Palette(
 }
 
 object Brand {
-    fun palette(context: Context): Palette {
-        val night = (context.resources.configuration.uiMode and Configuration.UI_MODE_NIGHT_MASK) ==
+
+    /** 系统当前是不是暗色 */
+    fun systemDark(context: Context): Boolean =
+        (context.resources.configuration.uiMode and Configuration.UI_MODE_NIGHT_MASK) ==
             Configuration.UI_MODE_NIGHT_YES
-        return if (night) {
-            Palette(
-                bg = Color.parseColor("#0F1720"),
-                surface = Color.parseColor("#161C24"),
-                surface2 = Color.parseColor("#1D242E"),
-                line = Color.parseColor("#2A333F"),
-                text = Color.parseColor("#E6EAF0"),
-                text2 = Color.parseColor("#A9B4C2"),
-                text3 = Color.parseColor("#8B96A6"),
-                warm = Color.parseColor("#FD6C4E"),
-                cool = Color.parseColor("#2FB6FF"),
-                teal = Color.parseColor("#00E9DD"),
-                ink = Color.parseColor("#1A0E0A"),
-                warn = Color.parseColor("#F1A45C"),
-                err = Color.parseColor("#F15C6D")
-            )
-        } else {
-            Palette(
-                bg = Color.parseColor("#F4F6F8"),
-                surface = Color.WHITE,
-                surface2 = Color.parseColor("#F5F7F9"),
-                line = Color.parseColor("#E7EAEE"),
-                text = Color.parseColor("#161B22"),
-                text2 = Color.parseColor("#55606E"),
-                text3 = Color.parseColor("#8B97A5"),
-                warm = Color.parseColor("#FD6C4E"),
-                cool = Color.parseColor("#2FB6FF"),
-                teal = Color.parseColor("#00E9DD"),
-                ink = Color.parseColor("#1A0E0A"),
-                warn = Color.parseColor("#B06A1F"),
-                err = Color.parseColor("#D63C41")
-            )
-        }
-    }
+
+    /** 浅色（昼） */
+    val LIGHT = Palette(
+        bg = Color.parseColor("#F4F6F8"),
+        surface = Color.WHITE,
+        surface2 = Color.parseColor("#F5F7F9"),
+        line = Color.parseColor("#E7EAEE"),
+        text = Color.parseColor("#161B22"),
+        text2 = Color.parseColor("#55606E"),
+        text3 = Color.parseColor("#8B97A5"),
+        warm = Color.parseColor("#FD6C4E"),
+        cool = Color.parseColor("#2FB6FF"),
+        teal = Color.parseColor("#00E9DD"),
+        ink = Color.parseColor("#1A0E0A"),
+        warn = Color.parseColor("#B06A1F"),
+        err = Color.parseColor("#D63C41")
+    )
+
+    /** 深色（夜） */
+    val DARK = Palette(
+        bg = Color.parseColor("#0F1720"),
+        surface = Color.parseColor("#161C24"),
+        surface2 = Color.parseColor("#1D242E"),
+        line = Color.parseColor("#2A333F"),
+        text = Color.parseColor("#E6EAF0"),
+        text2 = Color.parseColor("#A9B4C2"),
+        text3 = Color.parseColor("#8B96A6"),
+        warm = Color.parseColor("#FD6C4E"),
+        cool = Color.parseColor("#2FB6FF"),
+        teal = Color.parseColor("#00E9DD"),
+        ink = Color.parseColor("#1A0E0A"),
+        warn = Color.parseColor("#F1A45C"),
+        err = Color.parseColor("#F15C6D")
+    )
+
+    /** 按 night 标志取色板 */
+    fun palette(night: Boolean): Palette = if (night) DARK else LIGHT
+
+    /** 旧接口：直接跟系统（保留给还没接主题设置的地方） */
+    fun palette(context: Context): Palette = palette(systemDark(context))
+
+    /**
+     * 按用户设置算出当前是不是夜间。
+     * 与扩展侧 src/shared/theme.js 同算法。
+     */
+    fun isNight(context: Context, prefs: Prefs): Boolean =
+        Theme.isNight(
+            mode = prefs.themeMode,
+            scheduleEnabled = prefs.themeScheduleEnabled,
+            scheduleStart = prefs.themeScheduleStart,
+            scheduleEnd = prefs.themeScheduleEnd,
+            systemDark = systemDark(context)
+        )
 }

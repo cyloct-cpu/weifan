@@ -12,6 +12,7 @@
 import { EXT, sendToBackground } from '../shared/ext.js';
 import { LANGUAGES, SEND_TARGETS } from '../core/language.js';
 import { unzipSync, zipSync, strToU8, strFromU8 } from '../vendor/fflate.js';
+import { applyFromSettings, watchTheme } from '../shared/theme.js';
 
 const $ = (id) => document.getElementById(id);
 
@@ -26,6 +27,10 @@ init();
 
 async function init() {
   config = await sendToBackground({ type: 'getConfig' });
+
+  // 主题跟随全局设置
+  applyFromSettings(config.settings ?? {});
+  watchTheme(config.settings ?? {});
 
   const target = $('targetLang');
   for (const code of SEND_TARGETS) {

@@ -154,6 +154,28 @@ class Prefs(context: Context) {
         get() = sp.getString("glossary", "") ?: ""
         set(value) = sp.edit().putString("glossary", value).apply()
 
+    // MARK: - 外观（昼夜切换）
+
+    /** 主题模式：light = 昼，dark = 夜，auto = 跟随系统 */
+    var themeMode: String
+        get() = sp.getString("theme_mode", "auto") ?: "auto"
+        set(value) = sp.edit().putString("theme_mode", value).apply()
+
+    /** 是否启用自定义夜间时段（只在「跟随系统」下有意义） */
+    var themeScheduleEnabled: Boolean
+        get() = sp.getBoolean("theme_sched_enabled", false)
+        set(value) = sp.edit().putBoolean("theme_sched_enabled", value).apply()
+
+    /** 夜间开始时刻，如 "22:00" */
+    var themeScheduleStart: String
+        get() = sp.getString("theme_sched_start", "22:00") ?: "22:00"
+        set(value) = sp.edit().putString("theme_sched_start", value).apply()
+
+    /** 夜间结束时刻，如 "07:00" */
+    var themeScheduleEnd: String
+        get() = sp.getString("theme_sched_end", "07:00") ?: "07:00"
+        set(value) = sp.edit().putString("theme_sched_end", value).apply()
+
     fun hasAnyKey(): Boolean =
         configuredProviders().isNotEmpty() || customProfile().isComplete
 

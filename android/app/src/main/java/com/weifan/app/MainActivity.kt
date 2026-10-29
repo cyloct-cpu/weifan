@@ -30,6 +30,7 @@ import android.widget.Toast
 import com.weifan.app.core.Engine
 import com.weifan.app.core.Lang
 import com.weifan.app.core.Providers
+import com.weifan.app.core.Theme
 import com.weifan.app.core.Routing
 import com.weifan.app.service.WeiFanAccessibilityService
 
@@ -43,9 +44,8 @@ import com.weifan.app.service.WeiFanAccessibilityService
  *
  * 服务商表单由 Providers.DEFS 自动生成 —— 加一家服务商不用改这个文件。
  */
-class MainActivity : Activity() {
+class MainActivity : BaseActivity() {
 
-    private lateinit var prefs: Prefs
 
     private lateinit var statusText: TextView
     private lateinit var triggerField: EditText
@@ -58,12 +58,20 @@ class MainActivity : Activity() {
     private lateinit var providerGridView: GridLayout
     private lateinit var modeGroup: RadioGroup
     private lateinit var resultText: TextView
+    private lateinit var themeGroup: RadioGroup
+    private lateinit var themeNote: TextView
+    private lateinit var scheduleSwitch: Switch
+    private lateinit var scheduleTimes: LinearLayout
+    private lateinit var scheduleStart: EditText
+    private lateinit var scheduleEnd: EditText
+    private lateinit var scheduleNote: TextView
+    private lateinit var scrollView: ScrollView
 
 
     /** 服务商下拉里的 id，顺序与 [serviceSpinner] 一致 */
     private var serviceIds = listOf<String>()
 
-    private val p: Palette get() = Brand.palette(this)
+    private val p: Palette get() = palette
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -71,12 +79,25 @@ class MainActivity : Activity() {
         window.statusBarColor = p.bg
         setContentView(buildUI())
         loadValues()
+
+        // 恢复上次的滚动位置（主题切换重建后不至于弹回顶部）
+        val saved = savedInstanceState?.getInt("scrollY") ?: 0
+        if (saved > 0) scrollView.post { scrollView.scrollTo(0, saved) }
     }
 
     override fun onResume() {
         super.onResume()
         refreshStatus()
     }
+
+    /** 主题切换会重建界面，滚动位置要保住 */
+    override fun onSaveInstanceState(outState: Bundle) {
+        super.onSaveInstanceState(outState)
+        if (::scrollView.isInitialized) {
+            outState.putInt("scrollY", scrollView.scrollY)
+        }
+    }
+
 
     // MARK: - UI
 
@@ -195,6 +216,50 @@ class MainActivity : Activity() {
             addView(limitField)
         })
 
+        // 外观 · 昼夜切换
+        root.addView(groupCard(
+            "外观 · 昼夜切换",
+            "昼是浅色，夜是暗色调。跟随系统会跟着手机的深浅色走，也可以自己定夜间时段。",
+            p.mixGrad
+        ) {
+            addView(label("主题"))
+            themeGroup = RadioGroup(this@MainActivity).apply { orientation = RadioGroup.HORIZONTAL }
+            themeGroup.addView(radioButton("昼", "light"))
+            themeGroup.addView(radioButton("夜", "dark"))
+            themeGroup.addView(radioButton("跟随系统", "auto"))
+            addView(themeGroup)
+
+            themeNote = TextView(this@MainActivity).apply {
+                textSize = 11.5f
+                setTextColor(p.text3)
+                setPadding(0, dp(6), 0, dp(2))
+            }
+            addView(themeNote)
+
+            // switchRow 已经把整行加进父容器了，这里不要再 addView（会崩）
+            scheduleSwitch = switchRow("自定义夜间时段", "到这个点自动切夜间，到第二个点切回来。")
+
+            addView(label("夜间时段"))
+            scheduleTimes = LinearLayout(this@MainActivity).apply {
+                orientation = LinearLayout.HORIZONTAL
+                gravity = Gravity.CENTER_VERTICAL
+            }
+            val (startWrap, startInput) = timeField("开始", "22:00")
+            val (endWrap, endInput) = timeField("结束", "07:00")
+            scheduleStart = startInput
+            scheduleEnd = endInput
+            scheduleTimes.addView(startWrap, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
+            scheduleTimes.addView(endWrap, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
+            addView(scheduleTimes)
+
+            scheduleNote = TextView(this@MainActivity).apply {
+                textSize = 11.5f
+                setTextColor(p.text3)
+                setPadding(0, dp(6), 0, dp(2))
+            }
+            addView(scheduleNote)
+        })
+
         // 术语（双向通用）
         root.addView(groupCard("术语 · 不要乱译的词", "一行一个，命中后原样保留。", p.mixGrad) {
             glossaryField = field("例如：轻舟 Pro", secret = false).apply {
@@ -220,11 +285,11 @@ class MainActivity : Activity() {
             addView(resultText)
         })
 
-        val scroll = ScrollView(this).apply {
+        scrollView = ScrollView(this).apply {
             isFillViewport = true
             addView(root)
         }
-        return scroll
+        return scrollView
     }
 
     /* ── 服务商胶囊（两列排布，点开弹配置框） ─────────────── */
@@ -739,6 +804,39 @@ class MainActivity : Activity() {
         return rb
     }
 
+    /**
+     * 时间输入框（24 小时制）：小标签 + 输入框，横向两个时各自占一半宽。
+     * 返回「容器 + 输入框」——容器才能塞进横向布局，输入框要单独拿来做读写。
+     */
+    private fun timeField(caption: String, initial: String): Pair<LinearLayout, EditText> {
+        val input = EditText(this).apply {
+            hint = initial
+            textSize = 13f
+            setTextColor(p.text)
+            setHintTextColor(p.text3)
+            background = roundBg(p.surface2, 10, 1, p.line)
+            setPadding(dp(11), dp(8), dp(11), dp(8))
+            inputType = InputType.TYPE_CLASS_DATETIME
+            setSingleLine(true)
+        }
+        val wrap = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding(dp(2), dp(2), dp(8), dp(2))
+        }
+        wrap.addView(TextView(this).apply {
+            text = caption
+            textSize = 11.5f
+            setTextColor(p.text3)
+            setPadding(dp(2), 0, 0, dp(4))
+        })
+        // 注意：竖向 LinearLayout 里 weight 分配的是高度，width=0 会让宽度真的变成 0
+        wrap.addView(input, LinearLayout.LayoutParams(
+            LinearLayout.LayoutParams.MATCH_PARENT,
+            ViewGroup.LayoutParams.WRAP_CONTENT
+        ))
+        return wrap to input
+    }
+
     private fun spinner(items: List<String>): Spinner {
         val spinner = Spinner(this)
         spinner.adapter = ArrayAdapter(this, android.R.layout.simple_spinner_dropdown_item, items)
@@ -823,6 +921,70 @@ class MainActivity : Activity() {
             rebuildProviderGrid()
         }
         refreshServiceSpinner()
+
+        // 外观：主题
+        for (i in 0 until themeGroup.childCount) {
+            val child = themeGroup.getChildAt(i) as RadioButton
+            child.isChecked = child.tag == prefs.themeMode
+        }
+        scheduleSwitch.isChecked = prefs.themeScheduleEnabled
+        scheduleStart.setText(prefs.themeScheduleStart)
+        scheduleEnd.setText(prefs.themeScheduleEnd)
+        updateThemeUi()
+
+        // 主题改了就立刻生效（不用等按保存）
+        themeGroup.setOnCheckedChangeListener { _, _ ->
+            updateThemeUi()
+            saveTheme()
+        }
+        scheduleSwitch.setOnCheckedChangeListener { _, _ ->
+            updateThemeUi()
+            saveTheme()
+        }
+        for (field in listOf(scheduleStart, scheduleEnd)) {
+            field.setOnFocusChangeListener { _, hasFocus ->
+                if (!hasFocus) {
+                    updateThemeUi()
+                    saveTheme()
+                }
+            }
+        }
+    }
+
+    /** 当前主题模式下各控件的可用状态与说明 */
+    private fun updateThemeUi() {
+        val mode = currentThemeMode()
+        themeNote.text = when (mode) {
+            "light" -> "昼：始终用浅色调。"
+            "dark" -> "夜：始终用暗色调。"
+            else -> "跟随系统：跟手机的深浅色走。"
+        }
+
+        // 自定义时段只在「跟随系统」下有意义
+        val auto = mode == "auto"
+        scheduleSwitch.isEnabled = auto
+        scheduleTimes.visibility = if (auto && scheduleSwitch.isChecked) View.VISIBLE else View.GONE
+        scheduleNote.text = Theme.scheduleNote(
+            scheduleStart.text.toString().trim(),
+            scheduleEnd.text.toString().trim()
+        )
+    }
+
+    private fun currentThemeMode(): String {
+        for (i in 0 until themeGroup.childCount) {
+            val child = themeGroup.getChildAt(i) as RadioButton
+            if (child.isChecked) return child.tag as String
+        }
+        return "auto"
+    }
+
+    /** 只存主题（改主题不用点保存） */
+    private fun saveTheme() {
+        prefs.themeMode = currentThemeMode()
+        prefs.themeScheduleEnabled = scheduleSwitch.isChecked
+        prefs.themeScheduleStart = scheduleStart.text.toString().trim().ifBlank { "22:00" }
+        prefs.themeScheduleEnd = scheduleEnd.text.toString().trim().ifBlank { "07:00" }
+        applyThemeChange()
     }
 
     /** 服务商下拉：按当前模式列出已配置的服务商，第一项永远是「自动」 */

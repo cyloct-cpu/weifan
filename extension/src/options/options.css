@@ -264,7 +264,7 @@ code {
   transition: background 0.2s;
   pointer-events: none;
 }
-@media (prefers-color-scheme: dark) { .switch .track { background: #2e3743; } }
+:root[data-theme='dark'] .switch .track { background: #2e3743; }
 .switch .track::after {
   content: "";
   position: absolute;
@@ -308,9 +308,7 @@ code {
   font-weight: 600;
   box-shadow: var(--shadow-pop);
 }
-@media (prefers-color-scheme: dark) {
-  .segmented input:checked + span { background: #2c3846; }
-}
+:root[data-theme='dark'] .segmented input:checked + span { background: #2c3846; }
 .segmented input:focus-visible + span { box-shadow: 0 0 0 3px color-mix(in srgb, var(--dir) 30%, transparent); }
 
 /* ── 滑杆 ───────────────────────────────────────── */
@@ -854,3 +852,51 @@ kbd {
 
 /* 空状态说明占满整行 */
 .grid-full { grid-column: 1 / -1; }
+
+/* ── 外观：夜间时段 ─────────────────────────────── */
+
+.time-row {
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.time-cell {
+  flex: 1;
+  min-width: 140px;
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+}
+
+.time-cell > span {
+  font-size: 11.5px;
+  font-weight: 600;
+  color: var(--text-3);
+}
+
+.time-cell input[type='time'] {
+  width: 100%;
+  background: var(--surface-2);
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  color: var(--text);
+  font: 13px/1 var(--mono);
+  padding: 9px 11px;
+  outline: none;
+  transition: border-color 0.15s, box-shadow 0.15s;
+}
+
+.time-cell input[type='time']:focus {
+  border-color: var(--warm);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--warm) 16%, transparent);
+}
+
+#scheduleRow {
+  opacity: 1;
+  transition: opacity 0.16s;
+}
+
+/* 不是「跟随系统」时，自定义时段就没意义 —— 灰掉并说明 */
+#scheduleRow.is-muted { opacity: 0.45; }
+#scheduleRow.is-muted .switch { pointer-events: none; }

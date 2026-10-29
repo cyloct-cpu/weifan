@@ -3,6 +3,13 @@
 <head>
   <meta charset="utf-8" />
   <title>微翻</title>
+  <!-- 首屏同步上色：模块脚本是延迟执行的，等它跑到页面已经画过一次了，会闪白 -->
+  <script>
+    try {
+      var t = localStorage.getItem('weifan.theme');
+      if (t === 'light' || t === 'dark') document.documentElement.dataset.theme = t;
+    } catch (e) {}
+  </script>
   <link rel="stylesheet" href="../shared/theme.css" />
   <link rel="stylesheet" href="popup.css" />
 </head>
@@ -25,10 +32,15 @@
         <span id="statusLine">正在连接…</span>
       </div>
     </div>
-    <label class="compact-toggle" title="简洁模式：只留语言和翻译按钮">
-      <span>简洁</span>
-      <span class="switch"><input type="checkbox" id="compact" /><span class="track"></span></span>
-    </label>
+    <div class="hd-tools">
+      <button type="button" class="theme-btn" id="themeBtn" title="昼夜切换" aria-label="昼夜切换">
+        <span class="theme-icon" id="themeIcon"></span>
+      </button>
+      <label class="compact-toggle" title="简洁模式：只留语言和翻译按钮">
+        <span>简洁</span>
+        <span class="switch"><input type="checkbox" id="compact" /><span class="track"></span></span>
+      </label>
+    </div>
   </header>
 
   <!-- 语言 -->

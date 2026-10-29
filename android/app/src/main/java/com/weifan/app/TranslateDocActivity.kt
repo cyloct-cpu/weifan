@@ -32,9 +32,8 @@ import com.weifan.app.core.Lang
  * ⚠️ PDF 暂不支持：Android 上抽 PDF 文字得把 pdf.js 塞进 WebView，还要处理 worker 的
  * 加载域名问题，不如留到后面做（扩展侧已支持 PDF）。
  */
-class TranslateDocActivity : Activity() {
+class TranslateDocActivity : BaseActivity() {
 
-    private lateinit var prefs: Prefs
     private lateinit var fileText: TextView
     private lateinit var targetSpinner: Spinner
     private lateinit var progressBar: ProgressBar
@@ -51,7 +50,7 @@ class TranslateDocActivity : Activity() {
     /** docx 的译文包，写回时用 */
     private var translatedDocx: ByteArray? = null
 
-    private val p: Palette get() = Brand.palette(this)
+    private val p: Palette get() = palette
     private val ctx: Context get() = this
 
     override fun onCreate(savedInstanceState: Bundle?) {

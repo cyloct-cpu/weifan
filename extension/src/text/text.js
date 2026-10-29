@@ -10,6 +10,7 @@
 
 import { EXT, sendToBackground } from '../shared/ext.js';
 import { LANGUAGES, detectLanguage } from '../core/language.js';
+import { applyFromSettings, watchTheme } from '../shared/theme.js';
 
 const $ = (id) => document.getElementById(id);
 
@@ -64,6 +65,11 @@ async function init() {
   }
 
   const config = await sendToBackground({ type: 'getConfig' });
+
+  // 主题跟随全局设置
+  applyFromSettings(config.settings ?? {});
+  watchTheme(config.settings ?? {});
+
   $('style').value = config.settings?.style ?? 'business';
 
   const service = $('service');

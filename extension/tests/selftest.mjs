@@ -9,6 +9,7 @@ import { detectLanguage } from '../src/core/language.js';
 import { protect, restore } from '../src/core/glossary.js';
 import { route, assessRisk, signals } from '../src/core/routing.js';
 import { resolveTarget, DEFAULT_SETTINGS } from '../src/core/core.js';
+import { effectiveTheme, toMinutes, DEFAULT_SCHEDULE } from '../src/shared/theme.js';
 import { md5 } from '../src/core/signing.js';
 import { supportsTarget, targetCode, fromPlatformCode } from '../src/core/langs.js';
 import { planCandidates, listProviders, credentialOf, AUTO_ORDER, PROVIDERS } from '../src/core/providers.js';
@@ -226,6 +227,44 @@ check(PROVIDERS.filter((p) => p.endpointEditable).map((p) => p.id).sort().join('
 check(PROVIDERS.find((p) => p.id === 'volc').endpoint === 'https://translate.volcengineapi.com', '火山文本翻译用官方域名');
 check(PROVIDERS.find((p) => p.id === 'volcLLM').endpoint.includes('matx_translate'), '火山大模型翻译端点正确');
 check(PROVIDERS.find((p) => p.id === 'baidu').kind === 'llm', '百度走大模型端点，标记为 llm 档');
+
+// ── 主题：昼 / 夜 / 跟随系统 + 自定义时段 ─────────────
+
+check(toMinutes('22:00') === 1320, '时段解析 22:00');
+check(toMinutes('07:30') === 450, '时段解析 07:30');
+check(toMinutes('24:00') === null, '时段解析拒绝非法小时');
+check(toMinutes('12:60') === null, '时段解析拒绝非法分钟');
+check(toMinutes('abc') === null, '时段解析拒绝非时间串');
+
+check(effectiveTheme('light', null, false) === 'light', '昼模式恒为浅色（哪怕系统是暗色）');
+check(effectiveTheme('light', null, true) === 'light', '昼模式恒为浅色（系统是暗色）');
+check(effectiveTheme('dark', null, false) === 'dark', '夜模式恒为暗色（哪怕系统是浅色）');
+check(effectiveTheme('dark', null, true) === 'dark', '夜模式恒为暗色（系统是浅色）');
+
+// 跟随系统：没自定义时段就跟着系统
+check(effectiveTheme('auto', null, false) === 'light', '跟随系统 · 系统浅色');
+check(effectiveTheme('auto', null, true) === 'dark', '跟随系统 · 系统暗色');
+check(effectiveTheme('auto', { enabled: false }, true) === 'dark', '跟随系统 · 时段未启用则仍跟系统');
+
+// 跟随系统 + 自定义时段：按时刻判定（跨零点也要认）
+const at = (h, m) => new Date(2026, 0, 1, h, m);
+const night = { enabled: true, start: '22:00', end: '07:00' };
+check(effectiveTheme('auto', night, false, at(23, 0)) === 'dark', '时段内 23:00 判为夜间');
+check(effectiveTheme('auto', night, false, at(3, 0)) === 'dark', '跨零点后 03:00 仍判为夜间');
+check(effectiveTheme('auto', night, false, at(12, 0)) === 'light', '时段外 12:00 判为昼');
+check(effectiveTheme('auto', night, true, at(12, 0)) === 'light', '自定义时段优先于系统');
+check(effectiveTheme('auto', night, false, at(22, 0)) === 'dark', '起点时刻算夜间（闭区间）');
+check(effectiveTheme('auto', night, false, at(7, 0)) === 'light', '终点时刻算昼（半开区间）');
+
+// 不跨零点的时段
+const day = { enabled: true, start: '09:00', end: '18:00' };
+check(effectiveTheme('auto', day, false, at(12, 0)) === 'dark', '同日时段内 12:00 判为夜间');
+check(effectiveTheme('auto', day, false, at(20, 0)) === 'light', '同日时段外 20:00 判为昼');
+
+// 设置项默认值
+check(DEFAULT_SETTINGS.themeMode === 'auto', '默认主题是跟随系统');
+check(DEFAULT_SETTINGS.themeSchedule?.start === DEFAULT_SCHEDULE.start, '默认夜间起点');
+check(DEFAULT_SETTINGS.themeSchedule?.end === DEFAULT_SCHEDULE.end, '默认夜间终点');
 
 console.log(`\n${checks - failures}/${checks} 通过`);
 process.exit(failures === 0 ? 0 : 1);

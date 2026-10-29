@@ -13,6 +13,7 @@
 import { EXT, sendToBackground } from '../shared/ext.js';
 import { LANGUAGES, SEND_TARGETS } from '../core/language.js';
 import { PROVIDER_LANG_CODES } from '../core/langs.js';
+import { applyFromSettings, effectiveTheme, systemPrefersDark, watchTheme } from '../shared/theme.js';
 
 const $ = (id) => document.getElementById(id);
 
@@ -46,8 +47,41 @@ async function init() {
   renderStatus();
   renderModeHint();
 
+  // 主题：先按设置上色，再挂监听（系统主题变 / 自定义时段跨界时自动重算）
+  applyFromSettings(config?.settings ?? {});
+  watchTheme(config?.settings ?? {});
+  renderThemeButton();
+
   $('version').textContent = 'v' + (await version());
   checkPage();
+}
+
+/* ── 昼夜切换 ─────────────────────────────────────── */
+
+const THEME_ORDER = ['light', 'dark', 'auto'];
+const THEME_LABEL = { light: '昼', dark: '夜', auto: '跟随系统' };
+
+/** 顶栏那个小按钮：三档循环（昼 → 夜 → 跟随系统 → 昼） */
+function renderThemeButton() {
+  const mode = config?.settings?.themeMode ?? 'auto';
+  const button = $('themeBtn');
+  button.dataset.mode = mode;
+  button.title = `昼夜切换（当前：${THEME_LABEL[mode]}）`;
+}
+
+function initThemeButton() {
+  $('themeBtn').addEventListener('click', async () => {
+    const current = config?.settings?.themeMode ?? 'auto';
+    const next = THEME_ORDER[(THEME_ORDER.indexOf(current) + 1) % THEME_ORDER.length];
+
+    config = config ?? {};
+    config.settings = { ...(config.settings ?? {}), themeMode: next };
+    await patchSettings({ themeMode: next });
+
+    renderThemeButton();
+    applyFromSettings(config.settings);
+    toast(`已切换为${THEME_LABEL[next]}`);
+  });
 }
 
 /** @returns {Promise<string>} */
@@ -235,6 +269,7 @@ function labelOf(id) {
 /* ── 主按钮：翻译选区 / 剪贴板 ────────────────────── */
 
 $('translate').addEventListener('click', translateSelection);
+initThemeButton();
 
 async function translateSelection() {
   const button = $('translate');

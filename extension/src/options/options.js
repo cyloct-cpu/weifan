@@ -2,6 +2,7 @@ import { LANGUAGES, SEND_TARGETS } from '../core/language.js';
 import { DEFAULT_SETTINGS } from '../core/core.js';
 import { PROVIDERS } from '../core/providers.js';
 import { EXT, sendToBackground } from '../shared/ext.js';
+import { DEFAULT_SCHEDULE, applyFromSettings, effectiveTheme, toMinutes } from '../shared/theme.js';
 
 const STORAGE_KEY = 'weifan';
 const $ = (id) => document.getElementById(id);
@@ -89,6 +90,62 @@ function render() {
   $('glossary').value = formatGlossary(settings.glossary ?? []);
   updateGlossaryCount();
   refreshKeyStatus();
+  renderTheme(settings);
+}
+
+/* ── 外观：昼夜切换 ─────────────────────────────────── */
+
+/**
+ * 三档主题：昼 / 夜 / 跟随系统。
+ * 「跟随系统」时可另设夜间时段（跨零点也算）。
+ */
+function renderTheme(settings) {
+  const mode = settings.themeMode ?? 'auto';
+  const radio = document.querySelector(`input[name="themeMode"][value="${mode}"]`);
+  if (radio) radio.checked = true;
+
+  const schedule = settings.themeSchedule ?? DEFAULT_SCHEDULE;
+  $('scheduleEnabled').checked = Boolean(schedule.enabled);
+  $('scheduleStart').value = schedule.start ?? DEFAULT_SCHEDULE.start;
+  $('scheduleEnd').value = schedule.end ?? DEFAULT_SCHEDULE.end;
+
+  updateThemeUi(mode);
+}
+
+/** 时段输入框只在「跟随系统 + 启用自定义时段」时才显示 */
+function updateThemeUi(mode) {
+  const auto = mode === 'auto';
+  const enabled = $('scheduleEnabled').checked;
+  const row = $('scheduleRow');
+  const times = $('scheduleTimes');
+
+  row.classList.toggle('is-muted', !auto);
+  times.hidden = !(auto && enabled);
+
+  $('themeNote').textContent = auto
+    ? '跟随系统：跟手机 / 浏览器的深浅色走。'
+    : mode === 'dark'
+      ? '夜：始终用暗色调。'
+      : '昼：始终用浅色调。';
+
+  const start = $('scheduleStart').value;
+  const end = $('scheduleEnd').value;
+  const valid = toMinutes(start) !== null && toMinutes(end) !== null;
+  $('scheduleNote').textContent = valid
+    ? `${start} – ${end} 为夜间，跨过午夜也算。`
+    : '时间填得不合法，按 24 小时制填「时:分」。';
+}
+
+/** 把当前界面上的主题设置读出来 */
+function collectTheme() {
+  return {
+    themeMode: document.querySelector('input[name="themeMode"]:checked')?.value ?? 'auto',
+    themeSchedule: {
+      enabled: $('scheduleEnabled').checked,
+      start: $('scheduleStart').value || DEFAULT_SCHEDULE.start,
+      end: $('scheduleEnd').value || DEFAULT_SCHEDULE.end
+    }
+  };
 }
 
 /* ── 免费额度服务商表单 ───────────────────────────── */
@@ -506,7 +563,8 @@ function collect() {
       previewOnLowConfidence: $('previewOnLowConfidence').checked,
       longSentenceThreshold: Number($('longSentenceThreshold').value),
       dailyCharLimit: Number($('dailyCharLimit').value),
-      glossary: parseGlossary($('glossary').value)
+      glossary: parseGlossary($('glossary').value),
+      ...collectTheme()
     },
     chats: store.chats ?? {},
     usage: store.usage ?? {}
@@ -598,6 +656,36 @@ for (const radio of document.querySelectorAll('input[name="svcMode"]')) {
     renderServiceGrid();
     renderServiceSelect();
     refreshKeyStatus();
+  });
+}
+
+// 主题：切换即刻生效（不用等保存），并立刻存盘
+for (const radio of document.querySelectorAll('input[name="themeMode"]')) {
+  radio.addEventListener('change', async () => {
+    if (!radio.checked) return;
+    updateThemeUi(radio.value);
+    const theme = collectTheme();
+    store.settings = { ...store.settings, ...theme };
+    await storage.set({ [STORAGE_KEY]: store });
+    applyFromSettings(store.settings);
+  });
+}
+
+$('scheduleEnabled').addEventListener('change', async () => {
+  updateThemeUi(document.querySelector('input[name="themeMode"]:checked')?.value ?? 'auto');
+  const theme = collectTheme();
+  store.settings = { ...store.settings, ...theme };
+  await storage.set({ [STORAGE_KEY]: store });
+  applyFromSettings(store.settings);
+});
+
+for (const id of ['scheduleStart', 'scheduleEnd']) {
+  $(id).addEventListener('change', async () => {
+    updateThemeUi(document.querySelector('input[name="themeMode"]:checked')?.value ?? 'auto');
+    const theme = collectTheme();
+    store.settings = { ...store.settings, ...theme };
+    await storage.set({ [STORAGE_KEY]: store });
+    applyFromSettings(store.settings);
   });
 }
 
