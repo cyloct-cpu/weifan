@@ -900,3 +900,43 @@ kbd {
 /* 不是「跟随系统」时，自定义时段就没意义 —— 灰掉并说明 */
 #scheduleRow.is-muted { opacity: 0.45; }
 #scheduleRow.is-muted .switch { pointer-events: none; }
+
+/* ── 分组折叠（点标题展开/收起） ───────────────────────── */
+
+.group[data-collapsible] .group-head {
+  cursor: pointer;
+  user-select: none;
+  position: relative;
+  padding-right: 26px;
+}
+
+/* 折叠指示：展开朝下、收起朝上 */
+.group[data-collapsible] .group-head::after {
+  content: '▾';
+  position: absolute;
+  right: 2px;
+  top: 50%;
+  transform: translateY(-50%);
+  font-size: 13px;
+  line-height: 1;
+  color: var(--text-3);
+  transition: transform 0.18s var(--ease);
+}
+
+.group[data-collapsible].is-collapsed .group-head::after {
+  transform: translateY(-50%) rotate(180deg);
+}
+
+/* 收起时隐藏分组内容（标题与说明留着） */
+.group[data-collapsible].is-collapsed > *:not(.group-head):not(.group-note) {
+  display: none;
+}
+
+.group[data-collapsible] > *:not(.group-head):not(.group-note) {
+  animation: group-in 0.18s var(--ease);
+}
+
+@keyframes group-in {
+  from { opacity: 0; transform: translateY(-4px); }
+  to { opacity: 1; transform: none; }
+}

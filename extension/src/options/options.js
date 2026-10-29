@@ -53,6 +53,7 @@ async function load() {
   }
   customs = (store.keys.customs ?? []).map((item) => ({ ...item }));
   render();
+  initCollapsibleGroups();
 }
 
 function render() {
@@ -91,6 +92,59 @@ function render() {
   updateGlossaryCount();
   refreshKeyStatus();
   renderTheme(settings);
+}
+
+/* ── 分组折叠 ─────────────────────────────────────────── */
+
+/**
+ * 设置项分组多，全部展开页面太长。
+ * 点标题就展开/收起 —— **默认只展开最该看见的那一组**（翻译服务）。
+ */
+const COLLAPSIBLE = [
+  // [分组标题关键词, 默认展开]
+  ['翻译服务', true],
+  ['发件', false],
+  ['收件', false],
+  ['额度保护', false],
+  ['外观', false],
+  ['术语', false]
+];
+
+function initCollapsibleGroups() {
+  const groups = Array.from(document.querySelectorAll('section.group'));
+  for (const group of groups) {
+    const head = group.querySelector('.group-head');
+    const h2 = group.querySelector('h2');
+    if (!head || !h2) continue;
+
+    const title = h2.textContent.trim();
+    const rule = COLLAPSIBLE.find(([key]) => title.includes(key));
+
+    // 没在名单里的分组（比如以后的"翻译工具"）保持原样，不加折叠
+    if (!rule) continue;
+
+    group.dataset.collapsible = '1';
+    if (!rule[1]) group.classList.add('is-collapsed');
+
+    head.setAttribute('role', 'button');
+    head.setAttribute('tabindex', '0');
+    head.setAttribute('aria-expanded', String(rule[1]));
+    head.title = rule[1] ? '点击收起' : '点击展开';
+
+    const toggle = () => {
+      const collapsed = group.classList.toggle('is-collapsed');
+      head.setAttribute('aria-expanded', String(!collapsed));
+      head.title = collapsed ? '点击展开' : '点击收起';
+    };
+
+    head.addEventListener('click', toggle);
+    head.addEventListener('keydown', (event) => {
+      if (event.key === 'Enter' || event.key === ' ') {
+        event.preventDefault();
+        toggle();
+      }
+    });
+  }
 }
 
 /* ── 外观：昼夜切换 ─────────────────────────────────── */

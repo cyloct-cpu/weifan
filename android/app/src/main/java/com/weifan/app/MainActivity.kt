@@ -158,7 +158,8 @@ class MainActivity : BaseActivity() {
         root.addView(groupCard(
             "翻译工具",
             "划词：在任意应用里选中文字，菜单里选「微翻」。文档：txt / md / csv / docx，本机解析不上传。",
-            p.coolGrad
+            p.coolGrad,
+            expanded = true
         ) {
             addView(ghostButton("翻译文字 / 划词") {
                 startActivity(Intent(this@MainActivity, TranslateActivity::class.java))
@@ -172,7 +173,8 @@ class MainActivity : BaseActivity() {
         root.addView(groupCard(
             "翻译服务",
             "自己去大厂申请密钥填进来，额度用完自动换下一家。自定义 API 接任何 OpenAI 兼容接口。",
-            p.mixGrad
+            p.mixGrad,
+            expanded = true
         ) {
             // 模式
             addView(label("模式"))
@@ -697,7 +699,22 @@ class MainActivity : BaseActivity() {
     }
 
     /** 分组卡片：标题左侧一个方向色点 */
-    private fun groupCard(title: String, note: String, dotColors: IntArray, content: LinearLayout.() -> Unit): View {
+    /**
+     * 可折叠的分组卡片。
+     *
+     * 为什么折叠：设置项分组多（翻译服务 / 发件 / 收件 / 额度 / 外观 / 术语 / 试译），
+     * 全部展开的话页面长得要一直滑。现在点标题就展开或收起，
+     * **默认只展开最该看见的那一组**。
+     *
+     * @param expanded 默认是否展开
+     */
+    private fun groupCard(
+        title: String,
+        note: String,
+        dotColors: IntArray,
+        expanded: Boolean = false,
+        content: LinearLayout.() -> Unit
+    ): View {
         val card = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
             background = roundBg(p.surface, 16, 1, p.line)
@@ -708,6 +725,9 @@ class MainActivity : BaseActivity() {
         val head = LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL
             gravity = Gravity.CENTER_VERTICAL
+            isClickable = true
+            isFocusable = true
+            setPadding(0, dp(2), 0, dp(2))
         }
         val dot = View(this).apply {
             background = GradientDrawable().apply {
@@ -724,18 +744,38 @@ class MainActivity : BaseActivity() {
             setTextColor(p.text)
             setTypeface(typeface, Typeface.BOLD)
             setPadding(dp(10), 0, 0, 0)
+            layoutParams = LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f)
         })
+        // 折叠指示：展开朝下、收起朝上
+        val chevron = TextView(this).apply {
+            text = "▾"
+            textSize = 13f
+            setTextColor(p.text3)
+            rotation = if (expanded) 0f else 180f
+        }
+        head.addView(chevron)
         card.addView(head)
-        card.addView(TextView(this).apply {
+
+        val noteView = TextView(this).apply {
             text = note
             textSize = 11.5f
             setTextColor(p.text3)
-            setPadding(dp(19), dp(4), 0, dp(6))
-        })
+            setPadding(dp(19), dp(4), dp(4), dp(6))
+        }
+        card.addView(noteView)
 
         val body = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
         body.content()
         card.addView(body)
+
+        // 点标题就展开 / 收起
+        body.visibility = if (expanded) View.VISIBLE else View.GONE
+        head.setOnClickListener {
+            val open = body.visibility == View.VISIBLE
+            body.visibility = if (open) View.GONE else View.VISIBLE
+            chevron.rotation = if (open) 180f else 0f
+        }
+
         return card
     }
 
