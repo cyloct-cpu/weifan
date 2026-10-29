@@ -72,6 +72,26 @@ async function readJson(res) {
 
 /* ── 各家实现 ─────────────────────────────────────── */
 
+/**
+ * 百度官方错误码表（fanyi-api.baidu.com/doc/28）。
+ * 光看 error_msg 没用——"UNAUTHORIZED USER" 这种英文提示不看码根本查不出原因。
+ */
+const BAIDU_ERRORS = {
+  52001: '请求超时，检查文本或语种是否正常',
+  52002: '系统错误，稍后重试',
+  52003: '未授权：APP ID 不对，或「通用翻译 API」还没开通（管理控制台 → 总览 → 开通服务）',
+  54000: '必填参数为空',
+  54001: '签名错误：密钥不对，或 APP ID 填错了',
+  54003: '访问频率超限：标准版 1 QPS，个人认证切高级版可到 10 QPS',
+  54004: '账户余额不足，去管理控制台充值',
+  54005: '长文本请求太频繁，稍等 3 秒再试',
+  58000: 'IP 非法：开发者信息里填的服务器 IP 不对（可以留空）',
+  58001: '该语种不支持：标准版/高级版只支持 28 个常见语种',
+  58002: '服务当前已关闭，去管理控制台开启',
+  58003: '此 IP 今日已被封禁：同一 IP 当天用了多个 APP ID，次日自动解封',
+  90107: '认证未通过或未生效，去「我的认证」看进度'
+};
+
 /** @param {any} cred @param {{text: string, source: string|null, target: string}} args */
 async function baiduRun(cred, { text, source, target }) {
   const to = targetCode('baidu', target);
@@ -79,6 +99,7 @@ async function baiduRun(cred, { text, source, target }) {
   const from = source && source !== 'auto' ? (targetCode('baidu', source) ?? 'auto') : 'auto';
 
   const salt = String(Math.floor(Math.random() * 1_000_000_000));
+  // 官方要求：拼接签名时 q 不做 URL encode，生成 sign 之后再编码
   const sign = md5(`${cred.appid}${text}${salt}${cred.secret}`);
 
   const body = new URLSearchParams({ q: text, from, to, appid: cred.appid, salt, sign });
@@ -91,7 +112,11 @@ async function baiduRun(cred, { text, source, target }) {
       signal
     });
     const data = await readJson(res);
-    if (data?.error_code) throw new Error(data.error_msg || `错误 ${data.error_code}`);
+    if (data?.error_code) {
+      const code = String(data.error_code);
+      const hint = BAIDU_ERRORS[code] ?? '';
+      throw new Error(`错误 ${code}：${data.error_msg ?? ''}${hint ? ` —— ${hint}` : ''}`);
+    }
     if (!res.ok) throw new Error(`HTTP ${res.status}`);
     const dst = (data?.trans_result ?? []).map((item) => item.dst).join('\n');
     if (!dst) throw new Error('返回空结果');

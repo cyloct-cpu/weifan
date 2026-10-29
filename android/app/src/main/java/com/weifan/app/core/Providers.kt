@@ -408,12 +408,30 @@ object Providers {
         return Result(dst, "Azure", fromPlatformCode("azure", detected))
     }
 
+    /** 百度官方错误码表（fanyi-api.baidu.com/doc/28）。只看 error_msg 查不出原因，必须带码。 */
+    private val BAIDU_ERRORS = mapOf(
+        52001 to "请求超时，检查文本或语种是否正常",
+        52002 to "系统错误，稍后重试",
+        52003 to "未授权：APP ID 不对，或「通用翻译 API」还没开通（管理控制台 → 总览 → 开通服务）",
+        54000 to "必填参数为空",
+        54001 to "签名错误：密钥不对，或 APP ID 填错了",
+        54003 to "访问频率超限：标准版 1 QPS，个人认证切高级版可到 10 QPS",
+        54004 to "账户余额不足，去管理控制台充值",
+        54005 to "长文本请求太频繁，稍等 3 秒再试",
+        58000 to "IP 非法：开发者信息里填的服务器 IP 不对（可以留空）",
+        58001 to "该语种不支持：标准版/高级版只支持 28 个常见语种",
+        58002 to "服务当前已关闭，去管理控制台开启",
+        58003 to "此 IP 今日已被封禁：同一 IP 当天用了多个 APP ID，次日自动解封",
+        90107 to "认证未通过或未生效，去「我的认证」看进度"
+    )
+
     private fun baiduRun(v: Map<String, String>, text: String, source: String?, target: String): Result {
         val to = targetCode("baidu", target) ?: throw IOException("不支持该目标语言")
         val from = if (source.isNullOrBlank()) "auto" else (targetCode("baidu", source) ?: "auto")
 
         val appid = v["appid"] ?: ""
         val salt = (Math.random() * 1_000_000_000).toInt().toString()
+        // 官方要求：拼接签名时 q 不做 URL encode，生成 sign 之后再编码
         val sign = Signing.md5(appid + text + salt + (v["secret"] ?: ""))
 
         val form = "q=${enc(text)}&from=${enc(from)}&to=${enc(to)}&appid=${enc(appid)}&salt=$salt&sign=$sign"
@@ -422,7 +440,12 @@ object Providers {
 
         val data = JSONObject(raw)
         if (data.has("error_code")) {
-            throw IOException(data.optString("error_msg").ifBlank { "百度错误 ${data.optInt("error_code")}" })
+            val code = data.opt("error_code").toString()
+            val hint = BAIDU_ERRORS[code.toIntOrNull() ?: 0] ?: ""
+            val msg = data.optString("error_msg")
+            throw IOException(
+                "错误 $code：$msg" + (if (hint.isNotEmpty()) " —— $hint" else "")
+            )
         }
         val array = data.getJSONArray("trans_result")
         val sb = StringBuilder()
