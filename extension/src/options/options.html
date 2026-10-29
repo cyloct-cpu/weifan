@@ -36,7 +36,7 @@
         <span class="group-count" id="freeCount">0 / 8</span>
       </div>
       <p class="group-note">九家都能用，填一个就能开张。接口地址都预置好了，你只要填密钥。密钥不上传，全部留在本机浏览器里。</p>
-      <div id="providerList"></div>
+      <div id="providerList" class="provider-grid"></div>
     </section>
 
     <!-- ── 自定义 API（双向通用） ─────────────────────── -->
@@ -47,7 +47,7 @@
         <span class="group-count" id="customCount">0 个</span>
       </div>
       <p class="group-note">任意 OpenAI 兼容接口：DeepSeek、硅基流动、OpenAI、自建网关都行。大模型翻译在术语与语气上更准。</p>
-      <div id="customList"></div>
+      <div id="customList" class="provider-grid"></div>
       <button type="button" id="addCustom" class="btn-ghost" style="margin: 12px 0 6px;">+ 添加一个接口</button>
     </section>
 
@@ -165,6 +165,26 @@
       <span id="status" role="status"></span>
     </div>
   </main>
+
+  <!-- 服务商配置弹窗 -->
+  <dialog id="providerDialog" class="pdialog">
+    <div class="pdialog-inner">
+      <header class="pdialog-head">
+        <div class="pdialog-titles">
+          <h3 id="pdTitle">—</h3>
+          <p id="pdNote"></p>
+        </div>
+        <button type="button" class="pd-close" id="pdClose" aria-label="关闭">×</button>
+      </header>
+      <div class="pdialog-body" id="pdBody"></div>
+      <footer class="pdialog-foot">
+        <button type="button" class="mini-btn" id="pdTest">测试这一家</button>
+        <span class="pd-status" id="pdStatus" hidden></span>
+        <button type="button" class="btn-ghost" id="pdCancel">取消</button>
+        <button type="button" class="btn-primary" id="pdSave">保存</button>
+      </footer>
+    </div>
+  </dialog>
 
   <script src="options.js" type="module"></script>
 </body>

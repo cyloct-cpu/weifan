@@ -564,8 +564,9 @@ export const PROVIDERS = [
     kind: 'llm',
     freeNote: '通用版 5 万/月（高级版 100 万）；大模型版要另开通',
     docs: 'https://fanyi-api.baidu.com/doc/21',
-    endpoint: ENDPOINTS.baiduGeneral,
+    endpoint: ENDPOINTS.baiduLLM,
     endpointEditable: false,
+    endpointNote: '（未开通大模型时自动退回 ' + ENDPOINTS.baiduGeneral + '）',
     fields: [
       { id: 'appid', label: 'App ID', placeholder: '2024……' },
       { id: 'secret', label: 'Secret Key', placeholder: '……', secret: true }

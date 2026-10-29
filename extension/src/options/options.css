@@ -566,3 +566,285 @@ kbd {
   font-family: var(--mono);
   word-break: break-all;
 }
+
+/* ── 服务商胶囊（两列排布） ─────────────────────────── */
+
+.provider-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 9px;
+  margin-top: 6px;
+}
+
+.provider-capsule {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  text-align: left;
+  background: var(--surface-2);
+  border: 1px solid var(--line);
+  border-radius: 20px;
+  padding: 11px 13px 10px;
+  cursor: pointer;
+  transition: border-color 0.15s, background 0.15s, transform 0.1s;
+}
+.provider-capsule:hover { border-color: var(--line-strong); background: var(--surface); }
+.provider-capsule:active { transform: scale(0.985); }
+.provider-capsule[data-configured="1"] {
+  border-color: color-mix(in srgb, var(--warm) 42%, var(--line));
+  background: color-mix(in srgb, var(--warm) 5%, var(--surface-2));
+}
+
+.capsule-top { display: flex; align-items: center; gap: 7px; min-width: 0; }
+.capsule-top strong {
+  font-size: 13px;
+  font-weight: 650;
+  color: var(--text);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.capsule-dot {
+  margin-left: auto;
+  flex: none;
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--line-strong);
+}
+.provider-capsule[data-configured="1"] .capsule-dot { background: var(--warm); }
+
+.capsule-note {
+  font-size: 10.5px;
+  line-height: 1.45;
+  color: var(--text-3);
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+/* ── 配置弹窗 ─────────────────────────────────────── */
+
+.pdialog {
+  border: none;
+  border-radius: 18px;
+  padding: 0;
+  width: min(440px, calc(100vw - 32px));
+  background: var(--surface);
+  color: var(--text);
+  box-shadow: 0 24px 60px -18px rgba(22, 27, 34, 0.45);
+}
+.pdialog::backdrop { background: rgba(22, 27, 34, 0.38); backdrop-filter: blur(2px); }
+
+.pdialog-inner { padding: 18px 20px 16px; }
+
+.pdialog-head { display: flex; align-items: flex-start; gap: 12px; margin-bottom: 4px; }
+.pdialog-titles { min-width: 0; }
+.pdialog-head h3 { margin: 0; font-size: 16px; font-weight: 700; letter-spacing: 0.2px; }
+.pdialog-head p { margin: 4px 0 0; font-size: 11.5px; color: var(--text-3); line-height: 1.5; }
+
+.pd-close {
+  margin-left: auto;
+  flex: none;
+  width: 28px;
+  height: 28px;
+  border: none;
+  border-radius: 50%;
+  background: var(--surface-2);
+  color: var(--text-3);
+  font-size: 17px;
+  line-height: 1;
+  cursor: pointer;
+}
+.pd-close:hover { color: var(--text); }
+
+.pdialog-body { max-height: min(52vh, 380px); overflow-y: auto; padding: 2px 2px 2px 0; }
+.pdialog-body .field { margin-top: 13px; }
+.pdialog-body .field label {
+  display: block;
+  font-size: 11.5px;
+  font-weight: 600;
+  color: var(--text-3);
+  margin-bottom: 5px;
+}
+.pdialog-body .provider-link {
+  display: inline-block;
+  margin-top: 14px;
+  margin-left: 0;
+  font-size: 12px;
+}
+
+.pdialog-foot {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  margin-top: 16px;
+  padding-top: 14px;
+  border-top: 1px solid var(--line);
+}
+.pdialog-foot .mini-btn { flex: none; width: auto; padding: 8px 12px; }
+.pdialog-foot .btn-ghost { margin-left: auto; }
+.pdialog-foot .btn-primary { padding: 9px 18px; }
+
+.pd-status {
+  flex: 1;
+  min-width: 0;
+  font-size: 11.5px;
+  line-height: 1.45;
+  color: var(--text-3);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  line-clamp: 2;
+  -webkit-box-orient: vertical;
+}
+.pd-status.is-ok { color: var(--teal-ink); }
+.pd-status.is-err { color: #e5484d; }
+
+@media (max-width: 560px) {
+  .provider-grid { grid-template-columns: 1fr; }
+}
+
+/* ── 服务商胶囊（两列排布） ─────────────────────────── */
+
+.provider-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 9px;
+  margin-top: 6px;
+}
+
+.provider-capsule {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  text-align: left;
+  background: var(--surface-2);
+  border: 1px solid var(--line);
+  border-radius: 20px;
+  padding: 11px 13px 10px;
+  cursor: pointer;
+  transition: border-color 0.15s, background 0.15s, transform 0.1s;
+}
+.provider-capsule:hover { border-color: var(--line-strong); background: var(--surface); }
+.provider-capsule:active { transform: scale(0.985); }
+.provider-capsule[data-configured="1"] {
+  border-color: color-mix(in srgb, var(--warm) 42%, var(--line));
+  background: color-mix(in srgb, var(--warm) 5%, var(--surface-2));
+}
+
+.capsule-top { display: flex; align-items: center; gap: 7px; min-width: 0; }
+.capsule-top strong {
+  font-size: 13px;
+  font-weight: 650;
+  color: var(--text);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.capsule-dot {
+  margin-left: auto;
+  flex: none;
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--line-strong);
+}
+.provider-capsule[data-configured="1"] .capsule-dot { background: var(--warm); }
+
+.capsule-note {
+  font-size: 10.5px;
+  line-height: 1.45;
+  color: var(--text-3);
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+/* ── 配置弹窗 ─────────────────────────────────────── */
+
+.pdialog {
+  border: none;
+  border-radius: 18px;
+  padding: 0;
+  width: min(440px, calc(100vw - 32px));
+  background: var(--surface);
+  color: var(--text);
+  box-shadow: 0 24px 60px -18px rgba(22, 27, 34, 0.45);
+}
+.pdialog::backdrop { background: rgba(22, 27, 34, 0.38); backdrop-filter: blur(2px); }
+
+.pdialog-inner { padding: 18px 20px 16px; }
+
+.pdialog-head { display: flex; align-items: flex-start; gap: 12px; margin-bottom: 4px; }
+.pdialog-titles { min-width: 0; }
+.pdialog-head h3 { margin: 0; font-size: 16px; font-weight: 700; letter-spacing: 0.2px; }
+.pdialog-head p { margin: 4px 0 0; font-size: 11.5px; color: var(--text-3); line-height: 1.5; }
+
+.pd-close {
+  margin-left: auto;
+  flex: none;
+  width: 28px;
+  height: 28px;
+  border: none;
+  border-radius: 50%;
+  background: var(--surface-2);
+  color: var(--text-3);
+  font-size: 17px;
+  line-height: 1;
+  cursor: pointer;
+}
+.pd-close:hover { color: var(--text); }
+
+.pdialog-body { max-height: min(52vh, 380px); overflow-y: auto; padding: 2px 2px 2px 0; }
+.pdialog-body .field { margin-top: 13px; }
+.pdialog-body .field label {
+  display: block;
+  font-size: 11.5px;
+  font-weight: 600;
+  color: var(--text-3);
+  margin-bottom: 5px;
+}
+.pdialog-body .provider-link {
+  display: inline-block;
+  margin-top: 14px;
+  margin-left: 0;
+  font-size: 12px;
+}
+
+.pdialog-foot {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  margin-top: 16px;
+  padding-top: 14px;
+  border-top: 1px solid var(--line);
+}
+.pdialog-foot .mini-btn { flex: none; width: auto; padding: 8px 12px; }
+.pdialog-foot .btn-ghost { margin-left: auto; }
+.pdialog-foot .btn-primary { padding: 9px 18px; }
+
+.pd-status {
+  flex: 1;
+  min-width: 0;
+  font-size: 11.5px;
+  line-height: 1.45;
+  color: var(--text-3);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  line-clamp: 2;
+  -webkit-box-orient: vertical;
+}
+.pd-status.is-ok { color: var(--teal-ink); }
+.pd-status.is-err { color: #e5484d; }
+
+@media (max-width: 560px) {
+  .provider-grid { grid-template-columns: 1fr; }
+}

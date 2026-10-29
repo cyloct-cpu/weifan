@@ -1,6 +1,7 @@
 package com.weifan.app
 
 import android.app.Activity
+import android.app.AlertDialog
 import android.content.ComponentName
 import android.content.Intent
 import android.content.res.Configuration
@@ -16,6 +17,7 @@ import android.view.ViewGroup
 import android.widget.ArrayAdapter
 import android.widget.Button
 import android.widget.EditText
+import android.widget.GridLayout
 import android.widget.ImageView
 import android.widget.LinearLayout
 import android.widget.RadioButton
@@ -56,16 +58,7 @@ class MainActivity : Activity() {
     private lateinit var modeGroup: RadioGroup
     private lateinit var resultText: TextView
 
-    private lateinit var customNameField: EditText
-    private lateinit var customBaseField: EditText
-    private lateinit var customKeyField: EditText
-    private lateinit var customModelField: EditText
-    private lateinit var customStatus: TextView
 
-    /** "providerId:fieldId" → 输入框 */
-    private val providerFields = mutableMapOf<String, EditText>()
-    /** "providerId" → 已配置徽标 */
-    private val providerBadges = mutableMapOf<String, TextView>()
     /** 服务商下拉里的 id，顺序与 [serviceSpinner] 一致 */
     private var serviceIds = listOf<String>()
 
@@ -218,39 +211,17 @@ class MainActivity : Activity() {
             serviceSpinner = spinner(emptyList())
             addView(serviceSpinner)
 
-            // 八家大厂，表单自动生成
-            for (def in Providers.DEFS) {
-                addView(providerCard(def))
-            }
+            // 服务商胶囊：两列排布，点开才是配置表单（竖着排九家太长）
+            addView(providerGrid())
+        })
 
-            // 自定义 API
-            addView(subLabel("自定义 API · OpenAI 兼容（DeepSeek / 硅基流动 / 自建网关）"))
-            customNameField = field("名称，如 DeepSeek", secret = false)
-            customBaseField = field("接口地址", secret = false)
-            customKeyField = field("API Key", secret = true)
-            customModelField = field("模型名", secret = false)
-            addView(customNameField)
-            addView(customBaseField)
-            addView(customKeyField)
-            addView(customModelField)
-
-            customStatus = TextView(this@MainActivity).apply {
-                textSize = 11.5f
-                setTextColor(p.text3)
-                setPadding(0, dp(8), 0, dp(4))
-                visibility = View.GONE
-            }
-            val customTest = Button(this@MainActivity).apply {
-                text = "测试这个接口"
-                textSize = 11.5f
-                setTextColor(p.text2)
-                background = roundBg(p.surface, 7, 1, p.line)
-                isAllCaps = false
-                setPadding(dp(12), dp(4), dp(12), dp(4))
-            }
-            customTest.setOnClickListener { runProviderTest("custom:custom", customStatus, customTest) }
-            addView(customTest)
-            addView(customStatus)
+        // 自定义 API（胶囊 + 弹窗）
+        root.addView(groupCard(
+            "自定义 API",
+            "任意 OpenAI 兼容接口：DeepSeek / 硅基流动 / 自建网关都行。",
+            p.mixGrad
+        ) {
+            addView(customGrid())
         })
 
         // 发件（暖）
@@ -310,107 +281,369 @@ class MainActivity : Activity() {
         return scroll
     }
 
-    /**
-     * 一个服务商的卡片：标题 + 免费额度说明 + 已配置徽标 + 字段。
-     * 表单来自 [Providers.DEFS]，加服务商不用改这里。
-     */
-    private fun providerCard(def: Providers.Def): View {
-        val card = LinearLayout(this).apply {
+    /* ── 服务商胶囊（两列排布，点开弹配置框） ─────────────── */
+
+    private fun providerGrid(): View {
+        val grid = GridLayout(this).apply { columnCount = 2 }
+        for (def in Providers.DEFS) {
+            grid.addView(providerCapsule(def))
+        }
+        return grid
+    }
+
+    private fun providerCapsule(def: Providers.Def): View {
+        val configured = prefs.isConfigured(def.id)
+
+        val box = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
-            background = roundBg(p.surface2, 12, 1, p.line)
-            setPadding(dp(12), dp(10), dp(12), dp(2))
-            layoutParams = LinearLayout.LayoutParams(
-                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT
-            ).apply { topMargin = dp(8) }
+            background = roundBg(p.surface2, 20, 1, if (configured) p.warm else p.line)
+            setPadding(dp(13), dp(11), dp(13), dp(10))
+            isClickable = true
+            isFocusable = true
+            setOnClickListener { openProviderDialog(def) }
         }
 
-        // 第一行：名称占满剩余空间，测试按钮固定在右侧（名称长也不会把按钮顶出去）
-        val head = LinearLayout(this).apply {
+        val top = LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL
             gravity = Gravity.CENTER_VERTICAL
         }
-        head.addView(TextView(this).apply {
+        top.addView(TextView(this).apply {
             text = def.label
-            textSize = 13.5f
+            textSize = 13f
             setTextColor(p.text)
             setTypeface(typeface, Typeface.BOLD)
+            maxLines = 2
+            ellipsize = android.text.TextUtils.TruncateAt.END
             layoutParams = LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f)
         })
+        top.addView(View(this).apply {
+            background = GradientDrawable().apply {
+                shape = GradientDrawable.OVAL
+                setColor(if (configured) p.warm else p.line)
+            }
+            layoutParams = LinearLayout.LayoutParams(dp(7), dp(7))
+        })
+        box.addView(top)
 
-        val status = TextView(this).apply {
-            textSize = 11.5f
+        box.addView(TextView(this).apply {
+            text = def.freeNote
+            textSize = 10.5f
             setTextColor(p.text3)
-            setPadding(0, dp(8), 0, dp(4))
-            visibility = View.GONE
-        }
-        val test = Button(this).apply {
-            text = "测试"
-            textSize = 11f
-            setTextColor(p.text2)
-            background = roundBg(p.surface, 7, 1, p.line)
-            isAllCaps = false
-            setPadding(dp(12), dp(2), dp(12), dp(2))
-        }
-        test.setOnClickListener { runProviderTest(def.id, status, test) }
-        head.addView(test)
+            maxLines = 2
+            ellipsize = android.text.TextUtils.TruncateAt.END
+        })
 
-        // 第二行：免费额度说明 + 已配置徽标
-        val meta = LinearLayout(this).apply {
+        box.layoutParams = GridLayout.LayoutParams(
+            GridLayout.spec(GridLayout.UNDEFINED, 1f),
+            GridLayout.spec(GridLayout.UNDEFINED, 1f)
+        ).apply {
+            width = 0
+            height = ViewGroup.LayoutParams.WRAP_CONTENT
+            setMargins(dp(4), dp(4), dp(4), dp(4))
+        }
+        return box
+    }
+
+    /** 自定义接口的胶囊（目前一个档案） */
+    private fun customGrid(): View {
+        val grid = GridLayout(this).apply { columnCount = 2 }
+
+        val configured = prefs.customKey.isNotBlank() && prefs.customBaseUrl.isNotBlank()
+        val box = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            background = roundBg(p.surface2, 20, 1, if (configured) p.warm else p.line)
+            setPadding(dp(13), dp(11), dp(13), dp(10))
+            isClickable = true
+            isFocusable = true
+            setOnClickListener { openCustomDialog() }
+        }
+        val top = LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL
             gravity = Gravity.CENTER_VERTICAL
-            setPadding(0, dp(4), 0, 0)
         }
-        meta.addView(TextView(this).apply {
-            text = def.freeNote
-            textSize = 11f
-            setTextColor(p.text3)
+        top.addView(TextView(this).apply {
+            text = prefs.customName.ifBlank { "自定义接口" }
+            textSize = 13f
+            setTextColor(p.text)
+            setTypeface(typeface, Typeface.BOLD)
+            maxLines = 2
+            ellipsize = android.text.TextUtils.TruncateAt.END
+            layoutParams = LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f)
         })
-        val badge = TextView(this).apply {
-            text = "已配置"
+        top.addView(View(this).apply {
+            background = GradientDrawable().apply {
+                shape = GradientDrawable.OVAL
+                setColor(if (configured) p.warm else p.line)
+            }
+            layoutParams = LinearLayout.LayoutParams(dp(7), dp(7))
+        })
+        box.addView(top)
+        box.addView(TextView(this).apply {
+            text = if (configured) prefs.customBaseUrl else "点开填写 key + 接口地址"
             textSize = 10.5f
-            setTextColor(p.teal)
-            setPadding(dp(8), dp(2), dp(8), dp(2))
-            background = roundBg(p.surface, 8, 1, p.line)
-            visibility = View.GONE
-            layoutParams = LinearLayout.LayoutParams(
-                ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT
-            ).apply { leftMargin = dp(8) }
+            setTextColor(p.text3)
+            maxLines = 2
+            ellipsize = android.text.TextUtils.TruncateAt.END
+        })
+        box.layoutParams = GridLayout.LayoutParams(
+            GridLayout.spec(GridLayout.UNDEFINED, 1f),
+            GridLayout.spec(GridLayout.UNDEFINED, 1f)
+        ).apply {
+            width = 0
+            height = ViewGroup.LayoutParams.WRAP_CONTENT
+            setMargins(dp(4), dp(4), dp(4), dp(4))
         }
-        providerBadges[def.id] = badge
-        meta.addView(badge)
+        grid.addView(box)
 
-        card.addView(head)
-        card.addView(meta)
+        // 添加按钮占第二格
+        val add = Button(this).apply {
+            text = "+ 添加接口"
+            textSize = 12f
+            setTextColor(p.text2)
+            background = roundBg(p.surface, 20, 1, p.line)
+            isAllCaps = false
+            setPadding(dp(12), dp(10), dp(12), dp(10))
+            setOnClickListener { openCustomDialog() }
+        }
+        add.layoutParams = GridLayout.LayoutParams(
+            GridLayout.spec(GridLayout.UNDEFINED, 1f),
+            GridLayout.spec(GridLayout.UNDEFINED, 1f)
+        ).apply {
+            width = 0
+            height = ViewGroup.LayoutParams.WRAP_CONTENT
+            setMargins(dp(4), dp(4), dp(4), dp(4))
+        }
+        grid.addView(add)
 
-        // 端点：固定的只展示一行说明，可改的才给输入框（用户通常只要填密钥）
+        return grid
+    }
+
+    /** 弹窗里的一个字段：独立标签 + 输入框（hint 只当占位提示） */
+    private fun dialogField(
+        labelText: String,
+        hintText: String,
+        value: String,
+        secret: Boolean
+    ): LinearLayout {
+        val wrap = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
+        wrap.addView(TextView(this).apply {
+            text = labelText
+            textSize = 11.5f
+            setTextColor(p.text3)
+            setTypeface(typeface, Typeface.BOLD)
+            setPadding(0, dp(12), 0, dp(4))
+        })
+        val input = EditText(this).apply {
+            hint = hintText
+            textSize = 13.5f
+            setTextColor(p.text)
+            setHintTextColor(p.text3)
+            setSingleLine(true)
+            background = roundBg(p.surface2, 10, 1, p.line)
+            setPadding(dp(12), dp(11), dp(12), dp(11))
+            if (secret) {
+                inputType = InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_VARIATION_PASSWORD
+            }
+            setText(value)
+        }
+        wrap.addView(input)
+        wrap.tag = input
+        return wrap
+    }
+
+    /** 某家服务商的配置弹窗 */
+    private fun openProviderDialog(def: Providers.Def) {
+        val body = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding(dp(22), dp(14), dp(22), dp(4))
+        }
+        body.addView(TextView(this).apply {
+            text = def.label
+            textSize = 16f
+            setTextColor(p.text)
+            setTypeface(typeface, Typeface.BOLD)
+        })
+        body.addView(TextView(this).apply {
+            text = def.freeNote
+            textSize = 11.5f
+            setTextColor(p.text3)
+            setPadding(0, dp(4), 0, 0)
+        })
+
+        var endpointInput: EditText? = null
         if (def.endpointEditable) {
-            val input = field(
+            val wrap = dialogField(
                 if (def.id == "deepl") "端点（付费版改成 https://api.deepl.com/v2/translate）"
                 else "终结点（区域资源填自己的子域名）",
-                secret = false
+                def.endpoint,
+                def.endpoint,
+                false
             )
-            input.setText(def.endpoint)
-            providerFields["${def.id}:endpoint"] = input
-            card.addView(input)
+            endpointInput = wrap.tag as EditText
+            body.addView(wrap)
         } else {
-            card.addView(TextView(this@MainActivity).apply {
+            body.addView(TextView(this).apply {
                 text = "接口 ${def.endpoint}"
                 textSize = 11f
                 setTextColor(p.text3)
-                setPadding(0, dp(2), 0, dp(4))
+                setPadding(0, dp(12), 0, 0)
             })
         }
 
-        for (field in def.fields) {
-            if (field.id == "endpoint") continue
-            val input = field(field.label + (if (field.optional) "（选填）" else ""), secret = field.secret)
-            input.hint = field.placeholder
-            providerFields["${def.id}:${field.id}"] = input
-            card.addView(input)
+        val inputs = mutableMapOf<String, EditText>()
+        val saved = prefs.credential(def.id)
+        for (f in def.fields) {
+            val wrap = dialogField(
+                f.label + (if (f.optional) "（选填）" else ""),
+                f.placeholder,
+                saved[f.id] ?: "",
+                f.secret
+            )
+            inputs[f.id] = wrap.tag as EditText
+            body.addView(wrap)
         }
-        card.addView(status)
 
-        return card
+        val status = TextView(this).apply {
+            visibility = View.GONE
+            textSize = 11.5f
+            setTextColor(p.text3)
+            setPadding(0, dp(10), 0, 0)
+        }
+        body.addView(status)
+
+        val dialog = AlertDialog.Builder(this)
+            .setView(body)
+            .setPositiveButton("保存", null)
+            .setNegativeButton("取消", null)
+            .setNeutralButton("测试这一家", null)
+            .create()
+
+        dialog.setOnShowListener {
+            dialog.getButton(AlertDialog.BUTTON_POSITIVE).setOnClickListener {
+                saveProviderValues(def, inputs, endpointInput)
+                dialog.dismiss()
+                refreshStatus()
+                Toast.makeText(this, "已保存", Toast.LENGTH_SHORT).show()
+            }
+            // 中性按钮不关闭弹窗，好让用户看到测试结果
+            dialog.getButton(AlertDialog.BUTTON_NEUTRAL).setOnClickListener {
+                saveProviderValues(def, inputs, endpointInput)
+                status.visibility = View.VISIBLE
+                status.setTextColor(p.text3)
+                status.text = "测试中…"
+                Thread {
+                    val outcome = try {
+                        val result = Engine.testProvider(def.id, prefs)
+                        "✓ ${result.text}（${result.provider} · ${result.latencyMs}ms）"
+                    } catch (t: Throwable) {
+                        "✗ ${t.message ?: "未知错误"}"
+                    }
+                    val ok = outcome.startsWith("✓")
+                    runOnUiThread {
+                        status.text = outcome
+                        status.setTextColor(if (ok) p.teal else p.err)
+                    }
+                }.start()
+            }
+        }
+        dialog.show()
+    }
+
+    /** 自定义接口的配置弹窗 */
+    private fun openCustomDialog() {
+        val body = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding(dp(22), dp(14), dp(22), dp(4))
+        }
+        body.addView(TextView(this).apply {
+            text = "自定义接口"
+            textSize = 16f
+            setTextColor(p.text)
+            setTypeface(typeface, Typeface.BOLD)
+        })
+        body.addView(TextView(this).apply {
+            text = "任意 OpenAI 兼容接口：DeepSeek / 硅基流动 / 自建网关"
+            textSize = 11.5f
+            setTextColor(p.text3)
+            setPadding(0, dp(4), 0, 0)
+        })
+
+        val nameWrap = dialogField("名称", "DeepSeek", prefs.customName, false)
+        val baseWrap = dialogField("接口地址", "https://api.deepseek.com/v1", prefs.customBaseUrl, false)
+        val keyWrap = dialogField("API Key", "sk-…", prefs.customKey, true)
+        val modelWrap = dialogField("模型名", "deepseek-chat", prefs.customModel, false)
+        val nameField = nameWrap.tag as EditText
+        val baseField = baseWrap.tag as EditText
+        val keyField = keyWrap.tag as EditText
+        val modelField = modelWrap.tag as EditText
+        body.addView(nameWrap); body.addView(baseWrap); body.addView(keyWrap); body.addView(modelWrap)
+
+        val status = TextView(this).apply {
+            visibility = View.GONE
+            textSize = 11.5f
+            setTextColor(p.text3)
+            setPadding(0, dp(10), 0, 0)
+        }
+        body.addView(status)
+
+        val dialog = AlertDialog.Builder(this)
+            .setView(body)
+            .setPositiveButton("保存", null)
+            .setNegativeButton("取消", null)
+            .setNeutralButton("测试这个接口", null)
+            .create()
+
+        dialog.setOnShowListener {
+            dialog.getButton(AlertDialog.BUTTON_POSITIVE).setOnClickListener {
+                saveCustomValues(nameField, baseField, keyField, modelField)
+                dialog.dismiss()
+                refreshStatus()
+                Toast.makeText(this, "已保存", Toast.LENGTH_SHORT).show()
+            }
+            dialog.getButton(AlertDialog.BUTTON_NEUTRAL).setOnClickListener {
+                saveCustomValues(nameField, baseField, keyField, modelField)
+                status.visibility = View.VISIBLE
+                status.setTextColor(p.text3)
+                status.text = "测试中…"
+                Thread {
+                    val outcome = try {
+                        val result = Engine.testProvider("custom:custom", prefs)
+                        "✓ ${result.text}（${result.provider} · ${result.latencyMs}ms）"
+                    } catch (t: Throwable) {
+                        "✗ ${t.message ?: "未知错误"}"
+                    }
+                    val ok = outcome.startsWith("✓")
+                    runOnUiThread {
+                        status.text = outcome
+                        status.setTextColor(if (ok) p.teal else p.err)
+                    }
+                }.start()
+            }
+        }
+        dialog.show()
+    }
+
+    private fun saveProviderValues(
+        def: Providers.Def,
+        inputs: Map<String, EditText>,
+        endpointInput: EditText?
+    ) {
+        for ((fieldId, input) in inputs) {
+            prefs.setCredential(def.id, fieldId, input.text.toString().trim())
+        }
+        endpointInput?.let { prefs.setCredential(def.id, "endpoint", it.text.toString().trim()) }
+    }
+
+    private fun saveCustomValues(
+        nameField: EditText,
+        baseField: EditText,
+        keyField: EditText,
+        modelField: EditText
+    ) {
+        prefs.customName = nameField.text.toString().trim()
+        prefs.customBaseUrl = baseField.text.toString().trim().ifBlank { "https://api.deepseek.com/v1" }
+        prefs.customKey = keyField.text.toString().trim()
+        prefs.customModel = modelField.text.toString().trim().ifBlank { "deepseek-chat" }
     }
 
     // MARK: - 组件工厂
@@ -606,15 +839,6 @@ class MainActivity : Activity() {
     // MARK: - 数据
 
     private fun loadValues() {
-        for ((key, input) in providerFields) {
-            val (providerId, fieldId) = key.split(":")
-            input.setText(prefs.credential(providerId)[fieldId] ?: "")
-        }
-        customNameField.setText(prefs.customName)
-        customBaseField.setText(prefs.customBaseUrl)
-        customKeyField.setText(prefs.customKey)
-        customModelField.setText(prefs.customModel)
-
         triggerField.setText(prefs.trigger)
         thresholdField.setText(prefs.longSentenceThreshold.toString())
         limitField.setText(prefs.dailyCharLimit.toString())
@@ -631,7 +855,6 @@ class MainActivity : Activity() {
         }
         modeGroup.setOnCheckedChangeListener { _, _ -> refreshServiceSpinner() }
         refreshServiceSpinner()
-        refreshBadges()
     }
 
     /** 服务商下拉：按当前模式列出已配置的服务商，第一项永远是「自动」 */
@@ -671,22 +894,7 @@ class MainActivity : Activity() {
         return "free"
     }
 
-    private fun refreshBadges() {
-        for (def in Providers.DEFS) {
-            val badge = providerBadges[def.id] ?: continue
-            badge.visibility = if (prefs.isConfigured(def.id)) View.VISIBLE else View.GONE
-        }
-    }
-
     private fun save() {
-        for ((key, input) in providerFields) {
-            val (providerId, fieldId) = key.split(":")
-            prefs.setCredential(providerId, fieldId, input.text.toString().trim())
-        }
-        prefs.customName = customNameField.text.toString().trim()
-        prefs.customBaseUrl = customBaseField.text.toString().trim().ifBlank { "https://api.deepseek.com/v1" }
-        prefs.customKey = customKeyField.text.toString().trim()
-        prefs.customModel = customModelField.text.toString().trim().ifBlank { "deepseek-chat" }
 
         prefs.mode = currentMode()
         prefs.selection = serviceIds.getOrNull(serviceSpinner.selectedItemPosition) ?: "auto"
@@ -699,7 +907,6 @@ class MainActivity : Activity() {
 
         Toast.makeText(this, "已保存", Toast.LENGTH_SHORT).show()
         refreshStatus()
-        refreshBadges()
         refreshServiceSpinner()
     }
 
@@ -722,48 +929,6 @@ class MainActivity : Activity() {
             ?: return false
         val component = ComponentName(this, WeiFanAccessibilityService::class.java).flattenToString()
         return enabled.split(':').any { it.equals(component, ignoreCase = true) }
-    }
-
-    // MARK: - 单测某一家
-
-    /** 测之前先把输入框里刚填的值存下来，否则测的是上次的旧密钥 */
-    private fun saveProviderFields(providerId: String) {
-        if (providerId.startsWith("custom:")) {
-            prefs.customName = customNameField.text.toString().trim()
-            prefs.customBaseUrl = customBaseField.text.toString().trim().ifBlank { "https://api.deepseek.com/v1" }
-            prefs.customKey = customKeyField.text.toString().trim()
-            prefs.customModel = customModelField.text.toString().trim().ifBlank { "deepseek-chat" }
-            return
-        }
-        for ((key, input) in providerFields) {
-            val (pid, fid) = key.split(":")
-            if (pid != providerId) continue
-            prefs.setCredential(pid, fid, input.text.toString().trim())
-        }
-    }
-
-    /** 只测这一家：不走降级链，出错就是这一家的错 */
-    private fun runProviderTest(providerId: String, status: TextView, button: Button) {
-        button.isEnabled = false
-        status.visibility = View.VISIBLE
-        status.setTextColor(p.text3)
-        status.text = "测试中…"
-
-        Thread {
-            val outcome = try {
-                saveProviderFields(providerId)
-                val result = Engine.testProvider(providerId, prefs)
-                "✓ ${result.text}（${result.provider} · ${result.latencyMs}ms）"
-            } catch (t: Throwable) {
-                "✗ ${t.message ?: "未知错误"}"
-            }
-            val ok = outcome.startsWith("✓")
-            runOnUiThread {
-                status.text = outcome
-                status.setTextColor(if (ok) p.teal else p.err)
-                button.isEnabled = true
-            }
-        }.start()
     }
 
     // MARK: - 试译

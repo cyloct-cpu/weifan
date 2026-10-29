@@ -92,188 +92,53 @@ function render() {
 /* ── 免费额度服务商表单 ───────────────────────────── */
 
 /** 从注册表自动生成八家表单，改服务商只要改 core/providers.js */
+/* ── 服务商胶囊 + 配置弹窗 ───────────────────────────── */
+
+/** @type {{type: 'provider'|'custom', id: string, index: number}|null} */
+let dialogTarget = null;
+
+/**
+ * 胶囊卡片：两列排布，点开才出配置表单——九家竖着排太长，用户得一直滑。
+ */
+function providerCapsule({ title, note, configured }) {
+  const capsule = document.createElement('button');
+  capsule.type = 'button';
+  capsule.className = 'provider-capsule';
+  if (configured) capsule.dataset.configured = '1';
+
+  const top = document.createElement('span');
+  top.className = 'capsule-top';
+
+  const name = document.createElement('strong');
+  name.textContent = title;
+  top.appendChild(name);
+
+  const dot = document.createElement('i');
+  dot.className = 'capsule-dot';
+  dot.title = configured ? '已配置' : '未配置';
+  top.appendChild(dot);
+
+  const sub = document.createElement('span');
+  sub.className = 'capsule-note';
+  sub.textContent = note;
+
+  capsule.append(top, sub);
+  return capsule;
+}
+
 function renderProviders() {
   const host = $('providerList');
   host.innerHTML = '';
-
   for (const provider of PROVIDERS) {
-    const card = document.createElement('div');
-    card.className = 'provider';
-    card.dataset.id = provider.id;
-
-    const head = document.createElement('div');
-    head.className = 'provider-head';
-
-    const name = document.createElement('strong');
-    name.textContent = provider.label;
-
-    const pill = document.createElement('span');
-    pill.className = 'pill';
-    pill.hidden = true;
-    pill.textContent = '已配置';
-
-    const note = document.createElement('span');
-    note.className = 'provider-note';
-    note.textContent = provider.freeNote ?? '';
-
-    head.append(name, pill, note);
-
-    if (provider.docs) {
-      const link = document.createElement('a');
-      link.className = 'provider-link';
-      link.href = provider.docs;
-      link.target = '_blank';
-      link.rel = 'noreferrer';
-      link.textContent = '去申请';
-      head.appendChild(link);
-    }
-
-    const fields = document.createElement('div');
-    fields.className = 'provider-fields';
-
-    for (const field of provider.fields ?? []) {
-      const wrap = document.createElement('div');
-      wrap.className = 'field';
-
-      const label = document.createElement('label');
-      label.textContent = field.label;
-
-      const input = document.createElement('input');
-      input.type = field.secret ? 'password' : 'text';
-      input.placeholder = field.placeholder ?? '';
-      input.dataset.field = field.id;
-      input.dataset.provider = provider.id;
-      input.spellcheck = false;
-      input.autocomplete = 'off';
-
-      const saved = readCredential(provider.id, field.id);
-      if (saved) input.value = saved;
-
-      input.addEventListener('input', refreshKeyStatus);
-
-      wrap.append(label, input);
-      fields.appendChild(wrap);
-    }
-
-    // 端点：固定的只展示一行说明，可改的才给输入框（用户通常只要填密钥）
-    /** @type {HTMLElement[]} */
-    const endpointParts = [];
-    if (provider.endpoint) {
-      if (provider.endpointEditable) {
-        const wrap = document.createElement('div');
-        wrap.className = 'field';
-        const label = document.createElement('label');
-        label.textContent = provider.id === 'deepl'
-          ? '端点（付费版改成 https://api.deepl.com/v2/translate）'
-          : '终结点（区域资源填自己的子域名，留空用默认）';
-        const input = document.createElement('input');
-        input.type = 'text';
-        input.value = provider.endpoint;
-        input.dataset.field = 'endpoint';
-        input.dataset.provider = provider.id;
-        input.spellcheck = false;
-        wrap.append(label, input);
-        endpointParts.push(wrap);
-      } else {
-        const note = document.createElement('p');
-        note.className = 'provider-endpoint';
-        note.textContent = `接口 ${provider.endpoint}`;
-        endpointParts.push(note);
-      }
-    }
-
-    const status = document.createElement('p');
-    status.className = 'provider-status';
-    status.hidden = true;
-
-    const test = document.createElement('button');
-    test.type = 'button';
-    test.className = 'provider-test';
-    test.textContent = '测试';
-    test.addEventListener('click', () => runProviderTest(provider.id, status, test));
-    head.appendChild(test);
-
-    card.append(head, ...endpointParts, fields, status);
-    host.appendChild(card);
+    const capsule = providerCapsule({
+      title: provider.label,
+      note: provider.freeNote,
+      configured: isProviderConfigured(provider.id)
+    });
+    capsule.addEventListener('click', () => openProviderDialog(provider.id));
+    host.appendChild(capsule);
   }
 }
-
-/**
- * 只测某一家：不走降级链，出错就是这一家的错。
- * 测之前先把输入框里**刚填的**值存下来——不然测的是上次的旧密钥。
- * @param {string} providerId
- * @param {HTMLElement} statusEl
- * @param {HTMLButtonElement} button
- */
-async function runProviderTest(providerId, statusEl, button) {
-  button.disabled = true;
-  statusEl.hidden = false;
-  statusEl.className = 'provider-status';
-  statusEl.textContent = '测试中…';
-
-  try {
-    await saveProviderCredential(providerId);
-    const result = await sendToBackground({ type: 'testProvider', providerId });
-    statusEl.classList.add('is-ok');
-    statusEl.textContent = `✓ ${result.text}（${result.provider} · ${result.latency}ms）`;
-  } catch (error) {
-    statusEl.classList.add('is-err');
-    statusEl.textContent = `✗ ${error.message}`;
-  } finally {
-    button.disabled = false;
-  }
-}
-
-/**
- * 把某个服务商当前输入框里的值写进存储（不碰其它服务商）。
- * @param {string} providerId
- */
-async function saveProviderCredential(providerId) {
-  if (providerId.startsWith('custom:')) {
-    const item = customs.find((c) => c.id === providerId.slice(7));
-    if (!item) return;
-    item.key = item.key?.trim() ?? '';
-    item.baseURL = item.baseURL?.trim() ?? '';
-    item.model = item.model?.trim() || 'deepseek-chat';
-    item.name = item.name?.trim() || '';
-    const clean = customs
-      .filter((c) => c.key && c.baseURL)
-      .map((c) => ({ id: c.id, name: c.name || c.model || '自定义接口', key: c.key, baseURL: c.baseURL, model: c.model || 'deepseek-chat' }));
-    store.keys = { ...store.keys, customs: clean };
-    await storage.set({ [STORAGE_KEY]: store });
-    return;
-  }
-
-  /** @type {Record<string, string>} */
-  const values = {};
-  for (const input of document.querySelectorAll(`input[data-provider="${providerId}"]`)) {
-    if (input.value.trim()) values[input.dataset.field] = input.value.trim();
-  }
-
-  const def = PROVIDERS.find((p) => p.id === providerId);
-  const required = (def?.fields ?? []).filter((f) => f.id !== 'endpoint' && !f.optional);
-  const keys = { ...store.keys };
-  if (required.length && required.every((f) => values[f.id])) {
-    keys[providerId] = values;
-  } else {
-    delete keys[providerId];
-  }
-  store.keys = keys;
-  await storage.set({ [STORAGE_KEY]: store });
-}
-
-/**
- * @param {string} providerId
- * @param {string} fieldId
- */
-function readCredential(providerId, fieldId) {
-  const value = store.keys[providerId];
-  if (!value) return '';
-  if (typeof value === 'string') return fieldId === 'key' ? value : '';
-  return value[fieldId] ?? '';
-}
-
-/* ── 自定义接口 ───────────────────────────────────── */
 
 function renderCustoms() {
   const host = $('customList');
@@ -289,122 +154,236 @@ function renderCustoms() {
   }
 
   customs.forEach((item, index) => {
-    const card = document.createElement('div');
-    card.className = 'provider';
-
-    const head = document.createElement('div');
-    head.className = 'provider-head';
-
-    const name = document.createElement('strong');
-    name.textContent = item.name || `接口 ${index + 1}`;
-
-    const pill = document.createElement('span');
-    pill.className = 'pill';
-    pill.hidden = !(item.key && item.baseURL);
-    pill.textContent = '已配置';
-
-    const remove = document.createElement('button');
-    remove.type = 'button';
-    remove.className = 'provider-remove';
-    remove.textContent = '删除';
-    remove.addEventListener('click', () => {
-      customs.splice(index, 1);
-      renderCustoms();
+    const capsule = providerCapsule({
+      title: item.name || item.model || '自定义接口',
+      note: item.baseURL || '还没填接口地址',
+      configured: Boolean(item.key && item.baseURL)
     });
-
-    // 端点：固定的只展示一行说明，可改的才给输入框（用户通常只要填密钥）
-    /** @type {HTMLElement[]} */
-    const endpointParts = [];
-    if (provider.endpoint) {
-      if (provider.endpointEditable) {
-        const wrap = document.createElement('div');
-        wrap.className = 'field';
-        const label = document.createElement('label');
-        label.textContent = provider.id === 'deepl'
-          ? '端点（付费版改成 https://api.deepl.com/v2/translate）'
-          : '终结点（区域资源填自己的子域名，留空用默认）';
-        const input = document.createElement('input');
-        input.type = 'text';
-        input.value = provider.endpoint;
-        input.dataset.field = 'endpoint';
-        input.dataset.provider = provider.id;
-        input.spellcheck = false;
-        wrap.append(label, input);
-        endpointParts.push(wrap);
-      } else {
-        const note = document.createElement('p');
-        note.className = 'provider-endpoint';
-        note.textContent = `接口 ${provider.endpoint}`;
-        endpointParts.push(note);
-      }
-    }
-
-    const status = document.createElement('p');
-    status.className = 'provider-status';
-    status.hidden = true;
-
-    const test = document.createElement('button');
-    test.type = 'button';
-    test.className = 'provider-test';
-    test.textContent = '测试';
-    test.addEventListener('click', () => runProviderTest(`custom:${item.id}`, status, test));
-
-    head.append(name, pill, test, remove);
-
-    const fields = document.createElement('div');
-    fields.className = 'provider-fields';
-
-    const defs = [
-      { id: 'name', label: '名称', placeholder: 'DeepSeek', secret: false },
-      { id: 'baseURL', label: '接口地址', placeholder: 'https://api.deepseek.com/v1', secret: false },
-      { id: 'key', label: 'API Key', placeholder: 'sk-…', secret: true },
-      { id: 'model', label: '模型名', placeholder: 'deepseek-chat', secret: false }
-    ];
-
-    for (const field of defs) {
-      const wrap = document.createElement('div');
-      wrap.className = 'field';
-
-      const label = document.createElement('label');
-      label.textContent = field.label;
-
-      const input = document.createElement('input');
-      input.type = field.secret ? 'password' : 'text';
-      input.placeholder = field.placeholder;
-      input.value = item[field.id] ?? '';
-      input.spellcheck = false;
-      input.autocomplete = 'off';
-      input.addEventListener('input', () => {
-        item[field.id] = input.value;
-        pill.hidden = !(item.key && item.baseURL);
-        refreshKeyStatus();
-      });
-
-      wrap.append(label, input);
-      fields.appendChild(wrap);
-    }
-
-    card.append(head, ...endpointParts, fields, status);
-    host.appendChild(card);
+    capsule.addEventListener('click', () => openCustomDialog(index));
+    host.appendChild(capsule);
   });
 
   refreshKeyStatus();
 }
 
-$('addCustom').addEventListener('click', () => {
-  customs.push({
-    id: `c${Date.now().toString(36)}`,
-    name: '',
-    key: '',
-    baseURL: '',
-    model: ''
-  });
+/** 某家是否已配置（必填字段齐了） */
+function isProviderConfigured(providerId) {
+  const def = PROVIDERS.find((p) => p.id === providerId);
+  if (!def) return false;
+  const required = (def.fields ?? []).filter((f) => !f.optional);
+  if (!required.length) return false;
+  const values = store.keys[providerId] ?? {};
+  return required.every((f) => values[f.id]);
+}
+
+/* ── 弹窗 ─────────────────────────────────────────── */
+
+function openProviderDialog(providerId) {
+  const provider = PROVIDERS.find((p) => p.id === providerId);
+  if (!provider) return;
+
+  dialogTarget = { type: 'provider', id: providerId, index: -1 };
+  $('pdTitle').textContent = provider.label;
+  $('pdNote').textContent = provider.freeNote;
+  resetDialogStatus();
+
+  const body = $('pdBody');
+  body.innerHTML = '';
+
+  if (provider.endpoint) {
+    if (provider.endpointEditable) {
+      body.appendChild(fieldBlock(
+        provider.id === 'deepl'
+          ? '端点（付费版改成 https://api.deepl.com/v2/translate）'
+          : '终结点（区域资源填自己的子域名，留空用默认）',
+        'endpoint',
+        provider.endpoint,
+        provider.id
+      ));
+    } else {
+      const note = document.createElement('p');
+      note.className = 'provider-endpoint';
+      note.textContent = `接口 ${provider.endpoint}${provider.endpointNote ?? ''}`;
+      body.appendChild(note);
+    }
+  }
+
+  for (const field of provider.fields ?? []) {
+    body.appendChild(fieldBlock(
+      field.label + (field.optional ? '（选填）' : ''),
+      field.id,
+      readCredential(provider.id, field.id),
+      provider.id,
+      field.secret
+    ));
+  }
+
+  if (provider.docs) {
+    const link = document.createElement('a');
+    link.className = 'provider-link';
+    link.href = provider.docs;
+    link.target = '_blank';
+    link.rel = 'noreferrer';
+    link.textContent = '去申请密钥 ↗';
+    body.appendChild(link);
+  }
+
+  openDialog();
+}
+
+function openCustomDialog(index) {
+  const item = customs[index];
+  if (!item) return;
+
+  dialogTarget = { type: 'custom', id: item.id, index };
+  $('pdTitle').textContent = item.name || '自定义接口';
+  $('pdNote').textContent = '任意 OpenAI 兼容接口：DeepSeek / 硅基流动 / 自建网关';
+  resetDialogStatus();
+
+  const body = $('pdBody');
+  body.innerHTML = '';
+  body.appendChild(fieldBlock('名称', 'name', item.name, item.id));
+  body.appendChild(fieldBlock('接口地址', 'baseURL', item.baseURL, item.id));
+  body.appendChild(fieldBlock('API Key', 'key', item.key, item.id, true));
+  body.appendChild(fieldBlock('模型名', 'model', item.model, item.id));
+
+  openDialog();
+}
+
+/**
+ * 一个带标签的输入框。
+ * @param {string} labelText
+ * @param {string} fieldId
+ * @param {string} value
+ * @param {string} ownerId
+ * @param {boolean} [secret]
+ */
+function fieldBlock(labelText, fieldId, value, ownerId, secret = false) {
+  const wrap = document.createElement('div');
+  wrap.className = 'field';
+
+  const label = document.createElement('label');
+  label.textContent = labelText;
+
+  const input = document.createElement('input');
+  input.type = secret ? 'password' : 'text';
+  input.value = value ?? '';
+  input.dataset.field = fieldId;
+  input.dataset.owner = ownerId;
+  input.spellcheck = false;
+  input.autocomplete = 'off';
+
+  wrap.append(label, input);
+  return wrap;
+}
+
+function openDialog() {
+  const dialog = $('providerDialog');
+  if (!dialog.open) dialog.showModal();
+  const first = $('pdBody').querySelector('input');
+  if (first) first.focus();
+}
+
+function resetDialogStatus() {
+  const status = $('pdStatus');
+  status.hidden = true;
+  status.className = 'pd-status';
+  status.textContent = '';
+}
+
+/** 弹窗里当前填的值 */
+function collectDialogValues() {
+  /** @type {Record<string,string>} */
+  const values = {};
+  for (const input of $('pdBody').querySelectorAll('input[data-field]')) {
+    if (input.value.trim()) values[input.dataset.field] = input.value.trim();
+  }
+  return values;
+}
+
+/** 把弹窗里的值写进 store 并落盘 */
+async function applyDialogValues() {
+  if (!dialogTarget) return;
+  const values = collectDialogValues();
+
+  if (dialogTarget.type === 'provider') {
+    const def = PROVIDERS.find((p) => p.id === dialogTarget.id);
+    const required = (def?.fields ?? []).filter((f) => !f.optional);
+    const keys = { ...store.keys };
+    if (required.length && required.every((f) => values[f.id])) {
+      keys[def.id] = values;
+    } else {
+      delete keys[def.id];
+    }
+    store.keys = keys;
+  } else {
+    const item = customs[dialogTarget.index];
+    if (item) {
+      item.name = values.name ?? '';
+      item.baseURL = values.baseURL ?? '';
+      item.key = values.key ?? '';
+      item.model = values.model ?? '';
+      const clean = customs
+        .filter((c) => c.key && c.baseURL)
+        .map((c) => ({
+          id: c.id,
+          name: c.name || c.model || '自定义接口',
+          key: c.key,
+          baseURL: c.baseURL,
+          model: c.model || 'deepseek-chat'
+        }));
+      store.keys = { ...store.keys, customs: clean };
+    }
+  }
+
+  await storage.set({ [STORAGE_KEY]: store });
+}
+
+async function saveDialog() {
+  await applyDialogValues();
+  refreshKeyStatus();
+  renderProviders();
   renderCustoms();
-});
+  $('providerDialog').close();
+  setStatus('已保存', 'ok');
+}
 
-/* ── 保存 ─────────────────────────────────────────── */
+async function runDialogTest() {
+  if (!dialogTarget) return;
+  const button = $('pdTest');
+  const status = $('pdStatus');
 
-/** @param {string} value */
+  button.disabled = true;
+  status.hidden = false;
+  status.className = 'pd-status';
+  status.textContent = '测试中…';
+
+  try {
+    // 后台从存储读密钥，得先落盘再测
+    await applyDialogValues();
+    const providerId = dialogTarget.type === 'custom' ? `custom:${dialogTarget.id}` : dialogTarget.id;
+    const result = await sendToBackground({ type: 'testProvider', providerId });
+    status.className = 'pd-status is-ok';
+    status.textContent = `✓ ${result.text}（${result.provider} · ${result.latency}ms）`;
+  } catch (error) {
+    status.className = 'pd-status is-err';
+    status.textContent = `✗ ${error.message}`;
+  } finally {
+    button.disabled = false;
+  }
+}
+
+/**
+ * @param {string} providerId
+ * @param {string} fieldId
+ */
+function readCredential(providerId, fieldId) {
+  const value = store.keys[providerId];
+  if (!value) return '';
+  if (typeof value === 'string') return fieldId === 'key' ? value : '';
+  return value[fieldId] ?? '';
+}
+
 function setStyle(value) {
   const radio = document.querySelector(`input[name="style"][value="${value}"]`);
   if (radio) radio.checked = true;
@@ -453,32 +432,8 @@ function parseGlossary(text) {
 }
 
 function collect() {
-  /** @type {Record<string, any>} */
-  const keys = {};
-
-  for (const provider of PROVIDERS) {
-    /** @type {Record<string, string>} */
-    const credential = {};
-    for (const input of document.querySelectorAll(`input[data-provider="${provider.id}"]`)) {
-      if (input.value.trim()) credential[input.dataset.field] = input.value.trim();
-    }
-    const required = (provider.fields ?? []).filter((f) => f.id !== 'endpoint' && !f.optional);
-    if (required.length && required.every((f) => credential[f.id])) {
-      keys[provider.id] = credential;
-    }
-  }
-
-  const cleanCustoms = customs
-    .filter((item) => item.key?.trim() && item.baseURL?.trim())
-    .map((item) => ({
-      id: item.id,
-      name: item.name?.trim() || item.model?.trim() || '自定义接口',
-      key: item.key.trim(),
-      baseURL: item.baseURL.trim(),
-      model: item.model?.trim() || 'deepseek-chat'
-    }));
-
-  if (cleanCustoms.length) keys.customs = cleanCustoms;
+  // 服务商的密钥在弹窗里单独保存，这里直接用已存的值
+  const keys = { ...store.keys };
 
   return {
     keys,
@@ -502,14 +457,7 @@ function collect() {
 function refreshKeyStatus() {
   let configured = 0;
   for (const provider of PROVIDERS) {
-    const pill = document.querySelector(`.provider[data-id="${provider.id}"] .pill`);
-    const required = (provider.fields ?? []).filter((f) => f.id !== 'endpoint' && !f.optional);
-    const filled = required.every((field) => {
-      const input = document.querySelector(`input[data-provider="${provider.id}"][data-field="${field.id}"]`);
-      return Boolean(input?.value.trim());
-    });
-    if (pill) pill.hidden = !filled;
-    if (filled) configured += 1;
+    if (isProviderConfigured(provider.id)) configured += 1;
   }
 
   $('freeCount').textContent = `${configured} / ${PROVIDERS.length}`;
@@ -577,6 +525,23 @@ async function save() {
 /* ── 事件绑定 ─────────────────────────────────────── */
 
 $('save').addEventListener('click', save);
+
+$('pdSave').addEventListener('click', saveDialog);
+$('pdCancel').addEventListener('click', () => $('providerDialog').close());
+$('pdClose').addEventListener('click', () => $('providerDialog').close());
+$('pdTest').addEventListener('click', runDialogTest);
+
+$('addCustom').addEventListener('click', () => {
+  customs.push({
+    id: `c${Date.now().toString(36)}`,
+    name: '',
+    key: '',
+    baseURL: '',
+    model: ''
+  });
+  renderCustoms();
+  openCustomDialog(customs.length - 1);
+});
 
 $('clearCache').addEventListener('click', async () => {
   try {
