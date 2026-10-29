@@ -416,7 +416,7 @@ export const PROVIDERS = [
     label: '百度翻译开放平台',
     mode: 'free',
     kind: 'mt',
-    freeNote: '每月 100 万字符免费（标准版，需实名）',
+    freeNote: '标准版 5 万/月；个人认证（高级版）100 万/月',
     docs: 'https://fanyi-api.baidu.com/doc/21',
     fields: [
       { id: 'appid', label: 'App ID', placeholder: '2024……' },
@@ -430,7 +430,7 @@ export const PROVIDERS = [
     label: '腾讯云机器翻译 TMT',
     mode: 'free',
     kind: 'mt',
-    freeNote: '每月 500 万字符免费额度（需实名）',
+    freeNote: '个人实名后每月约 500 万字符免费资源包',
     docs: 'https://cloud.tencent.com/document/product/551',
     fields: [
       { id: 'secretId', label: 'SecretId', placeholder: 'AKID……' },
@@ -445,7 +445,7 @@ export const PROVIDERS = [
     label: '火山引擎翻译',
     mode: 'free',
     kind: 'mt',
-    freeNote: '每月 100 万字符免费额度',
+    freeNote: '新用户约 100 万字符免费额度',
     docs: 'https://www.volcengine.com/docs/4640',
     fields: [
       { id: 'accessKeyId', label: 'AccessKey ID', placeholder: 'AKLT……' },
@@ -459,7 +459,7 @@ export const PROVIDERS = [
     label: '阿里云翻译',
     mode: 'free',
     kind: 'mt',
-    freeNote: '每月 100 万字符免费额度',
+    freeNote: '个人版每月 100 万字符免费',
     docs: 'https://help.aliyun.com/zh/machine-translation/',
     fields: [
       { id: 'accessKeyId', label: 'AccessKey ID', placeholder: 'LTAI……' },

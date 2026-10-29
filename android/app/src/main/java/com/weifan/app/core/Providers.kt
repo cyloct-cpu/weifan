@@ -83,7 +83,7 @@ object Providers {
         ),
         Def(
             "baidu", "百度翻译开放平台", "free", "mt",
-            "每月 100 万字符免费（标准版，需实名）",
+            "标准版 5 万/月；个人认证（高级版）100 万/月",
             "https://fanyi-api.baidu.com/doc/21",
             listOf(
                 Field("appid", "App ID", "2024……"),
@@ -92,7 +92,7 @@ object Providers {
         ),
         Def(
             "tencent", "腾讯云机器翻译 TMT", "free", "mt",
-            "每月 500 万字符免费额度（需实名）",
+            "个人实名后每月约 500 万字符免费资源包",
             "https://cloud.tencent.com/document/product/551",
             listOf(
                 Field("secretId", "SecretId", "AKID……"),
@@ -102,7 +102,7 @@ object Providers {
         ),
         Def(
             "volc", "火山引擎翻译", "free", "mt",
-            "每月 100 万字符免费额度",
+            "新用户约 100 万字符免费额度",
             "https://www.volcengine.com/docs/4640",
             listOf(
                 Field("accessKeyId", "AccessKey ID", "AKLT……"),
@@ -111,7 +111,7 @@ object Providers {
         ),
         Def(
             "aliyun", "阿里云翻译", "free", "mt",
-            "每月 100 万字符免费额度",
+            "个人版每月 100 万字符免费",
             "https://help.aliyun.com/zh/machine-translation/",
             listOf(
                 Field("accessKeyId", "AccessKey ID", "LTAI……"),
