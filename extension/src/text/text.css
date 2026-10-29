@@ -120,3 +120,97 @@ textarea {
   .panes { grid-template-columns: 1fr; }
   textarea { min-height: 240px; }
 }
+
+/* ── 语言行：三个可输入的语言框 + 两个互换按钮 ─────── */
+
+.langrow {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  margin-bottom: 4px;
+}
+
+.langinput {
+  flex: 1;
+  min-width: 0;
+  background: var(--surface-2);
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  color: var(--text);
+  font: 12.5px/1.4 var(--sans);
+  padding: 8px 10px;
+  outline: none;
+  transition: border-color 0.15s, box-shadow 0.15s;
+}
+.langinput::placeholder { color: var(--text-3); }
+.langinput:focus {
+  border-color: var(--warm);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--warm) 16%, transparent);
+}
+
+.swap {
+  flex: none;
+  width: 32px;
+  height: 32px;
+  border: 1px solid var(--line);
+  border-radius: 9px;
+  background: var(--surface);
+  color: var(--text-2);
+  font-size: 15px;
+  line-height: 1;
+  cursor: pointer;
+  transition: color 0.15s, border-color 0.15s;
+}
+.swap:hover { color: var(--text); border-color: var(--line-strong); }
+
+.barrow { display: flex; gap: 14px; flex-wrap: wrap; }
+
+.panes.single { grid-template-columns: 1fr; }
+
+/* ── 语言行：三个可输入的语言框 + 两个互换按钮 ─────── */
+
+.langrow {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  margin-bottom: 4px;
+}
+
+.langinput {
+  flex: 1;
+  min-width: 0;
+  background: var(--surface-2);
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  color: var(--text);
+  font: 12.5px/1.4 var(--sans);
+  padding: 8px 10px;
+  outline: none;
+  transition: border-color 0.15s, box-shadow 0.15s;
+}
+.langinput::placeholder { color: var(--text-3); }
+.langinput:focus {
+  border-color: var(--warm);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--warm) 16%, transparent);
+}
+
+.swap {
+  flex: none;
+  width: 32px;
+  height: 32px;
+  border: 1px solid var(--line);
+  border-radius: 9px;
+  background: var(--surface);
+  color: var(--text-2);
+  font-size: 15px;
+  line-height: 1;
+  cursor: pointer;
+  transition: color 0.15s, border-color 0.15s;
+}
+.swap:hover { color: var(--text); border-color: var(--line-strong); }
+
+.barrow { display: flex; gap: 14px; flex-wrap: wrap; }
+
+.panes.single { grid-template-columns: 1fr; }

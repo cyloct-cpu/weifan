@@ -14,7 +14,6 @@ import android.widget.Button
 import android.widget.EditText
 import android.widget.LinearLayout
 import android.widget.ScrollView
-import android.widget.Spinner
 import android.widget.TextView
 import android.widget.Toast
 import com.weifan.app.core.Detector
@@ -22,28 +21,37 @@ import com.weifan.app.core.Engine
 import com.weifan.app.core.Lang
 
 /**
- * 翻译页：划词与文本翻译共用一套界面。
+ * 翻译页：划词与文本翻译共用。
  *
  * **划词**（Android 上没有"鼠标悬停"，对应能力是划词）：
  * 在任意 app 里选中文字 → 菜单里出现「微翻」→ 打开本页，原文自动带过来、翻译完可以
  * **一键替换回原文**（系统用 startActivityForResult 启动我们，setResult 回传即可）。
  *
- * 官方约定：EXTRA_PROCESS_TEXT 是选中的文本，EXTRA_PROCESS_TEXT_READONLY 表示
- * 原文能不能被替换；替换的做法是 setResult(RESULT_OK) + 结果里再放一份 EXTRA_PROCESS_TEXT。
+ * **语言框**：三个可输入的语言框（源语言 / 目标语言 / 第二个目标语言）——
+ *   - 都能直接打字，输入 "en"、"english"、"英语" 都能匹配；
+ *   - 第一个「⇄」在源与目标之间互换（语言和原文/译文内容一起换）；
+ *   - 第二个「⇄」在两个目标之间互换（两份译文对调）；
+ *   - 填了第二个目标语言，就**同时输出两种语言的译文**。
  */
 class TranslateActivity : Activity() {
 
     private lateinit var prefs: Prefs
     private lateinit var input: EditText
-    private lateinit var output: TextView
-    private lateinit var targetSpinner: Spinner
-    private lateinit var replaceButton: Button
+    private lateinit var output1: TextView
+    private lateinit var output2: TextView
+    private lateinit var output2Label: TextView
     private lateinit var statusText: TextView
     private lateinit var subtitle: TextView
+    private lateinit var replaceButton: Button
+
+    private lateinit var sourceField: LanguageField
+    private lateinit var targetField: LanguageField
+    private lateinit var target2Field: LanguageField
 
     /** 原文是否可被替换（选区所在的应用允不允许写回） */
     private var canReplace = false
     private var lastTranslation = ""
+    private var lastTranslation2 = ""
 
     private val p: Palette get() = Brand.palette(this)
     private val ctx: Context get() = this
@@ -53,7 +61,6 @@ class TranslateActivity : Activity() {
         prefs = Prefs(this)
         window.statusBarColor = p.bg
         setContentView(buildUI())
-
         handleIncoming(intent)
     }
 
@@ -62,36 +69,6 @@ class TranslateActivity : Activity() {
         super.onNewIntent(intent)
         setIntent(intent)
         handleIncoming(intent)
-    }
-
-    /** 划词入口：系统把选中的文字放进 EXTRA_PROCESS_TEXT */
-    private fun handleIncoming(intent: Intent?) {
-        val selected = intent?.getCharSequenceExtra(Intent.EXTRA_PROCESS_TEXT)?.toString().orEmpty()
-        canReplace = intent?.getBooleanExtra(Intent.EXTRA_PROCESS_TEXT_READONLY, false) == false
-        updateSubtitle()
-
-        if (selected.isNotBlank()) {
-            input.setText(selected)
-            input.setSelection(selected.length)
-
-            // 划词的默认方向：中文 → 兜底目标语言；外文 → 简体中文。
-            // （否则选中一段英文、目标也是英语，译文会原样返回，看着像没翻）
-            val detected = Detector.detect(selected)?.language
-            val autoTarget = if (detected != null && Lang.isChinese(detected)) prefs.defaultTarget else "zh-Hans"
-            val index = Lang.all.keys.toList().indexOf(autoTarget)
-            if (index >= 0) targetSpinner.setSelection(index)
-
-            translate()
-        }
-    }
-
-    private fun updateSubtitle() {
-        subtitle.text = if (canReplace) {
-            "选中的文字已带过来，翻译后可以替换回原文。"
-        } else {
-            "粘贴或输入文字即可翻译。"
-        }
-        replaceButton.visibility = if (canReplace) View.VISIBLE else View.GONE
     }
 
     private fun buildUI(): ViewGroup {
@@ -116,25 +93,51 @@ class TranslateActivity : Activity() {
         }
         root.addView(subtitle)
 
+        // 输出框先建好，语言框的回调要用到（第二个目标填了才显示第二块译文）
+        output1 = Ui.resultBox(ctx)
+        output2 = Ui.resultBox(ctx)
+        output2.visibility = View.GONE
+
+        // 语言行：源 ⇄ 目标 ⇄ 第二目标
+        val langRow = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER_VERTICAL
+        }
+        sourceField = LanguageField(ctx, "auto")
+        targetField = LanguageField(ctx, prefs.defaultTarget)
+        target2Field = LanguageField(ctx, "") { code ->
+            val has = code.isNotBlank()
+            output2.visibility = if (has) View.VISIBLE else View.GONE
+            output2Label.visibility = if (has) View.VISIBLE else View.GONE
+        }
+        sourceField.view.hint = "源语言"
+        targetField.view.hint = "目标语言"
+        target2Field.view.hint = "第二个目标"
+
+        langRow.addView(sourceField.view, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
+        langRow.addView(swapButton { swapSourceTarget() })
+        langRow.addView(targetField.view, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
+        langRow.addView(swapButton { swapTargets() })
+        langRow.addView(target2Field.view, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
+        root.addView(langRow)
+
         // 原文
         root.addView(Ui.label(ctx, "原文", p.text2, 12.5f, true))
         input = Ui.input(ctx, "要翻译的文字", lines = 4)
         root.addView(Ui.withMargin(ctx, input, 6, 0))
 
-        // 目标语言
-        root.addView(Ui.label(ctx, "目标语言", p.text2, 12.5f, true))
-        targetSpinner = Ui.spinner(ctx, Lang.all.keys.map { "${Lang.name(it)}（$it）" })
-        val index = Lang.all.keys.toList().indexOf(prefs.defaultTarget)
-        if (index >= 0) targetSpinner.setSelection(index)
-        root.addView(Ui.withMargin(ctx, targetSpinner, 6, 0))
-
         // 翻译按钮
         root.addView(Ui.withMargin(ctx, Ui.button(ctx, "翻译", true) { translate() }, 12, 0))
 
-        // 译文
+        // 译文（目标语言）
         root.addView(Ui.label(ctx, "译文", p.text2, 12.5f, true))
-        output = Ui.resultBox(this)
-        root.addView(Ui.withMargin(ctx, output, 6, 0))
+        root.addView(Ui.withMargin(ctx, output1, 6, 0))
+
+        // 译文（第二个目标语言）
+        output2Label = Ui.label(ctx, "译文（第二个目标语言）", p.text2, 12.5f, true)
+        output2Label.visibility = View.GONE
+        root.addView(output2Label)
+        root.addView(Ui.withMargin(ctx, output2, 6, 0))
 
         statusText = TextView(this).apply {
             textSize = 11.5f
@@ -148,9 +151,9 @@ class TranslateActivity : Activity() {
             orientation = LinearLayout.HORIZONTAL
             gravity = Gravity.CENTER_VERTICAL
         }
-        actions.addView(Ui.button(ctx, "复制译文", false) { copyResult() })
+        actions.addView(Ui.button(ctx, "复制译文", false) { copyResult(1) })
         replaceButton = Ui.button(ctx, "替换原文", false) { replaceSelection() }
-        replaceButton.visibility = if (canReplace) android.view.View.VISIBLE else android.view.View.GONE
+        replaceButton.visibility = if (canReplace) View.VISIBLE else View.GONE
         actions.addView(replaceButton)
         root.addView(Ui.withMargin(ctx, actions, 10, 0))
 
@@ -160,6 +163,92 @@ class TranslateActivity : Activity() {
         }
     }
 
+    /** 「⇄」小按钮 */
+    private fun swapButton(onClick: () -> Unit): View {
+        val tv = TextView(this).apply {
+            text = "⇄"
+            textSize = 16f
+            setTextColor(p.text2)
+            gravity = Gravity.CENTER
+            setPadding(Ui.dp(ctx, 8), Ui.dp(ctx, 6), Ui.dp(ctx, 8), Ui.dp(ctx, 6))
+            background = Ui.roundBg(ctx, p.surface, 8, 1, p.line)
+            isClickable = true
+            setOnClickListener { onClick() }
+        }
+        val lp = LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT)
+        lp.setMargins(Ui.dp(ctx, 5), 0, Ui.dp(ctx, 5), 0)
+        tv.layoutParams = lp
+        return tv
+    }
+
+    /* ── 划词入口 ─────────────────────────────────── */
+
+    private fun handleIncoming(intent: Intent?) {
+        val selected = intent?.getCharSequenceExtra(Intent.EXTRA_PROCESS_TEXT)?.toString().orEmpty()
+        // 只有真收到划词内容、且原文允许改写时，才给"替换原文"
+        canReplace = selected.isNotBlank() &&
+            intent?.getBooleanExtra(Intent.EXTRA_PROCESS_TEXT_READONLY, false) == false
+        updateSubtitle()
+
+        if (selected.isNotBlank()) {
+            input.setText(selected)
+            input.setSelection(selected.length)
+
+            // 方向自动判断：中文 → 兜底目标语言；外文 → 简体中文
+            val detected = Detector.detect(selected)?.language
+            if (detected != null) {
+                sourceField.setCode(detected)
+                targetField.setCode(if (Lang.isChinese(detected)) prefs.defaultTarget else "zh-Hans")
+            }
+            translate()
+        }
+    }
+
+    private fun updateSubtitle() {
+        subtitle.text = if (canReplace) {
+            "选中的文字已带过来，翻译后可以替换回原文。"
+        } else {
+            "粘贴或输入文字即可翻译。语言框可以直接打字。"
+        }
+        replaceButton.visibility = if (canReplace) View.VISIBLE else View.GONE
+    }
+
+    /* ── 互换 ─────────────────────────────────────── */
+
+    /** 源语言 ⇄ 目标语言：语言和原文/译文内容一起换 */
+    private fun swapSourceTarget() {
+        val a = sourceField.code
+        val b = targetField.code
+        sourceField.setCode(b)
+        targetField.setCode(a)
+
+        val src = input.text.toString()
+        val dst = output1.text.toString()
+        if (dst.isNotBlank()) {
+            input.setText(dst)
+            output1.setText(src)
+            lastTranslation = src
+        }
+    }
+
+    /** 两个目标语言互换：两份译文对调 */
+    private fun swapTargets() {
+        if (target2Field.code.isBlank()) return
+        val a = targetField.code
+        val b = target2Field.code
+        targetField.setCode(b)
+        target2Field.setCode(a)
+
+        val t1 = output1.text.toString()
+        val t2 = output2.text.toString()
+        output1.setText(t2)
+        output2.setText(t1)
+        lastTranslation = t2
+        lastTranslation2 = t1
+    }
+
+    /* ── 翻译 ─────────────────────────────────────── */
+
     private fun translate() {
         val text = input.text.toString().trim()
         if (text.isEmpty()) {
@@ -168,30 +257,66 @@ class TranslateActivity : Activity() {
             return
         }
 
-        val target = Lang.all.keys.toList().getOrNull(targetSpinner.selectedItemPosition) ?: "en"
+        val source = sourceField.code.takeIf { it.isNotBlank() && it != "auto" }
+        var targets = listOf(targetField.code, target2Field.code).filter { it.isNotBlank() }
+
+        // 源与目标同语言 = 白翻一遍，自动翻到另一边（并在状态里说明）
+        var autoNote = ""
+        val detected = Detector.detect(text)?.language
+        if (detected != null && targets.isNotEmpty() && targets[0] == detected) {
+            val flipped = if (Lang.isChinese(detected)) "en" else "zh-Hans"
+            targetField.setCode(flipped)
+            if (sourceField.code == "auto") sourceField.setCode(detected)
+            targets = listOf(flipped) + targets.drop(1)
+            autoNote = "（源与目标同语言，已自动改为 ${Lang.name(flipped)}）"
+        }
+        if (targets.isEmpty()) {
+            statusText.text = "先选一个目标语言"
+            statusText.setTextColor(p.warn)
+            return
+        }
+
         statusText.text = "翻译中…"
         statusText.setTextColor(p.text3)
-        output.text = ""
+        output1.text = ""
+        output2.text = ""
 
         Thread {
-            val outcome: Pair<Engine.GenericOutcome?, String?> = try {
-                Engine.translateText(text, null, target, prefs) to null
-            } catch (t: Throwable) {
-                null to (t.message ?: "未知错误")
+            // 成功给译文，失败给错误 —— 统一成 Pair，方便两个目标各自处理
+            val results: List<Pair<Engine.GenericOutcome?, String?>> = targets.map { target ->
+                try {
+                    Pair(Engine.translateText(text, source, target, prefs), null)
+                } catch (t: Throwable) {
+                    Pair(null, t.message ?: "未知错误")
+                }
             }
             runOnUiThread {
-                val result = outcome.first
-                if (result == null) {
-                    statusText.text = "失败：${outcome.second}"
+                val entry1 = results.getOrNull(0)
+                val r1 = entry1?.first
+                if (r1 == null) {
+                    statusText.text = "失败：${entry1?.second ?: "未知错误"}"
                     statusText.setTextColor(p.err)
                     return@runOnUiThread
                 }
-                lastTranslation = result.text
-                output.text = result.text
+                lastTranslation = r1.text
+                output1.text = r1.text
+
+                val entry2 = results.getOrNull(1)
+                if (entry2 != null) {
+                    val r2 = entry2.first
+                    if (r2 != null) {
+                        lastTranslation2 = r2.text
+                        output2.text = r2.text
+                    } else {
+                        output2.text = "（第二个目标语言翻译失败：${entry2.second}）"
+                    }
+                }
+
                 statusText.text = buildString {
-                    append(result.provider)
-                    result.degradedFrom?.let { append("（已从 $it 降级）") }
-                    append(" · ${result.latencyMs}ms")
+                    append(r1.provider)
+                    r1.degradedFrom?.let { append("（已从 $it 降级）") }
+                    append(" · ${r1.latencyMs}ms")
+                    append(autoNote)
                 }
                 statusText.setTextColor(p.teal)
                 replaceButton.isEnabled = canReplace
@@ -199,13 +324,14 @@ class TranslateActivity : Activity() {
         }.start()
     }
 
-    private fun copyResult() {
-        if (lastTranslation.isBlank()) {
+    private fun copyResult(which: Int) {
+        val text = if (which == 1) lastTranslation else lastTranslation2
+        if (text.isBlank()) {
             Toast.makeText(this, "还没有译文", Toast.LENGTH_SHORT).show()
             return
         }
         val clipboard = getSystemService(CLIPBOARD_SERVICE) as ClipboardManager
-        clipboard.setPrimaryClip(ClipData.newPlainText("translation", lastTranslation))
+        clipboard.setPrimaryClip(ClipData.newPlainText("translation", text))
         Toast.makeText(this, "已复制", Toast.LENGTH_SHORT).show()
     }
 
