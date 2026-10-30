@@ -2,7 +2,7 @@ import { LANGUAGES, SEND_TARGETS } from '../core/language.js';
 import { DEFAULT_SETTINGS } from '../core/core.js';
 import { PROVIDERS } from '../core/providers.js';
 import { EXT, sendToBackground } from '../shared/ext.js';
-import { DEFAULT_SCHEDULE, applyFromSettings, effectiveTheme, toMinutes } from '../shared/theme.js';
+import { DEFAULT_SCHEDULE, applyFromSettings, nextThemeMode, toMinutes } from '../shared/theme.js';
 
 const STORAGE_KEY = 'weifan';
 const $ = (id) => document.getElementById(id);
@@ -153,8 +153,7 @@ function initCollapsibleGroups() {
  */
 function renderTheme(settings) {
   const mode = settings.themeMode ?? 'auto';
-  const radio = document.querySelector(`input[name="themeMode"][value="${mode}"]`);
-  if (radio) radio.checked = true;
+  renderThemeButton(mode);
 
   const schedule = settings.themeSchedule ?? DEFAULT_SCHEDULE;
   $('scheduleEnabled').checked = Boolean(schedule.enabled);
@@ -174,12 +173,6 @@ function updateThemeUi(mode) {
   row.classList.toggle('is-muted', !auto);
   times.hidden = !(auto && enabled);
 
-  $('themeNote').textContent = auto
-    ? '跟随系统：跟手机 / 浏览器的深浅色走。'
-    : mode === 'dark'
-      ? '夜：始终用暗色调。'
-      : '昼：始终用浅色调。';
-
   const start = $('scheduleStart').value;
   const end = $('scheduleEnd').value;
   const valid = toMinutes(start) !== null && toMinutes(end) !== null;
@@ -191,7 +184,7 @@ function updateThemeUi(mode) {
 /** 把当前界面上的主题设置读出来 */
 function collectTheme() {
   return {
-    themeMode: document.querySelector('input[name="themeMode"]:checked')?.value ?? 'auto',
+    themeMode: store.settings.themeMode ?? 'auto',
     themeSchedule: {
       enabled: $('scheduleEnabled').checked,
       start: $('scheduleStart').value || DEFAULT_SCHEDULE.start,
@@ -776,20 +769,24 @@ async function save() {
 
 $('save').addEventListener('click', save);
 
-// 主题：切换即刻生效（不用等保存），并立刻存盘
-for (const radio of document.querySelectorAll('input[name="themeMode"]')) {
-  radio.addEventListener('change', async () => {
-    if (!radio.checked) return;
-    updateThemeUi(radio.value);
-    const theme = collectTheme();
-    store.settings = { ...store.settings, ...theme };
-    await storage.set({ [STORAGE_KEY]: store });
-    applyFromSettings(store.settings);
-  });
+/** 顶栏昼夜图标：点一下循环到下一档，立即生效并存盘（D-54 修订） */
+function renderThemeButton(mode) {
+  const button = $('themeBtn');
+  button.dataset.mode = mode;
+  button.title = `昼夜切换（当前：${{ light: '昼', dark: '夜', auto: '跟随系统' }[mode]}，点一下换下一档）`;
 }
 
+$('themeBtn').addEventListener('click', async () => {
+  const next = nextThemeMode(store.settings.themeMode ?? 'auto');
+  store.settings = { ...store.settings, themeMode: next };
+  await storage.set({ [STORAGE_KEY]: store });
+  renderThemeButton(next);
+  updateThemeUi(next);
+  applyFromSettings(store.settings);
+});
+
 $('scheduleEnabled').addEventListener('change', async () => {
-  updateThemeUi(document.querySelector('input[name="themeMode"]:checked')?.value ?? 'auto');
+  updateThemeUi(store.settings.themeMode ?? 'auto');
   const theme = collectTheme();
   store.settings = { ...store.settings, ...theme };
   await storage.set({ [STORAGE_KEY]: store });
@@ -798,7 +795,7 @@ $('scheduleEnabled').addEventListener('change', async () => {
 
 for (const id of ['scheduleStart', 'scheduleEnd']) {
   $(id).addEventListener('change', async () => {
-    updateThemeUi(document.querySelector('input[name="themeMode"]:checked')?.value ?? 'auto');
+    updateThemeUi(store.settings.themeMode ?? 'auto');
     const theme = collectTheme();
     store.settings = { ...store.settings, ...theme };
     await storage.set({ [STORAGE_KEY]: store });

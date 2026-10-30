@@ -10,7 +10,7 @@
 
 import { EXT, sendToBackground } from '../shared/ext.js';
 import { LANGUAGES, detectLanguage } from '../core/language.js';
-import { applyFromSettings, watchTheme } from '../shared/theme.js';
+import { applyFromSettings, nextThemeMode, watchTheme } from '../shared/theme.js';
 // 副作用引入：把 WeifanTts（朗读语言映射）挂到 globalThis，页面与 content script 共一份实现
 import '../core/tts.js';
 
@@ -54,6 +54,17 @@ function labelOf(code) {
   return meta ? `${meta.name}（${code}）` : code;
 }
 
+/** 顶栏昼夜图标（D-54 修订）：三档循环，立即生效并存盘 */
+let currentConfig = null;
+
+function renderThemeButton() {
+  const mode = currentConfig?.settings?.themeMode ?? 'auto';
+  const button = $('themeBtn');
+  if (!button) return;
+  button.dataset.mode = mode;
+  button.title = `昼夜切换（当前：${{ light: '昼', dark: '夜', auto: '跟随系统' }[mode]}，点一下换下一档）`;
+}
+
 init();
 
 async function init() {
@@ -66,11 +77,20 @@ async function init() {
     list.appendChild(option);
   }
 
-  const config = await sendToBackground({ type: 'getConfig' });
+  currentConfig = await sendToBackground({ type: 'getConfig' });
+  const config = currentConfig;
 
   // 主题跟随全局设置
   applyFromSettings(config.settings ?? {});
   watchTheme(config.settings ?? {});
+  renderThemeButton();
+  $('themeBtn')?.addEventListener('click', async () => {
+    const next = nextThemeMode(currentConfig?.settings?.themeMode ?? 'auto');
+    currentConfig.settings = { ...currentConfig.settings, themeMode: next };
+    await sendToBackground({ type: 'setSettings', patch: { themeMode: next } });
+    renderThemeButton();
+    applyFromSettings(currentConfig.settings);
+  });
 
   $('style').value = config.settings?.style ?? 'business';
 

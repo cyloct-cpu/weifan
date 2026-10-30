@@ -12,7 +12,7 @@
 import { EXT, sendToBackground } from '../shared/ext.js';
 import { LANGUAGES, SEND_TARGETS } from '../core/language.js';
 import { unzipSync, zipSync, strToU8, strFromU8 } from '../vendor/fflate.js';
-import { applyFromSettings, watchTheme } from '../shared/theme.js';
+import { applyFromSettings, nextThemeMode, watchTheme } from '../shared/theme.js';
 
 const $ = (id) => document.getElementById(id);
 
@@ -20,6 +20,15 @@ const BATCH = 10;
 
 /** @type {any} */
 let config = null;
+
+/** 顶栏昼夜图标（D-54 修订）：三档循环，立即生效并存盘 */
+function renderThemeButton() {
+  const mode = config?.settings?.themeMode ?? 'auto';
+  const button = document.getElementById('themeBtn');
+  if (!button) return;
+  button.dataset.mode = mode;
+  button.title = `昼夜切换（当前：${{ light: '昼', dark: '夜', auto: '跟随系统' }[mode]}，点一下换下一档）`;
+}
 /** @type {File|null} */
 let file = null;
 
@@ -27,6 +36,15 @@ init();
 
 async function init() {
   config = await sendToBackground({ type: 'getConfig' });
+
+  renderThemeButton();
+  $('themeBtn')?.addEventListener('click', async () => {
+    const next = nextThemeMode(config?.settings?.themeMode ?? 'auto');
+    config.settings = { ...config.settings, themeMode: next };
+    await sendToBackground({ type: 'setSettings', patch: { themeMode: next } });
+    renderThemeButton();
+    applyFromSettings(config.settings);
+  });
 
   // 主题跟随全局设置
   applyFromSettings(config.settings ?? {});

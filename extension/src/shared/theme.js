@@ -14,6 +14,20 @@ export const THEME_MODES = [
   { value: 'auto', label: '跟随系统' }
 ];
 
+/** 顶栏昼夜图标的循环顺序与文案（昼 → 夜 → 跟随系统 → 昼） */
+export const THEME_ORDER = ['light', 'dark', 'auto'];
+export const THEME_LABELS = { light: '昼', dark: '夜', auto: '跟随系统' };
+
+/**
+ * 循环到下一档；不认识的值（含空）当作『跟随系统』的下一档 —— 夜。
+ * @param {string} mode
+ */
+export function nextThemeMode(mode) {
+  const index = THEME_ORDER.indexOf(mode);
+  if (index < 0) return 'dark';
+  return THEME_ORDER[(index + 1) % THEME_ORDER.length];
+}
+
 export const DEFAULT_SCHEDULE = { enabled: false, start: '22:00', end: '07:00' };
 
 /** localStorage 里的镜像键（供首屏内联脚本同步读取，避免闪白） */

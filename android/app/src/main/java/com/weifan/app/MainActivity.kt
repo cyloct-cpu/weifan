@@ -59,6 +59,7 @@ class MainActivity : BaseActivity() {
     private lateinit var targetSpinner: Spinner
     private lateinit var serviceSpinner: Spinner
     private lateinit var providerGridView: GridLayout
+    private lateinit var themeGlyph: TextView
     private lateinit var resultText: TextView
     private lateinit var themeGroup: RadioGroup
     private lateinit var themeNote: TextView
@@ -137,7 +138,21 @@ class MainActivity : BaseActivity() {
             letterSpacing = 0.32f
         })
         brand.addView(mark)
-        brand.addView(wordmark)
+        brand.addView(wordmark, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
+
+        // 昼夜循环图标（D-54 修订）：点一下 昼 → 夜 → 跟随系统 → 昼，立即生效
+        themeGlyph = TextView(this).apply {
+            textSize = 22f
+            gravity = Gravity.CENTER
+            setPadding(dp(10), dp(4), dp(4), dp(4))
+            isClickable = true
+            setOnClickListener {
+                prefs.themeMode = Theme.nextMode(prefs.themeMode)
+                applyThemeChange()
+                updateThemeGlyph()
+            }
+        }
+        brand.addView(themeGlyph)
         root.addView(brand)
 
         root.addView(hint("在任意输入框打完中文，末尾加触发词即可自动翻译并替换。不会自动发送。"))
@@ -997,7 +1012,19 @@ class MainActivity : BaseActivity() {
 
     // MARK: - 数据
 
+    /** 品牌行右上角的昼夜图标：☀ 昼 / ☾ 夜 / ◐ 跟随系统 */
+    private fun updateThemeGlyph() {
+        if (!::themeGlyph.isInitialized) return
+        themeGlyph.text = when (prefs.themeMode) {
+            Theme.MODE_LIGHT -> "☀"
+            Theme.MODE_DARK -> "☾"
+            else -> "◐"
+        }
+        themeGlyph.setTextColor(p.text2)
+    }
+
     private fun loadValues() {
+        updateThemeGlyph()
         triggerField.setText(prefs.trigger)
         thresholdField.setText(prefs.longSentenceThreshold.toString())
         limitField.setText(prefs.dailyCharLimit.toString())

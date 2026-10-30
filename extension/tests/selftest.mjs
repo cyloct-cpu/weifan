@@ -9,7 +9,7 @@ import { detectLanguage } from '../src/core/language.js';
 import { protect, restore } from '../src/core/glossary.js';
 import { route, assessRisk, signals } from '../src/core/routing.js';
 import { resolveTarget, DEFAULT_SETTINGS } from '../src/core/core.js';
-import { effectiveTheme, toMinutes, DEFAULT_SCHEDULE } from '../src/shared/theme.js';
+import { effectiveTheme, nextThemeMode, toMinutes, DEFAULT_SCHEDULE } from '../src/shared/theme.js';
 import { md5 } from '../src/core/signing.js';
 import { supportsTarget, targetCode, fromPlatformCode } from '../src/core/langs.js';
 import { planCandidates, listProviders, credentialOf, AUTO_ORDER, PROVIDERS } from '../src/core/providers.js';
@@ -296,6 +296,14 @@ check(effectiveTheme('auto', day, false, at(20, 0)) === 'light', '同日时段�
 check(DEFAULT_SETTINGS.themeMode === 'auto', '默认主题是跟随系统');
 check(DEFAULT_SETTINGS.themeSchedule?.start === DEFAULT_SCHEDULE.start, '默认夜间起点');
 check(DEFAULT_SETTINGS.themeSchedule?.end === DEFAULT_SCHEDULE.end, '默认夜间终点');
+
+// MARK: 昼夜图标循环（D-54 修订）
+
+section('昼夜图标循环');
+check(nextThemeMode('light') === 'dark', '昼 → 夜');
+check(nextThemeMode('dark') === 'auto', '夜 → 跟随系统');
+check(nextThemeMode('auto') === 'light', '跟随系统 → 昼');
+check(nextThemeMode('unknown') === 'dark', '未知值当作跟随系统的下一档');
 
 // MARK: 右键菜单与快捷键（D-55）
 

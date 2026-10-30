@@ -18,6 +18,17 @@ object Theme {
     const val MODE_DARK = "dark"
     const val MODE_AUTO = "auto"
 
+    /**
+     * 循环到下一档：昼 → 夜 → 跟随系统 → 昼。
+     * 与扩展侧 src/shared/theme.js 的 nextThemeMode 同规格（未知值当作跟随系统的下一档）。
+     */
+    fun nextMode(mode: String): String = when (mode) {
+        MODE_LIGHT -> MODE_DARK
+        MODE_DARK -> MODE_AUTO
+        MODE_AUTO -> MODE_LIGHT
+        else -> MODE_DARK
+    }
+
     /** 默认夜间时段：22:00 – 07:00（跨零点） */
     val DEFAULT_SCHEDULE = mapOf(
         "enabled" to false,
