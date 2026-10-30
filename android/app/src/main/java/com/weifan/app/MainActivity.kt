@@ -16,6 +16,7 @@ import android.text.InputType
 import android.view.Gravity
 import android.view.View
 import android.view.ViewGroup
+import android.widget.AdapterView
 import android.widget.ArrayAdapter
 import android.widget.Button
 import android.widget.EditText
@@ -1098,6 +1099,17 @@ class MainActivity : BaseActivity() {
         val saved = prefs.selection
         val position = ids.indexOf(saved)
         if (position >= 0) serviceSpinner.setSelection(position)
+
+        // 选择即时生效（与网格的开关/拖动一致，不用点「保存」）。
+        // setSelection 触发的首次回调值与已存值相同，会被下面的判断挡住。
+        serviceSpinner.onItemSelectedListener = object : AdapterView.OnItemSelectedListener {
+            override fun onItemSelected(parent: AdapterView<*>?, view: View?, pos: Int, id: Long) {
+                val value = serviceIds.getOrNull(pos) ?: return
+                if (value != prefs.selection) prefs.selection = value
+            }
+
+            override fun onNothingSelected(parent: AdapterView<*>?) {}
+        }
     }
 
     private fun save() {
