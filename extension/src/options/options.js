@@ -58,8 +58,6 @@ async function load() {
 
 function render() {
   const { settings } = store;
-  const modeRadio = document.querySelector(`input[name="svcMode"][value="${settings.mode ?? 'free'}"]`);
-  if (modeRadio) modeRadio.checked = true;
   renderServiceGrid();
   renderServiceSelect();
 
@@ -211,130 +209,208 @@ function collectTheme() {
 let dialogTarget = null;
 
 /**
- * 胶囊卡片：两列排布，点开才出配置表单——九家竖着排太长，用户得一直滑。
+ * 全量渠道清单：九家免费服务商 + 全部自定义接口（D-56）。
+ * @returns {{id: string, label: string, note: string, configured: boolean, kind: 'provider'|'custom', index?: number}[]}
  */
-function providerCapsule({ title, note, configured }) {
-  const capsule = document.createElement('button');
-  capsule.type = 'button';
+function channelList() {
+  const free = PROVIDERS.map((p) => ({
+    id: p.id,
+    label: p.label,
+    note: p.freeNote ?? '',
+    configured: isProviderConfigured(p.id),
+    kind: 'provider'
+  }));
+  const custom = customs.map((item, index) => ({
+    id: `custom:${item.id}`,
+    label: item.name || item.model || '自定义接口',
+    note: item.baseURL || '还没填接口地址',
+    configured: Boolean(item.key && item.baseURL),
+    kind: 'custom',
+    index
+  }));
+  return [...free, ...custom];
+}
+
+/** 当前视觉顺序：chainOrder 优先，新渠道追加尾部，消失的剔除 */
+function orderedChannels() {
+  const channels = channelList();
+  const byId = new Map(channels.map((c) => [c.id, c]));
+  const order = (store.settings.chainOrder ?? []).filter((id) => byId.has(id));
+  for (const channel of channels) {
+    if (!order.includes(channel.id)) order.push(channel.id);
+  }
+  return order.map((id) => byId.get(id));
+}
+
+function isChannelOff(id) {
+  return (store.settings.chainOff ?? []).includes(id);
+}
+
+/** 把顺序写进 store 并落盘（开关的 off 名单里只留还存在的渠道） */
+async function persistChain(channels) {
+  store.settings = {
+    ...store.settings,
+    chainOrder: channels.map((c) => c.id),
+    chainOff: (store.settings.chainOff ?? []).filter((id) => channels.some((c) => c.id === id))
+  };
+  await storage.set({ [STORAGE_KEY]: store });
+}
+
+/** 拖动中的渠道 id（HTML5 DnD 的 dataTransfer 在 Firefox 里读不到自设类型，用闭包兜底） */
+let dragChannelId = '';
+
+/**
+ * 渠道胶囊：点主体开配置弹窗；开关切换启用；整颗可拖动改优先级。
+ * 视觉顺序（左→右、上→下）就是降级链（D-56）。
+ */
+function channelCapsule(channel) {
+  const capsule = document.createElement('div');
   capsule.className = 'provider-capsule';
-  if (configured) capsule.dataset.configured = '1';
+  capsule.draggable = true;
+  capsule.dataset.channel = channel.id;
+  if (channel.configured) capsule.dataset.configured = '1';
 
   const top = document.createElement('span');
   top.className = 'capsule-top';
 
   const name = document.createElement('strong');
-  name.textContent = title;
+  name.textContent = channel.label;
   top.appendChild(name);
 
   const dot = document.createElement('i');
   dot.className = 'capsule-dot';
-  dot.title = configured ? '已配置' : '未配置';
+  dot.title = channel.configured ? '已配置' : '未配置';
   top.appendChild(dot);
 
   const sub = document.createElement('span');
   sub.className = 'capsule-note';
-  sub.textContent = note;
+  sub.textContent = channel.note;
 
-  capsule.append(top, sub);
+  const off = isChannelOff(channel.id);
+  const switchLabel = document.createElement('label');
+  switchLabel.className = 'capsule-switch';
+  switchLabel.title = off ? '已停用：点这里启用' : '已启用：点这里停用';
+  const box = document.createElement('input');
+  box.type = 'checkbox';
+  box.checked = !off;
+  const knob = document.createElement('span');
+  switchLabel.append(box, knob);
+  // 开关点击别冒泡到胶囊（否则会打开配置弹窗）
+  switchLabel.addEventListener('click', (event) => event.stopPropagation());
+  box.addEventListener('change', async () => {
+    const offSet = new Set(store.settings.chainOff ?? []);
+    if (box.checked) offSet.delete(channel.id);
+    else offSet.add(channel.id);
+    store.settings = { ...store.settings, chainOff: [...offSet] };
+    capsule.classList.toggle('is-off', !box.checked);
+    switchLabel.title = box.checked ? '已启用：点这里停用' : '已停用：点这里启用';
+    await storage.set({ [STORAGE_KEY]: store });
+    renderServiceSelect();
+  });
+
+  capsule.append(top, sub, switchLabel);
+
+  capsule.addEventListener('click', () => {
+    if (channel.kind === 'custom') openCustomDialog(channel.index);
+    else openProviderDialog(channel.id);
+  });
+
+  // 拖动：松手落在哪颗胶囊上，就插到它前面
+  capsule.addEventListener('dragstart', (event) => {
+    dragChannelId = channel.id;
+    capsule.classList.add('is-dragging');
+    event.dataTransfer.effectAllowed = 'move';
+    event.dataTransfer.setData('text/plain', channel.id);
+  });
+  capsule.addEventListener('dragend', () => {
+    dragChannelId = '';
+    capsule.classList.remove('is-dragging');
+  });
+  capsule.addEventListener('dragover', (event) => {
+    if (!dragChannelId || dragChannelId === channel.id) return;
+    event.preventDefault();
+    event.dataTransfer.dropEffect = 'move';
+    capsule.classList.add('is-drop-target');
+  });
+  capsule.addEventListener('dragleave', () => capsule.classList.remove('is-drop-target'));
+  capsule.addEventListener('drop', async (event) => {
+    event.preventDefault();
+    capsule.classList.remove('is-drop-target');
+    if (!dragChannelId || dragChannelId === channel.id) return;
+    const channels = orderedChannels();
+    const from = channels.findIndex((c) => c.id === dragChannelId);
+    if (from < 0) return;
+    const [moved] = channels.splice(from, 1);
+    const to = channels.findIndex((c) => c.id === channel.id);
+    channels.splice(to, 0, moved);
+    await persistChain(channels);
+    renderServiceGrid();
+  });
+
   return capsule;
 }
 
-/**
- * 服务商网格 + 下拉。层级：**模式 → 翻译服务下拉 → 网格**。
- * 自定义接口是「自定义 API」模式下的网格成员，不再另开一个同名分组（避免两处入口）。
- */
+/** 渠道网格：全部渠道混排（九家 + 自定义接口），顺序即优先级（D-56） */
 function renderServiceGrid() {
   const host = $('providerList');
   host.innerHTML = '';
-  const mode = currentSvcMode();
 
-  if (mode === 'custom') {
-    if (!customs.length) {
-      const empty = document.createElement('p');
-      empty.className = 'hint grid-full';
-      empty.textContent = '还没有自定义接口。填一个 key + 接口地址 + 模型名，就能接任何 OpenAI 兼容服务。';
-      host.appendChild(empty);
-    }
-    customs.forEach((item, index) => {
-      const capsule = providerCapsule({
-        title: item.name || item.model || '自定义接口',
-        note: item.baseURL || '还没填接口地址',
-        configured: Boolean(item.key && item.baseURL)
-      });
-      capsule.addEventListener('click', () => openCustomDialog(index));
-      host.appendChild(capsule);
-    });
-
-    const add = document.createElement('button');
-    add.type = 'button';
-    add.className = 'provider-capsule provider-add';
-    add.innerHTML = '<span class="capsule-top"><strong>+ 添加接口</strong></span>'
-      + '<span class="capsule-note">DeepSeek / 硅基流动 / 自建网关</span>';
-    add.addEventListener('click', () => {
-      customs.push({ id: `c${Date.now().toString(36)}`, name: '', key: '', baseURL: '', model: '' });
-      renderServiceGrid();
-      openCustomDialog(customs.length - 1);
-    });
-    host.appendChild(add);
-  } else {
-    for (const provider of PROVIDERS) {
-      const capsule = providerCapsule({
-        title: provider.label,
-        note: provider.freeNote,
-        configured: isProviderConfigured(provider.id)
-      });
-      capsule.addEventListener('click', () => openProviderDialog(provider.id));
-      host.appendChild(capsule);
-    }
+  for (const channel of orderedChannels()) {
+    host.appendChild(channelCapsule(channel));
   }
+
+  const add = document.createElement('button');
+  add.type = 'button';
+  add.className = 'provider-capsule provider-add';
+  add.innerHTML = '<span class="capsule-top"><strong>+ 添加接口</strong></span>'
+    + '<span class="capsule-note">DeepSeek / 硅基流动 / 自建网关</span>';
+  add.addEventListener('click', () => {
+    customs.push({ id: `c${Date.now().toString(36)}`, name: '', key: '', baseURL: '', model: '' });
+    renderServiceGrid();
+    openCustomDialog(customs.length - 1);
+  });
+  host.appendChild(add);
 }
 
-/** 翻译服务下拉：按当前模式列出已配置的服务商，第一项永远是「自动」 */
+/** 翻译服务下拉：自动 / 按我的排序 / 只用某一家（跨模式列出全部已配置渠道，D-56） */
 function renderServiceSelect() {
   const select = $('serviceSelect');
   select.innerHTML = '';
 
-  const auto = document.createElement('option');
-  auto.value = 'auto';
-  auto.textContent = '自动（按语种优选）';
-  select.appendChild(auto);
-
-  const ids = ['auto'];
-  const mode = currentSvcMode();
-
-  if (mode === 'custom') {
-    for (const item of customs) {
-      if (!item.key || !item.baseURL) continue;
-      const option = document.createElement('option');
-      option.value = `custom:${item.id}`;
-      option.textContent = item.name || item.model || '自定义接口';
-      select.appendChild(option);
-      ids.push(option.value);
-    }
-  } else {
-    for (const provider of PROVIDERS) {
-      if (!isProviderConfigured(provider.id)) continue;
-      const option = document.createElement('option');
-      option.value = provider.id;
-      option.textContent = provider.label;
-      select.appendChild(option);
-      ids.push(option.value);
-    }
+  const options = [
+    { value: 'auto', label: '自动（按语种优选）' },
+    { value: 'priority', label: '按我的排序（网格从左到右、从上到下）' }
+  ];
+  for (const channel of channelList()) {
+    if (!channel.configured) continue;
+    options.push({ value: channel.id, label: `${channel.label}（只用这家，不降级）` });
+  }
+  for (const option of options) {
+    const el = document.createElement('option');
+    el.value = option.value;
+    el.textContent = option.label;
+    select.appendChild(el);
   }
 
   const saved = store.settings.selection ?? 'auto';
-  select.value = ids.includes(saved) ? saved : 'auto';
+  select.value = options.some((o) => o.value === saved) ? saved : 'auto';
+  renderServiceHint(select.value);
 
   select.onchange = async () => {
     store.settings = { ...store.settings, selection: select.value };
     await storage.set({ [STORAGE_KEY]: store });
+    renderServiceHint(select.value);
   };
 }
 
-/** 当前模式：免费额度 / 自定义 API */
-function currentSvcMode() {
-  const radio = document.querySelector('input[name="svcMode"]:checked');
-  return radio?.value ?? 'free';
+/** 下拉底下的一行说明：三种模式各自的降级语义 */
+function renderServiceHint(value) {
+  $('serviceHint').textContent =
+    value === 'auto'
+      ? '按语种自动挑：该用大模型还是机翻谁合适先谁，失败按默认顺序降级。'
+      : value === 'priority'
+        ? '顺序就是上面网格的排布（左→右、上→下），关了开关的会被跳过。'
+        : '只用这一家：失败不降级，直接把原因报出来。';
 }
 
 /** 某家是否已配置（必填字段齐了） */
@@ -632,11 +708,10 @@ function refreshKeyStatus() {
     if (isProviderConfigured(provider.id)) configured += 1;
   }
 
-  if (currentSvcMode() === 'custom') {
-    $('svcCount').textContent = `${customs.filter((c) => c.key && c.baseURL).length} 个自定义接口`;
-  } else {
-    $('svcCount').textContent = `${configured} / ${PROVIDERS.length}`;
-  }
+  const customCount = customs.filter((c) => c.key && c.baseURL).length;
+  $('svcCount').textContent = customCount
+    ? `${configured + customCount} 家（含自定义 ${customCount} 个）`
+    : `${configured} / ${PROVIDERS.length}`;
 }
 
 function updateGlossaryCount() {
@@ -700,18 +775,6 @@ async function save() {
 /* ── 事件绑定 ─────────────────────────────────────── */
 
 $('save').addEventListener('click', save);
-
-// 模式切换：立即生效并重绘网格与下拉
-for (const radio of document.querySelectorAll('input[name="svcMode"]')) {
-  radio.addEventListener('change', async () => {
-    if (!radio.checked) return;
-    store.settings = { ...store.settings, mode: radio.value, selection: 'auto' };
-    await storage.set({ [STORAGE_KEY]: store });
-    renderServiceGrid();
-    renderServiceSelect();
-    refreshKeyStatus();
-  });
-}
 
 // 主题：切换即刻生效（不用等保存），并立刻存盘
 for (const radio of document.querySelectorAll('input[name="themeMode"]')) {

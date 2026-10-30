@@ -42,22 +42,15 @@
         <h2>翻译服务</h2>
         <span class="group-count" id="svcCount">0 / 9</span>
       </div>
-      <p class="group-note">自己去大厂申请密钥填进来，额度用完自动换下一家。接口地址都预置好了，你只要填密钥。密钥不上传，全部留在本机浏览器里。</p>
+      <p class="group-note">自己去大厂申请密钥填进来，接口地址都预置好了，你只要填密钥。网格的排布顺序（左→右、上→下）就是优先级：每家胶囊带开关、能直接拖动。密钥不上传，全部留在本机浏览器里。</p>
 
       <div class="field">
-        <div class="field-head"><label>模式</label></div>
-        <div class="segmented" role="radiogroup" aria-label="翻译模式">
-          <label><input type="radio" name="svcMode" value="free" /><span>免费额度</span></label>
-          <label><input type="radio" name="svcMode" value="custom" /><span>自定义 API</span></label>
-        </div>
-      </div>
-
-      <div class="field">
-        <div class="field-head"><label for="serviceSelect">翻译服务（失败会自动降级到下一家）</label></div>
+        <div class="field-head"><label for="serviceSelect">翻译服务</label></div>
         <div class="select-wrap">
           <select id="serviceSelect"></select>
           <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m7 10 5 5 5-5z"/></svg>
         </div>
+        <p class="hint" id="serviceHint"></p>
       </div>
 
       <div id="providerList" class="provider-grid"></div>

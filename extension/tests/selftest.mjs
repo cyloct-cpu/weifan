@@ -182,23 +182,51 @@ const autoOrder = planCandidates({ target: 'en', keys: twoProviders }).map((p) =
 check(autoOrder[0] === 'deepl', '自动优选：DeepL 优先');
 check(autoOrder[1] === 'baidu', '自动优选：百度其次');
 
-// 用户显式选择 → 排最前
+// 用户显式选择 → 只用这一家，不降级（D-56）
 const picked = planCandidates({ target: 'en', keys: twoProviders, selection: 'baidu' }).map((p) => p.id);
-check(picked[0] === 'baidu', '用户选的服务商排最前');
-check(picked[1] === 'deepl', '其余仍留在链上做降级');
+check(picked.length === 1 && picked[0] === 'baidu', '只用这家：单候选，不降级');
+let threwSingle = '';
+try {
+  planCandidates({ target: 'zh-Hant', keys: { baidu: { appid: '1', secret: 'x' }, tencent: { secretId: 'a', secretKey: 'b' } }, selection: 'tencent' });
+} catch (error) {
+  threwSingle = error.message;
+}
+check(threwSingle.includes('用不了'), '选中的不支持该语言 → 显式报错（不再悄悄换链）');
 
-// 选中的不支持该语言 → 退回自动优选
-const fallback = planCandidates({ target: 'zh-Hant', keys: { baidu: { appid: '1', secret: 'x' }, tencent: { secretId: 'a', secretKey: 'b' } }, selection: 'tencent' }).map((p) => p.id);
-check(fallback.length === 1 && fallback[0] === 'baidu', '腾讯云不支持繁体 → 只剩百度');
+// 按我的排序（D-56）：数组顺序即降级链，开关关掉的跳过
+const chainKeys = { baidu: { appid: '1', secret: 'x' }, deepl: { key: 'k' }, tencent: { secretId: 'a', secretKey: 'b' } };
+const chainOrder = planCandidates({
+  target: 'en', keys: chainKeys, selection: 'priority',
+  chainOrder: ['tencent', 'custom:missing', 'baidu', 'deepl'], chainOff: []
+}).map((p) => p.id);
+check(chainOrder.join(',') === 'tencent,baidu,deepl', '优先级链按数组顺序，不存在的 id 跳过');
+const chainOff = planCandidates({
+  target: 'en', keys: chainKeys, selection: 'priority',
+  chainOrder: ['tencent', 'baidu', 'deepl'], chainOff: ['tencent', 'deepl']
+}).map((p) => p.id);
+check(chainOff.length === 1 && chainOff[0] === 'baidu', '关了开关的渠道被跳过');
+let threwEmpty = '';
+try {
+  planCandidates({ target: 'en', keys: chainKeys, selection: 'priority', chainOrder: ['deepl'], chainOff: ['deepl'] });
+} catch (error) {
+  threwEmpty = error.message;
+}
+check(threwEmpty.includes('没有可用的服务'), '优先级链为空 → 显式报错');
 
-// 模式隔离
+// 渠道混排：自定义接口与免费服务商可同链（不再按 mode 隔离）
 const withCustom = {
   baidu: { appid: '1', secret: 'x' },
   customs: [{ id: 'c1', name: 'DeepSeek', key: 'sk-x', baseURL: 'https://api.deepseek.com/v1', model: 'deepseek-chat' }]
 };
-check(planCandidates({ target: 'en', keys: withCustom, mode: 'free' }).every((p) => p.mode === 'free'), '免费模式不含自定义');
-check(planCandidates({ target: 'en', keys: withCustom, mode: 'custom' }).every((p) => p.mode === 'custom'), '自定义模式不含免费');
-check(planCandidates({ target: 'en', keys: withCustom, mode: 'custom' })[0].id === 'custom:c1', '自定义接口 id 带前缀');
+const mixed = planCandidates({
+  target: 'en', keys: withCustom, selection: 'priority',
+  chainOrder: ['custom:c1', 'baidu'], chainOff: []
+}).map((p) => p.id);
+check(mixed.join(',') === 'custom:c1,baidu', '自定义接口与免费服务商混排（custom 在前）');
+// 百度已是大模型端点（kind=llm），用纯机翻的 DeepL 验证 route 排序
+const mtAndLlm = { deepl: { key: 'k' }, customs: [{ id: 'c1', name: 'DeepSeek', key: 'sk-x', baseURL: 'https://api.deepseek.com/v1', model: 'deepseek-chat' }] };
+check(planCandidates({ target: 'en', keys: mtAndLlm, route: 'llm' })[0].id === 'custom:c1', '自动优选 llm 路由：自定义大模型优先');
+check(planCandidates({ target: 'en', keys: mtAndLlm, route: 'mt' })[0].id === 'deepl', '自动优选 mt 路由：机翻优先');
 
 // 超限的服务商被跳过
 const blocked = planCandidates({ target: 'en', keys: twoProviders, blocked: ['deepl'] }).map((p) => p.id);

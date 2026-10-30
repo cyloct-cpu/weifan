@@ -39,7 +39,6 @@ async function init() {
   }
 
   renderLanguages();
-  renderMode();
   renderService();
   renderStyle();
   renderCompact();
@@ -134,55 +133,26 @@ function renderLanguages() {
   });
 }
 
-/* ── 模式 ─────────────────────────────────────────── */
-
-function renderMode() {
-  const mode = config?.settings?.mode ?? 'free';
-  const radio = document.querySelector(`input[name="mode"][value="${mode}"]`);
-  if (radio) radio.checked = true;
-
-  for (const input of document.querySelectorAll('input[name="mode"]')) {
-    input.addEventListener('change', async () => {
-      if (!input.checked) return;
-      const selection = input.value === 'free' ? 'auto' : firstCustomId();
-      await patchSettings({ mode: input.value, selection });
-      renderService();
-      renderStatus();
-      renderModeHint();
-    });
-  }
-}
-
-/** @returns {string} */
-function firstCustomId() {
-  const custom = (config?.providers ?? []).find((p) => p.mode === 'custom');
-  return custom?.id ?? 'auto';
-}
-
 function renderService() {
   const select = $('service');
   select.innerHTML = '';
 
-  const mode = config?.settings?.mode ?? 'free';
-  const providers = (config?.providers ?? []).filter((p) => p.mode === mode);
-
-  if (mode === 'free') {
-    const auto = document.createElement('option');
-    auto.value = 'auto';
-    auto.textContent = '自动（按语种优选）';
-    select.appendChild(auto);
+  const options = [
+    { value: 'auto', label: '自动（按语种优选）' },
+    { value: 'priority', label: '按我的排序（设置里拖）' }
+  ];
+  for (const provider of config?.providers ?? []) {
+    options.push({ value: provider.id, label: `${provider.label}（只用这家）` });
   }
-
-  for (const provider of providers) {
-    const option = document.createElement('option');
-    option.value = provider.id;
-    option.textContent = provider.kind === 'llm' ? provider.label : provider.label;
-    select.appendChild(option);
+  for (const option of options) {
+    const el = document.createElement('option');
+    el.value = option.value;
+    el.textContent = option.label;
+    select.appendChild(el);
   }
 
   const current = config?.settings?.selection ?? 'auto';
-  select.value = providers.some((p) => p.id === current) || current === 'auto' ? current : 'auto';
-  if (!select.value) select.selectedIndex = 0;
+  select.value = options.some((o) => o.value === current) ? current : 'auto';
 
   select.addEventListener('change', async () => {
     await patchSettings({ selection: $('service').value });
@@ -214,48 +184,49 @@ function renderCompact() {
 
 function renderStatus() {
   const providers = config?.providers ?? [];
-  const mode = config?.settings?.mode ?? 'free';
-  const usable = providers.filter((p) => p.mode === mode);
   const line = $('statusLine');
 
   if (!providers.length) {
     line.textContent = '还没配置服务，去设置填一个密钥';
     line.style.color = 'var(--warn-ink)';
   } else {
-    line.textContent = `${usable.length} 个${mode === 'free' ? '免费额度' : '自定义'}服务可用`;
+    const free = providers.filter((p) => p.mode === 'free').length;
+    const custom = providers.length - free;
+    line.textContent = custom
+      ? `${providers.length} 个服务可用（免费 ${free} + 自定义 ${custom}）`
+      : `${providers.length} 个服务可用`;
     line.style.color = '';
   }
 }
 
 function renderModeHint() {
-  const mode = config?.settings?.mode ?? 'free';
   const target = $('targetLang').value;
   const selection = config?.settings?.selection ?? 'auto';
   const hint = $('modeHint');
-  const providers = (config?.providers ?? []).filter((p) => p.mode === mode);
+  const providers = config?.providers ?? [];
 
   if (!providers.length) {
-    hint.textContent = mode === 'free'
-      ? '免费额度模式需要你自己去平台申请密钥，填一次就能一直用。'
-      : '自定义 API 模式：填 key + 接口地址 + 模型名，支持任何 OpenAI 兼容接口。';
+    hint.textContent = '先去设置 → 翻译服务里配一家：填大厂免费密钥，或加一个自定义 API。';
     hint.classList.add('warn');
     return;
   }
 
   hint.classList.remove('warn');
 
-  if (mode === 'custom') {
-    hint.textContent = '自定义接口走大模型：术语保护、语气控制都更准。';
+  if (selection === 'priority') {
+    hint.textContent = '按你拖的顺序翻：网格从左到右、从上到下，关了开关的跳过。';
     return;
   }
 
   if (selection !== 'auto') {
     const map = PROVIDER_LANG_CODES[selection];
     if (map && !map[target]) {
-      hint.textContent = `${labelOf(selection)}不支持${LANGUAGES[target]?.name ?? target}，会自动降级到其他服务。`;
+      hint.textContent = `${labelOf(selection)}不支持${LANGUAGES[target]?.name ?? target}，而且「只用这家」不降级，换一家或去设置里改。`;
       hint.classList.add('warn');
       return;
     }
+    hint.textContent = '只用这一家：失败不降级，直接报原因。';
+    return;
   }
 
   hint.textContent = '服务商失败会自动换下一家，结果里会写明这次是谁翻的。';
@@ -445,7 +416,7 @@ async function runMenu(action) {
   }
   if (action === 'test') {
     const selection = config?.settings?.selection ?? 'auto';
-    if (selection === 'auto') {
+    if (selection === 'auto' || selection === 'priority') {
       toast('下拉里选一家具体的再测');
       return;
     }
@@ -486,11 +457,11 @@ async function runMenu(action) {
     const confirmed = confirm('恢复默认设置？密钥不会被删除，但语言、模式、服务选择都会重置。');
     if (!confirmed) return;
     await patchSettings({
-      selection: 'auto', mode: 'free', style: 'business', compact: false,
+      selection: 'auto', chainOff: [], style: 'business', compact: false,
       hoverTranslate: false, selectionTranslate: true, dailyCharLimit: 0
     });
-    config.settings = { ...config.settings, selection: 'auto', mode: 'free', style: 'business', compact: false };
-    renderMode();
+    config.settings = { ...config.settings, selection: 'auto', style: 'business', compact: false };
+    renderService();
     renderService();
     renderStyle();
     renderCompact();

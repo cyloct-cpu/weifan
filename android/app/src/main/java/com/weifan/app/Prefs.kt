@@ -74,22 +74,66 @@ class Prefs(context: Context) {
         get() = sp.getString("custom_model", "deepseek-chat") ?: "deepseek-chat"
         set(value) = sp.edit().putString("custom_model", value).apply()
 
-    fun customProfile() = Providers.CustomProfile(
-        id = "custom",
-        name = customName,
-        key = customKey,
-        baseUrl = customBaseUrl,
-        model = customModel
-    )
+    /**
+     * 全部自定义接口（D-56：支持多个）。
+     * 存 JSON 数组；旧版只有一条（custom_name / custom_key…），第一次读到时自动迁移。
+     * 与扩展侧 keys.customs 同结构。
+     */
+    var customs: List<Providers.CustomProfile>
+        get() {
+            val raw = sp.getString("customs_json", null)
+            if (raw != null) {
+                return try {
+                    val arr = org.json.JSONArray(raw)
+                    (0 until arr.length()).map { i ->
+                        val o = arr.getJSONObject(i)
+                        Providers.CustomProfile(
+                            id = o.optString("id", "custom$i"),
+                            name = o.optString("name"),
+                            key = o.optString("key"),
+                            baseUrl = o.optString("baseUrl"),
+                            model = o.optString("model")
+                        )
+                    }
+                } catch (_: Exception) {
+                    emptyList()
+                }
+            }
+            // 旧数据迁移：单条字段有值就当成唯一一条
+            return if (customKey.isNotBlank() && customBaseUrl.isNotBlank()) {
+                listOf(Providers.CustomProfile("custom", customName, customKey, customBaseUrl, customModel))
+            } else {
+                emptyList()
+            }
+        }
+        set(value) = sp.edit().putString("customs_json", org.json.JSONArray().apply {
+            value.forEach { c ->
+                put(org.json.JSONObject().apply {
+                    put("id", c.id)
+                    put("name", c.name)
+                    put("key", c.key)
+                    put("baseUrl", c.baseUrl)
+                    put("model", c.model)
+                })
+            }
+        }.toString()).apply()
 
-    // MARK: - 模式与服务商选择
+    // MARK: - 服务选择与优先级（D-56）
 
-    /** free = 免费额度池，custom = 自定义 API */
-    var mode: String
-        get() = sp.getString("mode", "free") ?: "free"
-        set(value) = sp.edit().putString("mode", value).apply()
+    /**
+     * 按我的排序：渠道的全量视觉顺序（左→右、上→下），逗号连接。
+     * id 里没有逗号（free = 注册 id，自定义 = custom:<id>），逗号分隔是安全的。
+     */
+    var serviceChainOrder: List<String>
+        get() = sp.getString("chain_order", "")?.split(',')?.filter { it.isNotBlank() } ?: emptyList()
+        set(value) = sp.edit().putString("chain_order", value.joinToString(",")).apply()
 
-    /** 用户选的服务商 id，auto = 自动优选 */
+    /** 被开关停用的渠道 id */
+    var serviceChainOff: List<String>
+        get() = sp.getString("chain_off", "")?.split(',')?.filter { it.isNotBlank() } ?: emptyList()
+        set(value) = sp.edit().putString("chain_off", value.joinToString(",")).apply()
+
+    /** 用户选的服务商：auto / priority / 具体 id（只用这家） */
     var selection: String
         get() = sp.getString("selection", "auto") ?: "auto"
         set(value) = sp.edit().putString("selection", value).apply()
@@ -177,7 +221,7 @@ class Prefs(context: Context) {
         set(value) = sp.edit().putString("theme_sched_end", value).apply()
 
     fun hasAnyKey(): Boolean =
-        configuredProviders().isNotEmpty() || customProfile().isComplete
+        configuredProviders().isNotEmpty() || customs.any { it.isComplete }
 
     // MARK: - 旧版本数据迁移
 

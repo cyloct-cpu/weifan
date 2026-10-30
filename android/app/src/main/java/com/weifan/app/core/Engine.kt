@@ -43,7 +43,7 @@ object Engine {
             target = "zh-Hans",
             style = "casual",
             creds = prefs.allCredentials(),
-            custom = prefs.customProfile()
+            customs = prefs.customs
         )
         return TestOutcome(result.text, result.provider, System.currentTimeMillis() - started)
     }
@@ -70,9 +70,10 @@ object Engine {
             style = prefs.style,
             route = if (prefs.style == "business") "llm" else "mt",
             creds = prefs.allCredentials(),
-            custom = prefs.customProfile(),
+            customs = prefs.customs,
             selection = prefs.selection,
-            mode = prefs.mode,
+            chainOrder = prefs.serviceChainOrder,
+            chainOff = prefs.serviceChainOff,
             blocked = prefs.blockedProviders()
         )
         prefs.addUsage(result.providerId, text.length)
@@ -203,9 +204,10 @@ object Engine {
             style = style,
             route = route,
             creds = prefs.allCredentials(),
-            custom = prefs.customProfile(),
+            customs = prefs.customs,
             selection = prefs.selection,
-            mode = prefs.mode,
+            chainOrder = prefs.serviceChainOrder,
+            chainOff = prefs.serviceChainOff,
             blocked = prefs.blockedProviders()
         )
         prefs.addUsage(result.providerId, text.length)

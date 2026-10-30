@@ -2,8 +2,10 @@ package com.weifan.app
 
 import android.app.Activity
 import android.app.AlertDialog
+import android.content.ClipData
 import android.content.ComponentName
 import android.content.Intent
+import android.view.DragEvent
 import android.content.res.Configuration
 import android.graphics.Color
 import android.graphics.Typeface
@@ -56,7 +58,6 @@ class MainActivity : BaseActivity() {
     private lateinit var targetSpinner: Spinner
     private lateinit var serviceSpinner: Spinner
     private lateinit var providerGridView: GridLayout
-    private lateinit var modeGroup: RadioGroup
     private lateinit var resultText: TextView
     private lateinit var themeGroup: RadioGroup
     private lateinit var themeNote: TextView
@@ -176,15 +177,8 @@ class MainActivity : BaseActivity() {
             p.mixGrad,
             expanded = true
         ) {
-            // 模式
-            addView(label("模式"))
-            modeGroup = RadioGroup(this@MainActivity).apply { orientation = RadioGroup.HORIZONTAL }
-            modeGroup.addView(radioButton("免费额度", "free"))
-            modeGroup.addView(radioButton("自定义 API", "custom"))
-            addView(modeGroup)
-
             // 翻译服务商
-            addView(label("翻译服务（失败会自动降级到下一家）"))
+            addView(label("翻译服务（网格顺序 = 优先级：左→右、上→下）"))
             serviceSpinner = spinner(emptyList())
             addView(serviceSpinner)
 
@@ -307,34 +301,87 @@ class MainActivity : BaseActivity() {
         providerGridView = fresh
     }
 
+    /** 一个渠道 = 一颗胶囊：免费服务商或自定义接口（D-56） */
+    private data class Channel(
+        val id: String,
+        val label: String,
+        val note: String,
+        val configured: Boolean,
+        val customIndex: Int = -1
+    )
+
+    /** 全量渠道清单，按 serviceChainOrder 排（新渠道追加尾部，消失的剔除） */
+    private fun channels(): List<Channel> {
+        val free = Providers.DEFS.map { Channel(it.id, it.label, it.freeNote, prefs.isConfigured(it.id)) }
+        val custom = prefs.customs.mapIndexed { index, c ->
+            Channel(
+                "custom:${c.id}",
+                c.displayName,
+                if (c.isComplete) c.baseUrl else "点开填写 key + 接口地址",
+                c.isComplete,
+                index
+            )
+        }
+        val byId = (free + custom).associateBy { it.id }
+        val order = prefs.serviceChainOrder.filter { byId.containsKey(it) }.toMutableList()
+        for (c in byId.values) if (c.id !in order) order.add(c.id)
+        return order.map { byId[it]!! }
+    }
+
     /**
-     * 服务商网格：按当前模式显示。
-     * 免费额度 → 九家大厂；自定义 API → 自定义接口胶囊 + 添加按钮。
-     * （自定义接口是这一组的成员，不再另开一个同名分组）
+     * 渠道网格：全部渠道混排，顺序即优先级（左→右、上→下）。
+     * 长按胶囊拖到另一颗上 = 插到它前面；开关关掉 = 停用（灰显、跳过）。
      */
     private fun providerGrid(): GridLayout {
         val grid = GridLayout(this).apply { columnCount = 2 }
-        if (currentMode() == "custom") {
-            grid.addView(customCapsule())
-            grid.addView(addCustomButton())
-        } else {
-            for (def in Providers.DEFS) {
-                grid.addView(providerCapsule(def))
-            }
+        for (channel in channels()) {
+            grid.addView(channelCapsule(channel))
         }
+        grid.addView(addCustomButton())
         return grid
     }
 
-    private fun providerCapsule(def: Providers.Def): View {
-        val configured = prefs.isConfigured(def.id)
-
+    private fun channelCapsule(channel: Channel): View {
+        val off = channel.id in prefs.serviceChainOff
         val box = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
-            background = roundBg(p.surface2, 20, 1, if (configured) p.warm else p.line)
+            background = roundBg(p.surface2, 20, 1, if (channel.configured && !off) p.warm else p.line)
+            alpha = if (off) 0.45f else 1f
             setPadding(dp(13), dp(11), dp(13), dp(10))
             isClickable = true
             isFocusable = true
-            setOnClickListener { openProviderDialog(def) }
+        }
+        box.setOnClickListener {
+            if (channel.customIndex >= 0) openCustomDialog(channel.customIndex)
+            else openProviderDialog(Providers.DEFS.first { it.id == channel.id })
+        }
+        // 长按 = 拿起来拖
+        box.setOnLongClickListener { view ->
+            val data = ClipData.newPlainText("weifan-channel", channel.id)
+            view.startDragAndDrop(data, View.DragShadowBuilder(view), null, 0)
+            true
+        }
+        box.setOnDragListener { _, event ->
+            when (event.action) {
+                DragEvent.ACTION_DRAG_ENTERED -> { box.alpha = 0.6f; true }
+                DragEvent.ACTION_DRAG_EXITED, DragEvent.ACTION_DRAG_ENDED -> { box.alpha = if (off) 0.45f else 1f; true }
+                DragEvent.ACTION_DROP -> {
+                    val draggedId = event.clipData.getItemAt(0).text?.toString().orEmpty()
+                    if (draggedId.isNotEmpty() && draggedId != channel.id) {
+                        val list = channels().map { it.id }.toMutableList()
+                        val from = list.indexOf(draggedId)
+                        if (from >= 0) {
+                            list.removeAt(from)
+                            val to = list.indexOf(channel.id)
+                            if (to >= 0) list.add(to, draggedId)
+                            prefs.serviceChainOrder = list
+                            rebuildProviderGrid()
+                        }
+                    }
+                    true
+                }
+                else -> true
+            }
         }
 
         val top = LinearLayout(this).apply {
@@ -342,7 +389,7 @@ class MainActivity : BaseActivity() {
             gravity = Gravity.CENTER_VERTICAL
         }
         top.addView(TextView(this).apply {
-            text = def.label
+            text = channel.label
             textSize = 13f
             setTextColor(p.text)
             setTypeface(typeface, Typeface.BOLD)
@@ -353,70 +400,32 @@ class MainActivity : BaseActivity() {
         top.addView(View(this).apply {
             background = GradientDrawable().apply {
                 shape = GradientDrawable.OVAL
-                setColor(if (configured) p.warm else p.line)
+                setColor(if (channel.configured) p.warm else p.line)
             }
             layoutParams = LinearLayout.LayoutParams(dp(7), dp(7))
+        })
+        // 启用开关：关掉 = 这家不进降级链（灰显但留在原位）
+        top.addView(Switch(this).apply {
+            isChecked = !off
+            setOnCheckedChangeListener(null)
+            setOnCheckedChangeListener { _, checked ->
+                val offSet = prefs.serviceChainOff.toMutableSet()
+                if (checked) offSet.remove(channel.id) else offSet.add(channel.id)
+                prefs.serviceChainOff = offSet.toList()
+                rebuildProviderGrid()
+                refreshServiceSpinner()
+            }
         })
         box.addView(top)
 
         box.addView(TextView(this).apply {
-            text = def.freeNote
+            text = channel.note
             textSize = 10.5f
             setTextColor(p.text3)
             maxLines = 2
             ellipsize = android.text.TextUtils.TruncateAt.END
         })
 
-        box.layoutParams = GridLayout.LayoutParams(
-            GridLayout.spec(GridLayout.UNDEFINED, 1f),
-            GridLayout.spec(GridLayout.UNDEFINED, 1f)
-        ).apply {
-            width = 0
-            height = ViewGroup.LayoutParams.WRAP_CONTENT
-            setMargins(dp(4), dp(4), dp(4), dp(4))
-        }
-        return box
-    }
-
-    /** 自定义接口的胶囊（目前一个档案） */
-    private fun customCapsule(): View {
-        val configured = prefs.customKey.isNotBlank() && prefs.customBaseUrl.isNotBlank()
-        val box = LinearLayout(this).apply {
-            orientation = LinearLayout.VERTICAL
-            background = roundBg(p.surface2, 20, 1, if (configured) p.warm else p.line)
-            setPadding(dp(13), dp(11), dp(13), dp(10))
-            isClickable = true
-            isFocusable = true
-            setOnClickListener { openCustomDialog() }
-        }
-        val top = LinearLayout(this).apply {
-            orientation = LinearLayout.HORIZONTAL
-            gravity = Gravity.CENTER_VERTICAL
-        }
-        top.addView(TextView(this).apply {
-            text = prefs.customName.ifBlank { "自定义接口" }
-            textSize = 13f
-            setTextColor(p.text)
-            setTypeface(typeface, Typeface.BOLD)
-            maxLines = 2
-            ellipsize = android.text.TextUtils.TruncateAt.END
-            layoutParams = LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f)
-        })
-        top.addView(View(this).apply {
-            background = GradientDrawable().apply {
-                shape = GradientDrawable.OVAL
-                setColor(if (configured) p.warm else p.line)
-            }
-            layoutParams = LinearLayout.LayoutParams(dp(7), dp(7))
-        })
-        box.addView(top)
-        box.addView(TextView(this).apply {
-            text = if (configured) prefs.customBaseUrl else "点开填写 key + 接口地址"
-            textSize = 10.5f
-            setTextColor(p.text3)
-            maxLines = 2
-            ellipsize = android.text.TextUtils.TruncateAt.END
-        })
         box.layoutParams = GridLayout.LayoutParams(
             GridLayout.spec(GridLayout.UNDEFINED, 1f),
             GridLayout.spec(GridLayout.UNDEFINED, 1f)
@@ -437,7 +446,7 @@ class MainActivity : BaseActivity() {
             background = roundBg(p.surface, 20, 1, p.line)
             isAllCaps = false
             setPadding(dp(12), dp(10), dp(12), dp(10))
-            setOnClickListener { openCustomDialog() }
+            setOnClickListener { openCustomDialog(-1) }
         }
         add.layoutParams = GridLayout.LayoutParams(
             GridLayout.spec(GridLayout.UNDEFINED, 1f),
@@ -581,14 +590,18 @@ class MainActivity : BaseActivity() {
         dialog.show()
     }
 
-    /** 自定义接口的配置弹窗 */
-    private fun openCustomDialog() {
+    /**
+     * 自定义接口的配置弹窗。@param index 列表下标，-1 = 新建一条。
+     * 弹窗里带「删除这个接口」，多档案管理闭环。
+     */
+    private fun openCustomDialog(index: Int) {
+        val existing = prefs.customs.getOrNull(index)
         val body = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
             setPadding(dp(22), dp(14), dp(22), dp(4))
         }
         body.addView(TextView(this).apply {
-            text = "自定义接口"
+            text = if (existing == null) "添加自定义接口" else "自定义接口"
             textSize = 16f
             setTextColor(p.text)
             setTypeface(typeface, Typeface.BOLD)
@@ -600,10 +613,10 @@ class MainActivity : BaseActivity() {
             setPadding(0, dp(4), 0, 0)
         })
 
-        val nameWrap = dialogField("名称", "DeepSeek", prefs.customName, false)
-        val baseWrap = dialogField("接口地址", "https://api.deepseek.com/v1", prefs.customBaseUrl, false)
-        val keyWrap = dialogField("API Key", "sk-…", prefs.customKey, true)
-        val modelWrap = dialogField("模型名", "deepseek-chat", prefs.customModel, false)
+        val nameWrap = dialogField("名称", "DeepSeek", existing?.name ?: "", false)
+        val baseWrap = dialogField("接口地址", "https://api.deepseek.com/v1", existing?.baseUrl ?: "", false)
+        val keyWrap = dialogField("API Key", "sk-…", existing?.key ?: "", true)
+        val modelWrap = dialogField("模型名", "deepseek-chat", existing?.model ?: "", false)
         val nameField = nameWrap.tag as EditText
         val baseField = baseWrap.tag as EditText
         val keyField = keyWrap.tag as EditText
@@ -627,19 +640,22 @@ class MainActivity : BaseActivity() {
 
         dialog.setOnShowListener {
             dialog.getButton(AlertDialog.BUTTON_POSITIVE).setOnClickListener {
-                saveCustomValues(nameField, baseField, keyField, modelField)
+                saveCustomValues(index, nameField, baseField, keyField, modelField)
                 dialog.dismiss()
                 refreshStatus()
+                refreshServiceSpinner()
+                rebuildProviderGrid()
                 Toast.makeText(this, "已保存", Toast.LENGTH_SHORT).show()
             }
             dialog.getButton(AlertDialog.BUTTON_NEUTRAL).setOnClickListener {
-                saveCustomValues(nameField, baseField, keyField, modelField)
+                // 测试前先落盘，测的就是刚填的这份
+                val testId = saveCustomValues(index, nameField, baseField, keyField, modelField)
                 status.visibility = View.VISIBLE
                 status.setTextColor(p.text3)
                 status.text = "测试中…"
                 Thread {
                     val outcome = try {
-                        val result = Engine.testProvider("custom:custom", prefs)
+                        val result = Engine.testProvider(testId, prefs)
                         "✓ ${result.text}（${result.provider} · ${result.latencyMs}ms）"
                     } catch (t: Throwable) {
                         "✗ ${t.message ?: "未知错误"}"
@@ -652,10 +668,39 @@ class MainActivity : BaseActivity() {
                 }.start()
             }
         }
+
+        // 删除：只对已存在的档案显示
+        if (existing != null) {
+            val delete = TextView(this).apply {
+                text = "删除这个接口"
+                textSize = 12.5f
+                setTextColor(p.err)
+                setPadding(0, dp(14), 0, dp(6))
+                isClickable = true
+                setOnClickListener {
+                    val list = prefs.customs.toMutableList()
+                    val removedId = list.getOrNull(index)?.id
+                    list.removeAt(index)
+                    prefs.customs = list
+                    // 顺手清掉排序/停用名单里的残留
+                    removedId?.let { id ->
+                        prefs.serviceChainOrder = prefs.serviceChainOrder.filter { it != "custom:$id" }
+                        prefs.serviceChainOff = prefs.serviceChainOff.filter { it != "custom:$id" }
+                    }
+                    dialog.dismiss()
+                    refreshServiceSpinner()
+                    rebuildProviderGrid()
+                    refreshStatus()
+                    Toast.makeText(this@MainActivity, "已删除", Toast.LENGTH_SHORT).show()
+                }
+            }
+            body.addView(delete)
+        }
+
         dialog.show()
     }
 
-    private fun saveProviderValues(
+        private fun saveProviderValues(
         def: Providers.Def,
         inputs: Map<String, EditText>,
         endpointInput: EditText?
@@ -666,16 +711,26 @@ class MainActivity : BaseActivity() {
         endpointInput?.let { prefs.setCredential(def.id, "endpoint", it.text.toString().trim()) }
     }
 
+    /** 写回自定义接口列表（index = -1 表示追加）；@return 这条的完整 id，供测试按钮用 */
     private fun saveCustomValues(
+        index: Int,
         nameField: EditText,
         baseField: EditText,
         keyField: EditText,
         modelField: EditText
-    ) {
-        prefs.customName = nameField.text.toString().trim()
-        prefs.customBaseUrl = baseField.text.toString().trim().ifBlank { "https://api.deepseek.com/v1" }
-        prefs.customKey = keyField.text.toString().trim()
-        prefs.customModel = modelField.text.toString().trim().ifBlank { "deepseek-chat" }
+    ): String {
+        val list = prefs.customs.toMutableList()
+        val id = if (index in list.indices) list[index].id else "c${System.currentTimeMillis().toString(36)}"
+        val profile = Providers.CustomProfile(
+            id = id,
+            name = nameField.text.toString().trim(),
+            key = keyField.text.toString().trim(),
+            baseUrl = baseField.text.toString().trim().ifBlank { "https://api.deepseek.com/v1" },
+            model = modelField.text.toString().trim().ifBlank { "deepseek-chat" }
+        )
+        if (index in list.indices) list[index] = profile else list.add(profile)
+        prefs.customs = list
+        return "custom:$id"
     }
 
     // MARK: - 组件工厂
@@ -951,15 +1006,6 @@ class MainActivity : BaseActivity() {
         val index = Lang.sendTargets.indexOf(prefs.defaultTarget)
         if (index >= 0) targetSpinner.setSelection(index)
 
-        // 模式
-        for (i in 0 until modeGroup.childCount) {
-            val child = modeGroup.getChildAt(i) as RadioButton
-            child.isChecked = child.tag == prefs.mode
-        }
-        modeGroup.setOnCheckedChangeListener { _, _ ->
-            refreshServiceSpinner()
-            rebuildProviderGrid()
-        }
         refreshServiceSpinner()
 
         // 外观：主题
@@ -1027,23 +1073,21 @@ class MainActivity : BaseActivity() {
         applyThemeChange()
     }
 
-    /** 服务商下拉：按当前模式列出已配置的服务商，第一项永远是「自动」 */
+    /** 服务下拉三档（D-56）：自动 / 按我的排序 / 只用某一家（跨模式列出全部已配置渠道） */
     private fun refreshServiceSpinner() {
-        val mode = currentMode()
-        val items = mutableListOf("自动（按语种优选）")
-        val ids = mutableListOf("auto")
+        val items = mutableListOf("自动（按语种优选）", "按我的排序（网格拖动）")
+        val ids = mutableListOf("auto", "priority")
 
-        if (mode == "custom") {
-            if (prefs.customProfile().isComplete) {
-                items.add(prefs.customProfile().displayName)
-                ids.add("custom:custom")
+        for (def in Providers.DEFS) {
+            if (prefs.isConfigured(def.id)) {
+                items.add("${def.label}（只用这家）")
+                ids.add(def.id)
             }
-        } else {
-            for (def in Providers.DEFS) {
-                if (prefs.isConfigured(def.id)) {
-                    items.add(def.label)
-                    ids.add(def.id)
-                }
+        }
+        for (c in prefs.customs) {
+            if (c.isComplete) {
+                items.add("${c.displayName}（只用这家）")
+                ids.add("custom:${c.id}")
             }
         }
 
@@ -1056,17 +1100,8 @@ class MainActivity : BaseActivity() {
         if (position >= 0) serviceSpinner.setSelection(position)
     }
 
-    private fun currentMode(): String {
-        for (i in 0 until modeGroup.childCount) {
-            val child = modeGroup.getChildAt(i) as RadioButton
-            if (child.isChecked) return child.tag as String
-        }
-        return "free"
-    }
-
     private fun save() {
 
-        prefs.mode = currentMode()
         prefs.selection = serviceIds.getOrNull(serviceSpinner.selectedItemPosition) ?: "auto"
         prefs.trigger = triggerField.text.toString().ifBlank { "?译" }
         prefs.longSentenceThreshold = thresholdField.text.toString().toIntOrNull() ?: 60

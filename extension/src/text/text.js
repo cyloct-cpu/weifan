@@ -79,13 +79,20 @@ async function init() {
   auto.value = 'auto';
   auto.textContent = '自动（按语种优选）';
   service.appendChild(auto);
+  const priority = document.createElement('option');
+  priority.value = 'priority';
+  priority.textContent = '按我的排序（设置里拖）';
+  service.appendChild(priority);
   for (const provider of config.providers ?? []) {
     const option = document.createElement('option');
     option.value = provider.id;
-    option.textContent = provider.label;
+    option.textContent = `${provider.label}（只用这家）`;
     service.appendChild(option);
   }
-  service.value = config.settings?.selection ?? 'auto';
+  const saved = ['auto', 'priority'].includes(config.settings?.selection) || (config.providers ?? []).some((p) => p.id === config.settings?.selection)
+    ? config.settings.selection
+    : 'auto';
+  service.value = saved;
   if (!service.value) service.selectedIndex = 0;
 
   // 语言框初值

@@ -727,24 +727,48 @@ export function listProviders(keys, mode) {
 /**
  * 排出候选顺序（降级链）。
  *
+ * 三种语义（D-56）：
+ * - selection = 'auto'：自动优选 —— route 决定大模型/机翻先后，同类内按注册顺序；
+ * - selection = 'priority'：**按我的排序** —— 网格从左到右、从上到下就是降级链，
+ *   `chainOff` 里的（开关关掉的）跳过；链是空的就显式报错，绝不悄悄退回自动；
+ * - selection = 具体服务 id：**只用这一家**，失败不降级，直接报错说明原因。
+ *
  * @param {Object} args
  * @param {string} args.target
  * @param {'mt'|'llm'} [args.route]
  * @param {Keys} args.keys
- * @param {string} [args.selection] 用户选的服务商 id；'auto' 或空 = 自动优选
- * @param {'free'|'custom'} [args.mode]
+ * @param {string} [args.selection] 'auto' / 'priority' / 服务 id（free 的注册 id 或 `custom:<id>`）
+ * @param {string[]} [args.chainOrder] 用户排的全量视觉顺序（channelOrder）
+ * @param {string[]} [args.chainOff] 被开关关掉的服务 id
  * @param {string[]} [args.blocked] 已超日限额的服务商
  * @returns {Provider[]}
  */
-export function planCandidates({ target, route, keys, selection, mode, blocked = [] }) {
-  const all = listProviders(keys, mode).filter((p) => !blocked.includes(p.id));
+export function planCandidates({ target, route, keys, selection, blocked = [], chainOrder = [], chainOff = [] }) {
+  const all = listProviders(keys).filter((p) => !blocked.includes(p.id));
   const eligible = all.filter((p) => (p.mode === 'custom' ? true : supportsTarget(p.id, target)));
 
-  const explicit = selection && selection !== 'auto';
-  if (explicit) {
+  // 只用这一家：选定即唯一候选
+  if (selection && selection !== 'auto' && selection !== 'priority') {
     const chosen = eligible.find((p) => p.id === selection);
-    if (chosen) return [chosen, ...eligible.filter((p) => p.id !== selection)];
-    return eligible;
+    if (!chosen) {
+      const known = all.some((p) => p.id === selection);
+      throw new Error(known
+        ? '这一家现在用不了：密钥没配齐，或不支持当前目标语言'
+        : '这一家不存在了，去设置 → 翻译服务里重新选');
+    }
+    return [chosen];
+  }
+
+  // 按我的排序
+  if (selection === 'priority') {
+    const chain = chainOrder
+      .filter((id) => !chainOff.includes(id))
+      .map((id) => eligible.find((p) => p.id === id))
+      .filter(Boolean);
+    if (!chain.length) {
+      throw new Error('「按我的排序」里没有可用的服务：去设置 → 翻译服务，把至少一家打开开关');
+    }
+    return chain;
   }
 
   // 自动优选：route 决定先后（大模型优先还是机翻优先），同类内按注册顺序
@@ -771,7 +795,8 @@ export function planCandidates({ target, route, keys, selection, mode, blocked =
  * @param {Keys} [req.keys]
  * @param {Object} [options]
  * @param {string} [options.selection]
- * @param {'free'|'custom'} [options.mode]
+ * @param {string[]} [options.chainOrder] 按我的排序（视觉顺序）
+ * @param {string[]} [options.chainOff] 停用的服务 id
  * @param {string[]} [options.blocked]
  * @returns {Promise<ProviderResult>}
  */
@@ -785,14 +810,13 @@ export async function translate(req, options = {}) {
     route,
     keys,
     selection: options.selection,
-    mode: options.mode,
+    chainOrder: options.chainOrder,
+    chainOff: options.chainOff,
     blocked: options.blocked
   });
 
   if (!candidates.length) {
-    const hint = options.mode === 'custom'
-      ? '去设置里填一个自定义 API（key + 接口地址 + 模型名）'
-      : '去设置里填一个服务商的免费额度密钥';
+    const hint = '去设置 → 翻译服务里填一个密钥，或添加一个自定义 API（key + 接口地址 + 模型名）';
     throw new Error(`没有可用的翻译服务：${hint}`);
   }
 

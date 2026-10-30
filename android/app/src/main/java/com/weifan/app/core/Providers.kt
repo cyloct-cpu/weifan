@@ -270,8 +270,9 @@ object Providers {
      * 翻译（带自动降级）。
      *
      * @param creds 服务商 id → 字段值
-     * @param selection 用户选的服务商 id，'auto' = 自动优选
-     * @param mode free / custom，空 = 两者都算
+     * @param selection 'auto' / 'priority'（按我的排序）/ 具体 id（只用这家，不降级）
+     * @param chainOrder 按我的排序：全量视觉顺序（左→右、上→下）
+     * @param chainOff 被开关停用的渠道 id
      * @param blocked 已超今日限额的服务商，直接跳过
      */
     fun translate(
@@ -281,12 +282,13 @@ object Providers {
         style: String,
         route: String,
         creds: Map<String, Map<String, String>>,
-        custom: CustomProfile? = null,
+        customs: List<CustomProfile> = emptyList(),
         selection: String = "auto",
-        mode: String = "",
+        chainOrder: List<String> = emptyList(),
+        chainOff: List<String> = emptyList(),
         blocked: List<String> = emptyList()
     ): Result {
-        val candidates = planCandidates(target, route, creds, custom, selection, mode)
+        val candidates = planCandidates(target, route, creds, customs, selection, chainOrder, chainOff)
             .filter { it.id !in blocked }
         if (candidates.isEmpty()) {
             throw IOException("没有可用的翻译服务：请在设置里填入至少一个密钥")
@@ -320,10 +322,11 @@ object Providers {
         target: String,
         style: String,
         creds: Map<String, Map<String, String>>,
-        custom: CustomProfile? = null
+        customs: List<CustomProfile> = emptyList()
     ): Result {
         val candidate = if (providerId.startsWith("custom:")) {
-            val p = custom
+            val wanted = providerId.removePrefix("custom:")
+            val p = customs.firstOrNull { it.id == wanted }
             if (p == null || !p.isComplete) throw IOException("自定义接口还没填 key 与接口地址")
             Candidate("custom:${p.id}", p.displayName, "llm", emptyMap(), p)
         } else {
@@ -337,40 +340,56 @@ object Providers {
     }
 
     /** 排出候选顺序（降级链） */
+    /**
+     * 排出候选顺序（降级链）。三种语义（D-56，与扩展 side providers.js 同规格）：
+     * - 'auto'：自动优选（route 决定 llm/mt 先后，同类内按注册顺序）
+     * - 'priority'：按我的排序 —— chainOrder 顺序即降级链，chainOff 里的跳过，空链显式报错
+     * - 具体 id：只用这一家，不降级，不可用直接抛错
+     */
     fun planCandidates(
         target: String,
         route: String,
         creds: Map<String, Map<String, String>>,
-        custom: CustomProfile? = null,
+        customs: List<CustomProfile> = emptyList(),
         selection: String = "auto",
-        mode: String = "",
-        blocked: List<String> = emptyList()
+        chainOrder: List<String> = emptyList(),
+        chainOff: List<String> = emptyList()
     ): List<Candidate> {
         val all = mutableListOf<Candidate>()
 
         for (def in DEFS) {
-            if (mode.isNotEmpty() && def.mode != mode) continue
-            if (def.id in blocked) continue
             val values = creds[def.id] ?: continue
             if (!isConfigured(def, values)) continue
             all += Candidate(def.id, def.label, def.kind, values)
         }
-
-        if (mode.isEmpty() || mode == "custom") {
-            val p = custom
-            if (p != null && p.isComplete) {
-                all += Candidate("custom:${p.id}", p.displayName, "llm", emptyMap(), p)
-            }
+        for (c in customs) {
+            if (c.isComplete) all += Candidate("custom:${c.id}", c.displayName, "llm", emptyMap(), c)
         }
 
         // 不支持该目标语言的服务商不进链
         val eligible = all.filter { it.kind == "llm" || supportsTarget(it.id, target) }
 
-        val explicit = selection.isNotEmpty() && selection != "auto"
-        if (explicit) {
+        // 只用这一家：选定即唯一候选，失败不降级
+        if (selection.isNotEmpty() && selection != "auto" && selection != "priority") {
             val chosen = eligible.firstOrNull { it.id == selection }
-            if (chosen != null) return listOf(chosen) + eligible.filter { it.id != selection }
+                ?: throw IOException(
+                    if (all.any { it.id == selection }) "这一家现在用不了：密钥没配齐，或不支持当前目标语言"
+                    else "这一家不存在了，去设置 → 翻译服务里重新选"
+                )
+            return listOf(chosen)
         }
+
+        // 按我的排序
+        if (selection == "priority") {
+            val chain = chainOrder
+                .filter { it !in chainOff }
+                .mapNotNull { id -> eligible.firstOrNull { it.id == id } }
+            if (chain.isEmpty()) {
+                throw IOException("「按我的排序」里没有可用的服务：去设置 → 翻译服务，把至少一家打开开关")
+            }
+            return chain
+        }
+
         return autoOrder(eligible, route)
     }
 

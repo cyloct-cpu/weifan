@@ -95,10 +95,9 @@ async function translateText(store, req) {
   const settings = store.settings;
   const style = req.style ?? settings.style;
   const selection = req.selection ?? settings.selection;
-  const mode = req.mode ?? settings.mode;
   const blocked = blockedProviders(store, settings.dailyCharLimit);
 
-  const key = `t|${mode}|${selection}|${req.source ?? ''}|${req.target}|${style}|${fingerprint(req.text)}`;
+  const key = `t|${selection}|${req.source ?? ''}|${req.target}|${style}|${fingerprint(req.text)}`;
   if (cache.has(key)) return cache.get(key);
 
   const result = await translate(
@@ -110,7 +109,7 @@ async function translateText(store, req) {
       route: style === 'business' ? 'llm' : 'mt',
       keys: store.keys
     },
-    { selection, mode, blocked }
+    { selection, blocked, chainOrder: settings.chainOrder, chainOff: settings.chainOff }
   );
 
   cacheSet(key, result);
@@ -159,7 +158,17 @@ async function handle(message) {
 
     case 'setSettings': {
       const patch = message.patch ?? {};
+      // 排序/开关白名单清洗：只留字符串、去重、限长（D-56）
+      const idList = (value) =>
+        Array.isArray(value)
+          ? [...new Set(value.map((id) => String(id ?? '').trim()).filter(Boolean))].slice(0, 40)
+          : undefined;
+      const chainOrder = idList(patch.chainOrder);
+      const chainOff = idList(patch.chainOff);
+      delete patch.mode; // D-56 起废弃，旧端写来的忽略
       store.settings = { ...store.settings, ...patch };
+      if (chainOrder) store.settings.chainOrder = chainOrder;
+      if (chainOff) store.settings.chainOff = chainOff;
       await saveStore(store);
       return store.settings;
     }

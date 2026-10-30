@@ -22,8 +22,9 @@ import { translate } from './providers.js';
  * @property {'business'|'casual'|'literal'} style
  * @property {import('./glossary.js').GlossaryEntry[]} glossary
  * @property {number} autoTranslateMaxChars
- * @property {string} selection             用户选的服务商 id，'auto' = 自动优选
- * @property {'free'|'custom'} mode         免费额度池 / 自定义 API
+ * @property {string} selection             'auto' / 'priority' / 服务 id（'priority' = 按我的排序）
+ * @property {string[]} chainOrder          按我的排序：全量视觉顺序（左→右、上→下）
+ * @property {string[]} chainOff            被开关停用的服务 id
  * @property {number} dailyCharLimit        单个服务商每日字符上限（0 = 不限）
  * @property {boolean} compact              简洁模式
  * @property {boolean} hoverTranslate       鼠标悬停翻译
@@ -41,7 +42,8 @@ export const DEFAULT_SETTINGS = {
   glossary: [],
   autoTranslateMaxChars: 1500,
   selection: 'auto',
-  mode: 'free',
+  chainOrder: [],
+  chainOff: [],
   dailyCharLimit: 0,
   compact: false,
   hoverTranslate: false,
@@ -98,7 +100,7 @@ export async function translateForSending(text, opts = {}) {
   // ④ 翻译
   const result = await translate(
     { text: protectedText.masked, source: 'zh-Hans', target: resolved.target, style, route, keys },
-    { selection: settings.selection, mode: settings.mode, blocked: opts.blocked }
+    { selection: settings.selection, chainOrder: settings.chainOrder, chainOff: settings.chainOff, blocked: opts.blocked }
   );
 
   // ⑤ 还原
@@ -161,7 +163,8 @@ export async function translateIncoming(text, opts = {}) {
     { text, source, target: 'zh-Hans', style: 'casual', route, keys: opts.keys ?? {} },
     {
       selection: settings.selection,
-      mode: settings.mode,
+      chainOrder: settings.chainOrder,
+      chainOff: settings.chainOff,
       blocked: opts.blocked
     }
   );
