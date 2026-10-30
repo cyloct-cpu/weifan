@@ -109,18 +109,22 @@ class ChatActivity : Activity() {
         bottom.addView(inputColumn, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f)
             .apply { setMargins(0, 0, Ui.dp(this@ChatActivity, 8), 0) })
 
-        val btnColumn = LinearLayout(this).apply {
-            orientation = LinearLayout.VERTICAL
+        // 译 / 发送 横排在输入框右侧（竖排会跟输入框抢高度，键盘弹出时输入区被顶出屏幕）
+        val btnRow = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER_VERTICAL
         }
         translateBtn = Ui.button(this, "译", primary = true) { onTranslate() }.apply {
-            minimumWidth = Ui.dp(this@ChatActivity, 52)
+            minimumWidth = Ui.dp(this@ChatActivity, 48)
         }
-        btnColumn.addView(translateBtn)
+        btnRow.addView(translateBtn)
         sendBtn = Ui.button(this, "发送", primary = false) { onSend() }.apply {
-            minimumWidth = Ui.dp(this@ChatActivity, 52)
+            minimumWidth = Ui.dp(this@ChatActivity, 48)
         }
-        btnColumn.addView(Ui.withMargin(this, sendBtn, top = 6))
-        bottom.addView(btnColumn)
+        btnRow.addView(Ui.withMargin(this, sendBtn, top = 0).apply {
+            (layoutParams as LinearLayout.LayoutParams).setMargins(Ui.dp(this@ChatActivity, 6), 0, 0, 0)
+        })
+        bottom.addView(btnRow)
         root.addView(bottom)
 
         setContentView(root)
@@ -211,7 +215,9 @@ class ChatActivity : Activity() {
             translateBtn.isEnabled = true
             translateBtn.text = "译"
             if (err != null) {
-                Toast.makeText(this, err, Toast.LENGTH_SHORT).show()
+                // 失败不能清掉用户输入（交接文档 §6 铁律：永远先拿到译文再删原文）
+                if (input.text.toString().isBlank()) input.setText(text)
+                Toast.makeText(this, err, Toast.LENGTH_LONG).show()
             } else {
                 input.setText(translated)
                 input.setSelection(translated.length)

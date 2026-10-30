@@ -64,6 +64,9 @@ class MainActivity : BaseActivity() {
     private lateinit var themeGroup: RadioGroup
     private lateinit var themeNote: TextView
     private lateinit var scheduleSwitch: Switch
+    private lateinit var waProxyField: EditText
+    private lateinit var waPreviewSwitch: Switch
+    private lateinit var incomingSwitch: Switch
     private lateinit var scheduleTimes: LinearLayout
     private lateinit var scheduleStart: EditText
     private lateinit var scheduleEnd: EditText
@@ -186,6 +189,26 @@ class MainActivity : BaseActivity() {
             })
         })
 
+        // WhatsApp 连接（独立客户端）
+        root.addView(groupCard(
+            "WhatsApp 连接",
+            "以「关联设备」方式登录你的账号（与网页版同机制）。国内网络必须配代理。",
+            p.warmGrad
+        ) {
+            addView(label("代理地址（socks5:// 或 http://，留空直连）"))
+            addView(field("socks5://127.0.0.1:7892", secret = false).apply {
+                setText(prefs.waProxy)
+            }.also { waProxyField = it })
+            waPreviewSwitch = switchRow("预览模式（测试 UI 用）",
+                "开启后跳过真实配对，用演示会话过一遍界面；关闭后恢复正式流程。")
+            incomingSwitch = switchRow("收件自动翻译",
+                "对方消息到达后自动出中文。关闭后只手动翻。")
+            addView(ghostButton("重新配对 / 查看配对码") {
+                startActivity(Intent(this@MainActivity, PairingActivity::class.java))
+            })
+        })
+
+        // 翻译服务（双向通用）
         // 翻译服务（双向通用）
         root.addView(groupCard(
             "翻译服务",
@@ -1030,6 +1053,9 @@ class MainActivity : BaseActivity() {
         limitField.setText(prefs.dailyCharLimit.toString())
         glossaryField.setText(prefs.glossary)
         autoReplaceSwitch.isChecked = prefs.autoReplace
+        waProxyField.setText(prefs.waProxy)
+        waPreviewSwitch.isChecked = prefs.waPreviewMode
+        incomingSwitch.isChecked = prefs.waAutoTranslateIncoming
 
         val index = Lang.sendTargets.indexOf(prefs.defaultTarget)
         if (index >= 0) targetSpinner.setSelection(index)
@@ -1141,6 +1167,9 @@ class MainActivity : BaseActivity() {
 
     private fun save() {
 
+        prefs.waProxy = waProxyField.text.toString()
+        prefs.waPreviewMode = waPreviewSwitch.isChecked
+        prefs.waAutoTranslateIncoming = incomingSwitch.isChecked
         prefs.selection = serviceIds.getOrNull(serviceSpinner.selectedItemPosition) ?: "auto"
         prefs.trigger = triggerField.text.toString().ifBlank { "?译" }
         prefs.longSentenceThreshold = thresholdField.text.toString().toIntOrNull() ?: 60

@@ -103,6 +103,7 @@ class ChatListActivity : Activity() {
     private fun renderChats() {
         listBox.removeAllViews()
         val paired = engine.isPaired()
+        if (paired) engine.seedPreviewData()
 
         // 未配对：配对引导卡
         if (!paired) {
@@ -125,7 +126,16 @@ class ChatListActivity : Activity() {
             // 翻译工具入口保留（划词/文本/文档）
             listBox.addView(Ui.withMargin(this, toolCard(), top = 16))
 
-            // 代理设置入口（国内网络必配）
+            // 预览模式开关（测试用）+ 代理设置
+            listBox.addView(Ui.withMargin(this,
+                Ui.button(this, "预览模式（跳过配对看 UI）", primary = false) {
+                    val prefs = Prefs(this@ChatListActivity)
+                    prefs.waPreviewMode = !prefs.waPreviewMode
+                    Toast.makeText(this@ChatListActivity,
+                        if (prefs.waPreviewMode) "预览模式已开启" else "预览模式已关闭",
+                        Toast.LENGTH_SHORT).show()
+                    renderChats()
+                }, top = 12))
             listBox.addView(Ui.withMargin(this,
                 Ui.button(this, "网络代理设置（国内网络需要）", primary = false) {
                     ProxyDialog.show(this)
@@ -145,6 +155,17 @@ class ChatListActivity : Activity() {
         }
         listBox.addView(Ui.withMargin(this,
             Ui.button(this, "给一个号码发消息", primary = false) { newChatDialog() }, top = 12))
+        // 已配对状态下也保留预览开关与设置入口
+        listBox.addView(Ui.withMargin(this,
+            Ui.button(this, "设置（翻译服务 / 触发词 / 术语）", primary = false) {
+                startActivity(Intent(this@ChatListActivity, MainActivity::class.java))
+            }, top = 12))
+        listBox.addView(Ui.withMargin(this,
+            Ui.button(this, "退出预览模式", primary = false) {
+                Prefs(this@ChatListActivity).waPreviewMode = false
+                Toast.makeText(this@ChatListActivity, "已退出预览模式", Toast.LENGTH_SHORT).show()
+                renderChats()
+            }, top = 12))
     }
 
     private fun toolCard(): View {

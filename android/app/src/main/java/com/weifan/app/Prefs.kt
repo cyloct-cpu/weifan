@@ -245,6 +245,11 @@ class Prefs(context: Context) {
         get() = sp.getBoolean("wa_auto_send", false)
         set(value) = sp.edit().putBoolean("wa_auto_send", value).apply()
 
+    /** 预览模式（测试用）：跳过真实配对，用演示数据过 UI */
+    var waPreviewMode: Boolean
+        get() = sp.getBoolean("wa_preview", false)
+        set(value) = sp.edit().putBoolean("wa_preview", value).apply()
+
     // MARK: - 旧版本数据迁移
 
     /**
