@@ -1,0 +1,88 @@
+# 10 · 对齐 WATransChat 形态：差距分析与分阶段方案（2026-10-31）
+
+> 目标：把微翻从「站在 WhatsApp 网页外面的翻译工具」升级为「独立 WhatsApp 客户端」，对齐 WATransChat 的产品形态。
+> 依据：`watranschat-packages/reports/WATransChat-三端分析报告.md` 的逆向结论。
+> 本文档推翻 D-05 里「不做 WhatsApp 协议库（Baileys 等）」的红线 —— 用户 2026-10-31 明确要求对齐。
+
+---
+
+## 一、目标形态拆解（WATransChat 由五层构成）
+
+| 层 | WATransChat 的做法 | 微翻现状 | 差距量级 |
+|---|---|---|---|
+| ① WhatsApp 协议层 | whatsmeow fork（Go），QR 配对为关联设备 | ❌ 无（扩展走 DOM） | **全新，最大** |
+| ② 业务后端 | chat.babyamy.store（账号/会员/AI 员工/媒体代理） | ❌ 无自建服务器 | 全新（自用可省略大部分） |
+| ③ 客户端 UI | Android Kotlin + iOS Swift 完整聊天 UI（消息/群/通话/媒体/轮询/贴纸） | Android 只有设置页+翻译工具页 | **大量新增** |
+| ④ 翻译层 | 免费网页接口 + Pro 引擎 + 通话 AST/TTS | ✅ 九家服务商+降级+额度保护（复用） | 小（直接搬） |
+| ⑤ 商业化 | 账号+订阅+席位+卡密 | ❌ 无 | 自用不需要 |
+
+**核心洞察：① 协议层是唯一真正的硬骨头，其余各层要么复用、要么砍掉。**
+
+## 二、协议层选型（关键决策）
+
+WATransChat 用 whatsmeow（Go）。微翻可选项：
+
+| 方案 | 语言 | 优势 | 劣势 | 判定 |
+|---|---|---|---|---|
+| **A. whatsmeow + gomobile** | Go→Kotlin/Swift 桥 | 正是竞品验证过的路线（样本即证据）；活跃维护；多设备协议完整；iOS 可同法 gobind | 要学 Go、要搭 gomobile/NDK、APK +30MB×ABI | ✅ **主选** |
+| B. Baileys | Node.js (TS) | 微翻内核已是 TS，心智一致 | 是 Web 多设备协议的逆向实现，稳定性/重连弱于 whatsmeow；无移动端原生桥，只能 Embedded WebView 或 NodeJS mobile | ❌ 不做主路 |
+| C. 自研协议 | 任意 | — | 数月级工程，否决 | ❌ |
+
+**与 WATransChat 的差异化取舍（自用，不做商业化）**：
+- 不建账号/会员/席位/卡密体系（②⑤层整体砍掉）
+- 不做 AI 员工/通话翻译（先对齐主干：完整聊天 + 消息自动翻译）
+- 翻译层直接复用微翻现有九家服务商内核（TS→Go 移植或经桥调用）
+
+## 三、本机工具链缺口清单（已核查）
+
+| 依赖 | 现状 | 补齐动作 |
+|---|---|---|
+| Go ≥1.21 | ❌ 未装 | `brew install go` |
+| gomobile + gobind | ❌ | `go install golang.org/x/mobile/cmd/gomobile@latest && gomobile init` |
+| Android NDK | ❌（SDK 有，NDK 无） | Android Studio SDK Manager 装 NDK（gomobile 必需） |
+| JDK17 | ⚠️ 有但未链接 | `brew link openjdk@17` |
+| adb | ❌（SDK platform-tools 有） | 加 PATH 即可 |
+| Android Gradle 构建 | ✅ gradle + SDK 就绪 | — |
+| Xcode | ❌ | iOS 阶段再说（gobind 需要） |
+
+## 四、分阶段路线
+
+### 阶段 A：协议层打通（最优先，约 1–2 周）
+1. 装工具链（上表，半天）
+2. fork whatsmeow 为 `weifan-protocol`（Go module），最小验证：QR 配对 → 收到消息打印到控制台
+3. 定义 gomobile 桥接口（对齐微翻门面风格）：`Connect/Logout/SendText/GetChats/GetMessages/OnMessage/HistorySync…`（参照 WATransChat 的 210 个 mobile.* 接口裁剪到自用 ~30 个）
+4. 产出 `weifan.aar`，Android 侧引入
+- **验收**：Android demo 按钮触发配对，收到的消息实时打印在屏幕上
+
+### 阶段 B：Android 独立客户端（约 2–3 周）
+1. SQLite 存储（Room）：chats / messages / jid 映射（whatsmeow 自带 store 即基于 SQLite，Android 侧共享）
+2. 聊天列表页 + 会话页（Kotlin View 体系，沿用微翻品牌色板 Brand.kt）
+3. 收发消息：文本先行，媒体（图/语音/文件）第二批次
+4. **翻译接入**：复用 `core/*.kt`（九家服务商+降级+额度保护已在）——收件自动译文挂在消息下方（双语对照），发件「译」按钮
+5. 前台服务保活 + 断线重连引导
+- **验收**：装上 APK 扫码配对 → 聊天列表出现会话 → 对方发消息自动出中文 → 打中文点译变外语发出
+
+### 阶段 C：增强（按需排序）
+- 历史消息同步（HistorySync）+ 本地搜索
+- 媒体收发全量、群组、轮询/贴纸/引用回复
+- 通知接入（收件翻译推送）
+- 桌面端（Tauri Web 壳路线对标 WATransChat Mac 版，或继续浏览器扩展双轨）
+
+### 阶段 D：iOS（gobind 同法，等 Xcode）
+
+## 五、风险登记（推翻红线后必须直面）
+
+| 风险 | 说明 | 应对 |
+|---|---|---|
+| **封号** | 自建客户端违反 WhatsApp ToS；WATransChat 的"完全安全"是营销话术 | 自用小号先试；主号不介入；不发营销群发行为（本就不做） |
+| **协议变动** | WhatsApp 多设备协议更新需跟进 whatsmeow 上游 | 锁版本 + 定期 rebase；这是长期维护成本 |
+| **工程量** | 完整聊天 UI 是从 0 到 1 | 阶段 B 只做文本主干，媒体后置 |
+| **包体** | gojni 每 ABI ~30MB | 只编 arm64 + x86_64 两 ABI（模拟器+主流机），减半 |
+| **法律/合规** | 同 WATransChat 属灰色地带 | 自用不上架，风险自担（与用户确认过） |
+
+## 六、与现有微翻资产的关系
+
+- 浏览器扩展 **保留不动**：它是零风险的日常主力，新客户端是增量实验
+- Android 现有无障碍方案 **保留**：独立客户端失败时仍是可用退路
+- `core/*.kt` 翻译内核 **直接复用**：这是微翻对 WATransChat 最有优势的部分（竞品的 Pro 引擎要会员，微翻全免费）
+- Swift 内核继续归档

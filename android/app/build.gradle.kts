@@ -31,9 +31,8 @@ android {
     }
 }
 
-// 故意不引入任何第三方依赖：
-// 1. 构建快、失败面小（只依赖 android.jar 与 kotlin-stdlib）；
-// 2. JSON 用系统自带的 org.json；
-// 3. 网络用 HttpURLConnection，不引 OkHttp。
+// 本地 aar：Go 协议层（whatsmeow + gomobile 桥），由 weifan-protocol 仓库编译产出。
+// 其余依赖依旧为零：JSON 用 org.json，网络在 Go 层。
 dependencies {
+    implementation(files("libs/weifan-protocol.aar"))
 }

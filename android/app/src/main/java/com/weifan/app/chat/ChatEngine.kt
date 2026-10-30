@@ -1,0 +1,165 @@
+package com.weifan.app.chat
+
+import android.content.Context
+import android.os.Handler
+import android.os.Looper
+import com.weifan.app.Prefs
+import com.weifan.app.WeiFanApplication
+import com.weifan.app.core.Engine
+import com.weifan.app.data.ChatDb
+import com.weifan.app.data.MessageRow
+import mobile.ConnectionListener
+import mobile.MessageListener
+import mobile.Mobile
+import mobile.WeifanClient
+import org.json.JSONObject
+import java.util.concurrent.ConcurrentHashMap
+
+/**
+ * 聊天引擎：协议层（Go）→ 本地库 → 翻译内核（Kotlin core）的粘合层。
+ * 单例生命周期 = Application。
+ *
+ * 翻译策略（与扩展端同规格，直接复用 core.Engine）：
+ *  - 收件：Engine.translateIncoming —— 对方语言 → 中文，自动翻
+ *  - 发件：Engine.translateForSending —— 中文 → 对方语言，含术语保护/风险拦截/降级链
+ *  - 会话语言记忆：每个会话记住最近一次检测的目标语言（D-19 思路）
+ */
+class ChatEngine private constructor(context: Context) : MessageListener, ConnectionListener {
+
+    private val appContext = context.applicationContext
+    val db = ChatDb(appContext)
+    val client: WeifanClient
+    private val prefs = Prefs(appContext)
+    private val main = Handler(Looper.getMainLooper())
+
+    init {
+        // 协议客户端必须来自 WeiFanApplication（带代理、全局唯一）
+        client = (appContext as? WeiFanApplication)?.protocol()
+            ?: Mobile.newClient(appContext.filesDir.absolutePath, prefs.waProxy)
+        client.setMessageListener(this)
+        client.setConnectionListener(this)
+    }
+
+    /** 每个会话最近确认的语言（"es" 等；会话级记忆） */
+    private val chatLangMemory = ConcurrentHashMap<String, String>()
+
+    /** UI 订阅 */
+    var onChatUpdated: (() -> Unit)? = null
+    var onMessageTranslated: ((chatJid: String, id: String, translated: String) -> Unit)? = null
+    var onConnectionChanged: ((connected: Boolean) -> Unit)? = null
+
+    companion object {
+        @Volatile private var instance: ChatEngine? = null
+        fun get(context: Context): ChatEngine =
+            instance ?: synchronized(this) {
+                instance ?: ChatEngine(context.applicationContext).also { instance = it }
+            }
+    }
+
+    // MARK: - 连接
+
+    fun connectAsync() {
+        Thread {
+            try {
+                if (client.isPaired) client.connect()
+            } catch (_: Throwable) { }
+        }.start()
+    }
+
+    fun isPaired(): Boolean = try { client.isPaired } catch (_: Throwable) { false }
+    fun isConnected(): Boolean = try { client.isConnected } catch (_: Throwable) { false }
+
+    // MARK: - MessageListener（Go 层回调，非主线程）
+
+    override fun onMessage(json: String?) {
+        if (json.isNullOrBlank()) return
+        try {
+            val o = JSONObject(json)
+            val chatJid = o.optString("chatJid")
+            val id = o.optString("id")
+            val text = o.optString("text")
+            val fromMe = o.optBoolean("fromMe")
+            val ts = o.optLong("timestamp", System.currentTimeMillis())
+            val pushName = o.optString("pushName")
+            if (chatJid.isBlank() || id.isBlank() || text.isBlank()) return
+
+            val row = MessageRow(
+                id = id, chatJid = chatJid, senderJid = o.optString("senderJid"),
+                fromMe = fromMe, text = text, translated = "", translatedLang = "", ts = ts)
+            val inserted = db.insertMessage(row)
+            db.upsertChat(chatJid, pushName, text, ts, incrementUnread = !fromMe)
+
+            main.post { onChatUpdated?.invoke() }
+
+            if (!fromMe && prefs.waAutoTranslateIncoming && inserted) {
+                translateIncomingAsync(chatJid, id, text)
+            }
+        } catch (_: Throwable) { }
+    }
+
+    override fun onHistoryDone() { /* 第一阶段无额外动作 */ }
+
+    // MARK: - ConnectionListener
+
+    override fun onConnected() { main.post { onConnectionChanged?.invoke(true) } }
+    override fun onDisconnected(reason: String?) { main.post { onConnectionChanged?.invoke(false) } }
+
+    // MARK: - 翻译（复用 core.Engine）
+
+    /** 收件：对方语言 → 中文 */
+    private fun translateIncomingAsync(chatJid: String, id: String, text: String) {
+        Thread {
+            try {
+                val res = Engine.translateIncoming(text, prefs)
+                if (!res.alreadyChinese && res.translated.isNotBlank()) {
+                    res.sourceLanguage?.let { lang ->
+                        if (lang.isNotBlank()) chatLangMemory[chatJid] = lang
+                    }
+                    db.updateTranslation(chatJid, id, res.translated, res.sourceLanguage ?: "")
+                    main.post { onMessageTranslated?.invoke(chatJid, id, res.translated) }
+                }
+            } catch (_: Throwable) { }
+        }.start()
+    }
+
+    /** 发件：中文 → 目标语言（显式 > 会话记忆 > 兜底），回调在主线程 */
+    fun translateOutgoingAsync(chatJid: String, text: String,
+                               callback: (translated: String, lang: String, error: String?) -> Unit) {
+        Thread {
+            try {
+                val res = Engine.translateForSending(
+                    text = text,
+                    prefs = prefs,
+                    explicitTarget = prefs.waTargetLang.ifBlank { null },
+                    chatLanguage = chatLangMemory[chatJid]
+                )
+                chatLangMemory[chatJid] = res.target
+                main.post {
+                    if (res.translated.isBlank()) callback("", "", "翻译失败，请检查翻译服务配置")
+                    else callback(res.translated, res.target, null)
+                }
+            } catch (e: Throwable) {
+                main.post { callback("", "", e.message ?: "翻译失败") }
+            }
+        }.start()
+    }
+
+    // MARK: - 发送
+
+    fun sendText(chatJid: String, text: String, onResult: (serverId: String?, error: String?) -> Unit) {
+        Thread {
+            try {
+                val msgId = client.sendMessage(chatJid, text)
+                val now = System.currentTimeMillis()
+                db.insertMessage(MessageRow(
+                    id = msgId ?: "local-$now", chatJid = chatJid, senderJid = "",
+                    fromMe = true, text = text, translated = "", translatedLang = "", ts = now))
+                db.upsertChat(chatJid, "", text, now, incrementUnread = false)
+                main.post { onChatUpdated?.invoke() }
+                main.post { onResult(msgId, null) }
+            } catch (e: Throwable) {
+                main.post { onResult(null, e.message ?: e.toString()) }
+            }
+        }.start()
+    }
+}

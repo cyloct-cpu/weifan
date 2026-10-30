@@ -223,6 +223,28 @@ class Prefs(context: Context) {
     fun hasAnyKey(): Boolean =
         configuredProviders().isNotEmpty() || customs.any { it.isComplete }
 
+    // MARK: - WhatsApp 协议接入
+
+    /** 连接 WhatsApp 用的代理（HTTP/SOCKS5 URL），空串 = 直连。国内网络必须配。 */
+    var waProxy: String
+        get() = sp.getString("wa_proxy", "") ?: ""
+        set(value) = sp.edit().putString("wa_proxy", value.trim()).apply()
+
+    /** 发件自动翻译的目标语言（空 = 自动按会话记忆） */
+    var waTargetLang: String
+        get() = sp.getString("wa_target_lang", "") ?: ""
+        set(value) = sp.edit().putString("wa_target_lang", value.trim()).apply()
+
+    /** 收件自动翻译开关 */
+    var waAutoTranslateIncoming: Boolean
+        get() = sp.getBoolean("wa_auto_incoming", true)
+        set(value) = sp.edit().putBoolean("wa_auto_incoming", value).apply()
+
+    /** 发件点「译」后是否自动发送（默认关，合规底线） */
+    var waAutoSend: Boolean
+        get() = sp.getBoolean("wa_auto_send", false)
+        set(value) = sp.edit().putBoolean("wa_auto_send", value).apply()
+
     // MARK: - 旧版本数据迁移
 
     /**

@@ -4,14 +4,16 @@
     <uses-permission android:name="android.permission.INTERNET" />
 
     <application
+        android:name=".WeiFanApplication"
         android:allowBackup="false"
         android:icon="@mipmap/ic_launcher"
         android:label="@string/app_name"
         android:supportsRtl="true"
         android:theme="@style/AppTheme">
 
+        <!-- 主页：聊天列表（含配对入口） -->
         <activity
-            android:name=".MainActivity"
+            android:name=".ChatListActivity"
             android:exported="true"
             android:label="@string/app_name">
             <intent-filter>
@@ -19,6 +21,26 @@
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
         </activity>
+
+        <!-- 配对页：手机号 → 8 位配对码 -->
+        <activity
+            android:name=".PairingActivity"
+            android:exported="false"
+            android:label="关联 WhatsApp" />
+
+        <!-- 会话页：消息流 + 翻译 -->
+        <activity
+            android:name=".ChatActivity"
+            android:exported="false"
+            android:label="会话"
+            android:windowSoftInputMode="adjustResize" />
+
+        <!-- 设置页保留，从聊天列表可进 -->
+        <activity
+            android:name=".MainActivity"
+            android:exported="false"
+            android:label="设置" />
+
 
         <!--
             划词翻译：系统选中文字后的菜单里会出现「微翻」。
