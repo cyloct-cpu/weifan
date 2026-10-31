@@ -28,6 +28,12 @@
             android:exported="false"
             android:label="关联 WhatsApp" />
 
+        <!-- 统一设置页 -->
+        <activity
+            android:name=".SettingsActivity"
+            android:exported="false"
+            android:label="设置" />
+
         <!-- 会话页：消息流 + 翻译 -->
         <activity
             android:name=".ChatActivity"

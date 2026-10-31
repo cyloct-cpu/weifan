@@ -152,33 +152,11 @@ class ChatListActivity : Activity() {
         }
 
     private fun showMenu() {
-        val items = arrayOf(
-            "设置（翻译服务 / 触发词 / 术语）",
-            "关联 WhatsApp 账号",
-            "网络代理设置",
-            if (engine.isPaired() && Prefs(this).waPreviewMode) "退出预览模式" else "预览模式（跳过配对）",
-            "给一个号码发消息")
-        val checked = booleanArrayOf(false, false, false, false, false)
-        android.app.AlertDialog.Builder(this)
-            .setItems(items) { _, which ->
-                when (which) {
-                    0 -> openSettings()
-                    1 -> startActivity(Intent(this, PairingActivity::class.java))
-                    2 -> ProxyDialog.show(this)
-                    3 -> {
-                        val prefs = Prefs(this)
-                        prefs.waPreviewMode = !prefs.waPreviewMode
-                        Toast.makeText(this, if (prefs.waPreviewMode) "预览模式已开启" else "已退出预览模式",
-                            Toast.LENGTH_SHORT).show()
-                        renderChats()
-                    }
-                    4 -> newChatDialog()
-                }
-            }
-            .show()
+        // 统一归纳：菜单只留「设置」，其余全部收进 SettingsActivity
+        startActivity(Intent(this, SettingsActivity::class.java))
     }
 
-    private fun openSettings() = startActivity(Intent(this, MainActivity::class.java))
+    private fun openSettings() = startActivity(Intent(this, SettingsActivity::class.java))
 
     private fun renderChips() {
         val row = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL }
@@ -359,25 +337,6 @@ class ChatListActivity : Activity() {
         return row
     }
 
-    private fun newChatDialog() {
-        val input = EditText(this).apply { hint = "+86 138…" }
-        android.app.AlertDialog.Builder(this)
-            .setTitle("新会话")
-            .setMessage("输入对方手机号（含国家区号）")
-            .setView(input)
-            .setPositiveButton("打开") { _, _ ->
-                var v = input.text.toString().trim()
-                if (v.isNotBlank()) {
-                    if (!v.contains("@")) {
-                        v = v.replace(Regex("[\\s\\-()]"), "") + "@s.whatsapp.net"
-                    }
-                    startActivity(Intent(this, ChatActivity::class.java)
-                        .putExtra("jid", v).putExtra("title", v.substringBefore("@")))
-                }
-            }
-            .setNegativeButton("取消", null)
-            .show()
-    }
 }
 
 /** 代理设置弹窗（设置页与列表页共用） */

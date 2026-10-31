@@ -126,7 +126,26 @@ object Engine {
     ): SendOutcome {
         val started = System.currentTimeMillis()
 
-        // ① 定语言：手动 > 内容检测 > 会话记忆 > 兜底
+        // ⓪ 源语言判定：独立客户端的语义是「我敲中文 → 发对方语言」。
+        // 输入不是中文时（用户直接敲了外文），翻过去没有意义——原样直发。
+        val inputDetection = Detector.detect(text)
+        if (inputDetection != null && !Lang.isChinese(inputDetection.language)) {
+            return SendOutcome(
+                translated = text,
+                target = inputDetection.language,
+                route = "direct",
+                provider = "none",
+                degradedFrom = null,
+                risk = Routing.assessRisk(
+                    text = text, detection = inputDetection, glossaryHits = emptyList(),
+                    rememberedLanguage = chatLanguage, allowDirectSend = true,
+                    longThreshold = prefs.longSentenceThreshold),
+                latencyMs = System.currentTimeMillis() - started,
+                languageSource = "as-is"
+            )
+        }
+
+        // ① 定语言：手动 > 会话记忆 > 兜底（中文输入不需要内容检测目标语言）
         val detection = contextSample?.let { Detector.detect(it) }
         val resolved = resolveTarget(explicitTarget, detection, chatLanguage, prefs.defaultTarget)
 
