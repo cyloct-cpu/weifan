@@ -87,19 +87,47 @@ class ChatEngine private constructor(context: Context) : MessageListener, Connec
             val ts = o.optLong("timestamp", System.currentTimeMillis())
             val pushName = o.optString("pushName")
             val fromHistory = o.optBoolean("history")
-            if (chatJid.isBlank() || id.isBlank() || text.isBlank()) return
+            val mediaKind = o.optString("mediaKind")
+            val mediaMime = o.optString("mimeType")
+            val mediaName = o.optString("fileName")
+            val mediaSize = o.optLong("fileLength")
+            val mediaThumb = o.optString("thumbnail")
+            // 下载元数据原样存 JSON，点开时回传给 Go 层
+            val mediaMeta = if (mediaKind.isNotBlank()) JSONObject().apply {
+                put("kind", mediaKind)
+                put("url", o.optString("url"))
+                put("directPath", o.optString("directPath"))
+                put("mediaKey", o.optString("mediaKey"))
+                put("fileSha256", o.optString("fileSha256"))
+                put("fileEncSha256", o.optString("fileEncSha256"))
+                put("fileLength", mediaSize)
+            }.toString() else ""
+            // 纯媒体无文字时用中文标签做会话摘要
+            val displayText = text.ifBlank {
+                when (mediaKind) {
+                    "image", "sticker" -> "[图片]"
+                    "video" -> "[视频]"
+                    "audio" -> "[语音]"
+                    "document" -> "[文件] " + mediaName
+                    else -> "[消息]"
+                }
+            }
+            if (chatJid.isBlank() || id.isBlank() || (text.isBlank() && mediaKind.isBlank())) return
 
             val row = MessageRow(
                 id = id, chatJid = chatJid, senderJid = o.optString("senderJid"),
                 fromMe = fromMe, text = text, original = "",
-                translated = "", translatedLang = "", ts = ts)
+                translated = "", translatedLang = "", ts = ts,
+                mediaKind = mediaKind, mediaMime = mediaMime, mediaName = mediaName,
+                mediaSize = mediaSize, mediaThumb = mediaThumb, mediaMeta = mediaMeta)
             val inserted = db.insertMessage(row)
-            db.upsertChat(chatJid, pushName, text, ts, incrementUnread = !fromMe)
+            db.upsertChat(chatJid, pushName, displayText, ts, incrementUnread = !fromMe)
 
             main.post { onChatUpdated?.invoke() }
 
-            // 历史同步的消息只入库，不自动翻译（避免首次登录大规模翻译）
-            if (!fromHistory && !fromMe && prefs.waAutoTranslateIncoming && inserted) {
+            // 历史同步/纯媒体不自动翻译（避免首次登录大规模翻译）
+            if (!fromHistory && !fromMe && text.isNotBlank() &&
+                prefs.waAutoTranslateIncoming && inserted) {
                 translateIncomingAsync(chatJid, id, text)
             }
             // 收到非自发自的文本时顺带拉一次头像（内部有去重与缓存）
@@ -142,6 +170,48 @@ class ChatEngine private constructor(context: Context) : MessageListener, Connec
             } catch (_: Throwable) {
             } finally {
                 avatarInFlight.remove(chatJid)
+            }
+            val res = out
+            callback?.let { main.post { it(res) } }
+        }.start()
+    }
+
+    // MARK: - 媒体下载（v1.5）
+
+    private val mediaInFlight = java.util.Collections.synchronizedSet(mutableSetOf<String>())
+
+    /**
+     * 下载消息媒体：命中本地文件立即回调；否则按 mediaMeta 回传 Go 层下载（走代理），
+     * 落盘 files/media/ 后更新 DB，再回调。callback 主线程，参数为文件或 null。
+     */
+    fun fetchMediaAsync(chatJid: String, id: String, callback: ((java.io.File?) -> Unit)?) {
+        val dir = java.io.File(appContext.filesDir, "media").apply { mkdirs() }
+        val key = (chatJid + "_" + id).replace(Regex("[^A-Za-z0-9]"), "_")
+        val f = java.io.File(dir, key)
+        if (f.exists() && f.length() > 0) {
+            callback?.let { main.post { it(f) } }
+            return
+        }
+        if (!mediaInFlight.add(key)) return
+        Thread {
+            var out: java.io.File? = null
+            try {
+                val row = db.messages(chatJid).firstOrNull { it.id == id }
+                if (row != null && row.mediaMeta.isNotBlank()) {
+                    val m = JSONObject(row.mediaMeta)
+                    val bytes = client.downloadMedia(
+                        m.optString("kind"), m.optString("url"), m.optString("directPath"),
+                        m.optString("mediaKey"), m.optString("fileSha256"), m.optString("fileEncSha256"),
+                        m.optLong("fileLength"))
+                    if (bytes != null && bytes.isNotEmpty()) {
+                        f.writeBytes(bytes)
+                        db.updateMediaPath(chatJid, id, f.absolutePath)
+                        out = f
+                    }
+                }
+            } catch (_: Throwable) {
+            } finally {
+                mediaInFlight.remove(key)
             }
             val res = out
             callback?.let { main.post { it(res) } }

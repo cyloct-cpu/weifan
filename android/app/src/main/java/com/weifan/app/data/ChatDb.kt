@@ -9,11 +9,11 @@ import android.database.sqlite.SQLiteOpenHelper
  * 会话与消息存储。零依赖：直接 SQLiteOpenHelper，不引 Room。
  * 表结构对齐 Go 层 whatsmeow store（它自己存协议状态；这里只存 UI 需要的会话/消息/译文）。
  */
-class ChatDb(context: Context) : SQLiteOpenHelper(context, "chats.db", null, 2) {
+class ChatDb(context: Context) : SQLiteOpenHelper(context, "chats.db", null, 3) {
 
     override fun onCreate(db: SQLiteDatabase) {
         db.execSQL("""
-            CREATE TABLE chats(
+            CREATE TABLE IF NOT EXISTS chats(
               jid TEXT PRIMARY KEY,
               title TEXT NOT NULL DEFAULT '',
               last_message TEXT NOT NULL DEFAULT '',
@@ -22,7 +22,7 @@ class ChatDb(context: Context) : SQLiteOpenHelper(context, "chats.db", null, 2) 
             )
         """)
         db.execSQL("""
-            CREATE TABLE messages(
+            CREATE TABLE IF NOT EXISTS messages(
               id TEXT NOT NULL,
               chat_jid TEXT NOT NULL,
               sender_jid TEXT NOT NULL,
@@ -32,16 +32,33 @@ class ChatDb(context: Context) : SQLiteOpenHelper(context, "chats.db", null, 2) 
               translated TEXT NOT NULL DEFAULT '',
               translated_lang TEXT NOT NULL DEFAULT '',
               ts INTEGER NOT NULL,
+              media_kind TEXT NOT NULL DEFAULT '',
+              media_mime TEXT NOT NULL DEFAULT '',
+              media_name TEXT NOT NULL DEFAULT '',
+              media_size INTEGER NOT NULL DEFAULT 0,
+              media_path TEXT NOT NULL DEFAULT '',
+              media_thumb TEXT NOT NULL DEFAULT '',
+              media_meta TEXT NOT NULL DEFAULT '',
               PRIMARY KEY(chat_jid, id)
             )
         """)
-        db.execSQL("CREATE INDEX idx_messages_ts ON messages(chat_jid, ts DESC)")
+        db.execSQL("CREATE INDEX IF NOT EXISTS idx_messages_ts ON messages(chat_jid, ts DESC)")
     }
 
     override fun onUpgrade(db: SQLiteDatabase, oldVersion: Int, newVersion: Int) {
         // v2: 发件直译直发 —— 发出去的是译文，用户敲的原文存 original 字段
         if (oldVersion < 2) {
             db.execSQL("ALTER TABLE messages ADD COLUMN original TEXT NOT NULL DEFAULT ''")
+        }
+        // v3: 媒体消息（kind/mime/name/size/path/thumb/下载元数据）
+        if (oldVersion < 3) {
+            db.execSQL("ALTER TABLE messages ADD COLUMN media_kind TEXT NOT NULL DEFAULT ''")
+            db.execSQL("ALTER TABLE messages ADD COLUMN media_mime TEXT NOT NULL DEFAULT ''")
+            db.execSQL("ALTER TABLE messages ADD COLUMN media_name TEXT NOT NULL DEFAULT ''")
+            db.execSQL("ALTER TABLE messages ADD COLUMN media_size INTEGER NOT NULL DEFAULT 0")
+            db.execSQL("ALTER TABLE messages ADD COLUMN media_path TEXT NOT NULL DEFAULT ''")
+            db.execSQL("ALTER TABLE messages ADD COLUMN media_thumb TEXT NOT NULL DEFAULT ''")
+            db.execSQL("ALTER TABLE messages ADD COLUMN media_meta TEXT NOT NULL DEFAULT ''")
         }
     }
 
@@ -95,12 +112,25 @@ class ChatDb(context: Context) : SQLiteOpenHelper(context, "chats.db", null, 2) 
             put("text", m.text)
             put("original", m.original)
             put("translated", m.translated)
-            put("translated", m.translated)
             put("translated_lang", m.translatedLang)
             put("ts", m.ts)
+            put("media_kind", m.mediaKind)
+            put("media_mime", m.mediaMime)
+            put("media_name", m.mediaName)
+            put("media_size", m.mediaSize)
+            put("media_path", m.mediaPath)
+            put("media_thumb", m.mediaThumb)
+            put("media_meta", m.mediaMeta)
         }
         return writableDatabase.insertWithOnConflict(
             "messages", null, values, SQLiteDatabase.CONFLICT_IGNORE) != -1L
+    }
+
+    /** 下载完成后落媒体文件路径 */
+    fun updateMediaPath(chatJid: String, id: String, path: String) {
+        writableDatabase.execSQL(
+            "UPDATE messages SET media_path=? WHERE chat_jid=? AND id=?",
+            arrayOf(path, chatJid, id))
     }
 
     fun updateTranslation(chatJid: String, id: String, translated: String, lang: String) {
@@ -111,7 +141,8 @@ class ChatDb(context: Context) : SQLiteOpenHelper(context, "chats.db", null, 2) 
 
     fun messages(chatJid: String, limit: Int = 200): List<MessageRow> {
         return readableDatabase.rawQuery(
-            "SELECT id, chat_jid, sender_jid, from_me, text, original, translated, translated_lang, ts " +
+            "SELECT id, chat_jid, sender_jid, from_me, text, original, translated, translated_lang, ts, " +
+            "media_kind, media_mime, media_name, media_size, media_path, media_thumb, media_meta " +
             "FROM messages WHERE chat_jid=? ORDER BY ts ASC LIMIT $limit", arrayOf(chatJid)
         ).use { c ->
             val out = mutableListOf<MessageRow>()
@@ -120,7 +151,11 @@ class ChatDb(context: Context) : SQLiteOpenHelper(context, "chats.db", null, 2) 
                     id = c.getString(0), chatJid = c.getString(1), senderJid = c.getString(2),
                     fromMe = c.getInt(3) == 1, text = c.getString(4),
                     original = c.getString(5),
-                    translated = c.getString(6), translatedLang = c.getString(7), ts = c.getLong(8))
+                    translated = c.getString(6), translatedLang = c.getString(7), ts = c.getLong(8),
+                    mediaKind = c.getString(9), mediaMime = c.getString(10),
+                    mediaName = c.getString(11), mediaSize = c.getLong(12),
+                    mediaPath = c.getString(13), mediaThumb = c.getString(14),
+                    mediaMeta = c.getString(15))
             }
             out
         }
@@ -146,5 +181,13 @@ data class MessageRow(
     val original: String,
     var translated: String,
     var translatedLang: String,
-    val ts: Long
+    val ts: Long,
+    // ---- 媒体（v1.5）----
+    val mediaKind: String = "",      // image/video/audio/document/sticker；空=纯文本
+    val mediaMime: String = "",
+    val mediaName: String = "",
+    val mediaSize: Long = 0,
+    var mediaPath: String = "",     // 下载后落盘路径
+    val mediaThumb: String = "",    // base64 JPEG 缩略图
+    val mediaMeta: String = ""      // JSON：url/directPath/mediaKey/sha… 供下载
 )

@@ -305,20 +305,161 @@ class ChatActivity : BaseActivity() {
             return
         }
         for (m in msgs) listBox.addView(bubble(m))
+        for (m in msgs.filter { !it.fromMe && it.translated.isBlank() && it.text.isNotBlank() }) {
+            engine.translateIncomingAsync(m.chatJid, m.id, m.text)
+        }
         for (m in msgs.filter { !it.fromMe && it.translated.isBlank() }) {
             engine.translateIncomingAsync(m.chatJid, m.id, m.text)
         }
         main.post { scroll.fullScroll(ScrollView.FOCUS_DOWN) }
     }
 
-    /** 气泡：10dp 圆角、左右 inset 8/30dp、上下 3dp；发件绿、收件白 */
+    /**
+     * 媒体视图：
+     * image/sticker → 缩略图立即显示，点按下载原图替换；
+     * video → 缩略图 + ▶ 遮罩，点按下载；
+     * audio/document → 文件行（图标+名称/大小），点按下载（audio 下载完自动播放）。
+     */
+    private fun mediaView(m: MessageRow): View {
+        val ctx = this
+        fun decodeThumb(b64: String): android.graphics.Bitmap? = try {
+            val bytes = android.util.Base64.decode(b64, android.util.Base64.DEFAULT)
+            android.graphics.BitmapFactory.decodeByteArray(bytes, 0, bytes.size)
+        } catch (_: Throwable) { null }
+
+        fun roundBmp(bmp: android.graphics.Bitmap): android.graphics.Bitmap {
+            val out = android.graphics.Bitmap.createBitmap(bmp.width, bmp.height,
+                android.graphics.Bitmap.Config.ARGB_8888)
+            val cv = android.graphics.Canvas(out)
+            val pt = android.graphics.Paint(android.graphics.Paint.ANTI_ALIAS_FLAG).apply {
+                shader = android.graphics.BitmapShader(bmp, android.graphics.Shader.TileMode.CLAMP,
+                    android.graphics.Shader.TileMode.CLAMP)
+            }
+            val r = dp(8).toFloat()
+            cv.drawRoundRect(0f, 0f, bmp.width.toFloat(), bmp.height.toFloat(), r, r, pt)
+            return out
+        }
+
+        fun fileSizeLabel(): String {
+            val s = m.mediaSize
+            return when {
+                s >= 1 shl 20 -> String.format(java.util.Locale.US, "%.1f MB", s / 1048576.0)
+                s >= 1024 -> String.format(java.util.Locale.US, "%.0f KB", s / 1024.0)
+                s > 0 -> "${s}B"
+                else -> ""
+            }
+        }
+
+        // 已下载的文件（命中即返回）
+        fun localFile(): java.io.File? {
+            if (m.mediaPath.isNotBlank()) {
+                val f = java.io.File(m.mediaPath)
+                if (f.exists() && f.length() > 0) return f
+            }
+            return null
+        }
+
+        // 图类容器：最多 240dp 高，等比缩放
+        val imageView = android.widget.ImageView(this).apply {
+            scaleType = android.widget.ImageView.ScaleType.FIT_CENTER
+            adjustViewBounds = true
+            maxWidth = dp(240)
+        }
+        fun showImage(f: java.io.File?) {
+            val bmp = f?.let { android.graphics.BitmapFactory.decodeFile(it.absolutePath) }
+                ?: decodeThumb(m.mediaThumb)
+            if (bmp != null) imageView.setImageBitmap(roundBmp(bmp))
+        }
+
+        return when (m.mediaKind) {
+            "image", "sticker", "video" -> {
+                showImage(localFile())
+                if (m.mediaKind == "video") {
+                    // ▶ 遮罩叠层
+                    val wrap = android.widget.FrameLayout(this)
+                    wrap.addView(imageView, android.widget.FrameLayout.LayoutParams(
+                        ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT))
+                    val play = TextView(this).apply {
+                        text = "▶"
+                        textSize = 22f
+                        setTextColor(Color.WHITE)
+                        gravity = Gravity.CENTER
+                        background = Ui.roundBg(this@ChatActivity, 0x66000000, 24)
+                    }
+                    wrap.addView(play, android.widget.FrameLayout.LayoutParams(dp(48), dp(48)).apply {
+                        gravity = Gravity.CENTER
+                    })
+                    wrap.isClickable = true
+                    wrap.setOnClickListener { engine.fetchMediaAsync(m.chatJid, m.id) { f -> showImage(f) } }
+                    wrap
+                } else {
+                    imageView.isClickable = true
+                    imageView.setOnClickListener {
+                        engine.fetchMediaAsync(m.chatJid, m.id) { f -> showImage(f) }
+                    }
+                    imageView
+                }
+            }
+            else -> {
+                // audio / document 文件行
+                val row = LinearLayout(this).apply {
+                    orientation = LinearLayout.HORIZONTAL
+                    gravity = Gravity.CENTER_VERTICAL
+                    isClickable = true
+                }
+                row.addView(TextView(this).apply {
+                    text = if (m.mediaKind == "audio") "🎧" else "📄"
+                    textSize = 18f
+                })
+                val colX = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
+                colX.addView(TextView(this).apply {
+                    text = m.mediaName.ifBlank {
+                        if (m.mediaKind == "audio") "语音消息" else "文件"
+                    }
+                    textSize = 14f
+                    setTextColor(WaSpec.textPrimary(night))
+                    maxLines = 1
+                    ellipsize = android.text.TextUtils.TruncateAt.MIDDLE
+                })
+                colX.addView(TextView(this).apply {
+                    text = fileSizeLabel()
+                    textSize = 11.5f
+                    setTextColor(WaSpec.textSecondary(night))
+                })
+                row.addView(colX, LinearLayout.LayoutParams(0,
+                    ViewGroup.LayoutParams.WRAP_CONTENT, 1f).apply { marginStart = dp(8) })
+                row.setOnClickListener {
+                    engine.fetchMediaAsync(m.chatJid, m.id) { f ->
+                        if (f != null && m.mediaKind == "audio") {
+                            try {
+                                val mp = android.media.MediaPlayer()
+                                mp.setDataSource(f.absolutePath)
+                                mp.prepare()
+                                mp.start()
+                            } catch (_: Throwable) { }
+                        }
+                    }
+                }
+                row
+            }
+        }
+    }
+
+    /** 气泡：10dp 圆角、左右 inset 8/30dp、上下 3dp；发件绿、收件白；媒体先图后文 */
     private fun bubble(m: MessageRow): View {
         val col = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
+        // ---- 媒体区（在文字上方）----
+        if (m.mediaKind.isNotBlank()) {
+            col.addView(mediaView(m))
+        }
+        // 文本行（有文字或有 caption 才显示）
+        if (m.text.isNotBlank()) {
         col.addView(TextView(this).apply {
             text = m.text
             textSize = 15f
             setTextColor(WaSpec.textPrimary(night))
-        })
+            })
+        }
         // 收件：译文行（蓝色，13sp）
         if (!m.fromMe && m.translated.isNotBlank()) {
             col.addView(TextView(this).apply {
