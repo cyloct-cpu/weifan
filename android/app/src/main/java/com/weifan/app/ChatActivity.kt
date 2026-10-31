@@ -253,6 +253,22 @@ class ChatActivity : BaseActivity() {
             typeface = Typeface.create("sans-serif-medium", Typeface.NORMAL)
             background = Ui.roundBg(this@ChatActivity,
                 Color.parseColor(colors[(chatJid.hashCode() and 0xff) % colors.size]), size / 2)
+            val view = this
+            engine.fetchAvatarAsync(chatJid) { f ->
+                if (isDestroyed || isFinishing || f == null) return@fetchAvatarAsync
+                try {
+                    val bmp = android.graphics.BitmapFactory.decodeFile(f.absolutePath) ?: return@fetchAvatarAsync
+                    val s = minOf(bmp.width, bmp.height)
+                    val out = android.graphics.Bitmap.createBitmap(s, s, android.graphics.Bitmap.Config.ARGB_8888)
+                    val cv = android.graphics.Canvas(out)
+                    val paint = android.graphics.Paint(android.graphics.Paint.ANTI_ALIAS_FLAG)
+                    paint.shader = android.graphics.BitmapShader(bmp, android.graphics.Shader.TileMode.CLAMP,
+                        android.graphics.Shader.TileMode.CLAMP)
+                    cv.drawCircle(s / 2f, s / 2f, s / 2f, paint)
+                    view.text = ""
+                    view.background = android.graphics.drawable.BitmapDrawable(resources, out)
+                } catch (_: Throwable) { }
+            }
         }
     }
 

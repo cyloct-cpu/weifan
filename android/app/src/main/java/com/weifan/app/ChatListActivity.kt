@@ -268,7 +268,7 @@ class ChatListActivity : BaseActivity() {
         })
     }
 
-    /** 会话行头像：50dp，圆角 25dp（正圆），按 jid hash 取色 */
+    /** 会话行头像：50dp 正圆。先占位字，真头像拉到后换成照片 */
     private fun avatar(jid: String, title: String): View {
         val size = dp(WaSpec.LIST_AVATAR_SIZE_DP)
         val cjk = title.firstOrNull { ch -> ch.toInt() > 0x2E80 }
@@ -283,6 +283,23 @@ class ChatListActivity : BaseActivity() {
             background = Ui.roundBg(this@ChatListActivity, color, WaSpec.LIST_AVATAR_SIZE_DP / 2)
             layoutParams = LinearLayout.LayoutParams(size, size).apply {
                 marginEnd = dp(12)
+            }
+            val view = this
+            engine.fetchAvatarAsync(jid) { f ->
+                if (isDestroyed || isFinishing || f == null) return@fetchAvatarAsync
+                try {
+                    val bmp = android.graphics.BitmapFactory.decodeFile(f.absolutePath) ?: return@fetchAvatarAsync
+                    // 裁成正圆
+                    val s = minOf(bmp.width, bmp.height)
+                    val out = android.graphics.Bitmap.createBitmap(s, s, android.graphics.Bitmap.Config.ARGB_8888)
+                    val cv = android.graphics.Canvas(out)
+                    val paint = android.graphics.Paint(android.graphics.Paint.ANTI_ALIAS_FLAG)
+                    paint.shader = android.graphics.BitmapShader(bmp, android.graphics.Shader.TileMode.CLAMP,
+                        android.graphics.Shader.TileMode.CLAMP)
+                    cv.drawCircle(s / 2f, s / 2f, s / 2f, paint)
+                    view.text = ""
+                    view.background = android.graphics.drawable.BitmapDrawable(resources, out)
+                } catch (_: Throwable) { }
             }
         }
     }

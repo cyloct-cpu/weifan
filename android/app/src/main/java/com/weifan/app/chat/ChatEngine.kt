@@ -86,6 +86,7 @@ class ChatEngine private constructor(context: Context) : MessageListener, Connec
             val fromMe = o.optBoolean("fromMe")
             val ts = o.optLong("timestamp", System.currentTimeMillis())
             val pushName = o.optString("pushName")
+            val fromHistory = o.optBoolean("history")
             if (chatJid.isBlank() || id.isBlank() || text.isBlank()) return
 
             val row = MessageRow(
@@ -97,13 +98,55 @@ class ChatEngine private constructor(context: Context) : MessageListener, Connec
 
             main.post { onChatUpdated?.invoke() }
 
-            if (!fromMe && prefs.waAutoTranslateIncoming && inserted) {
+            // 历史同步的消息只入库，不自动翻译（避免首次登录大规模翻译）
+            if (!fromHistory && !fromMe && prefs.waAutoTranslateIncoming && inserted) {
                 translateIncomingAsync(chatJid, id, text)
+            }
+            // 收到非自发自的文本时顺带拉一次头像（内部有去重与缓存）
+            if (!fromMe && !fromHistory) {
+                fetchAvatarAsync(chatJid, null)
             }
         } catch (_: Throwable) { }
     }
 
-    override fun onHistoryDone() { /* 第一阶段无额外动作 */ }
+    override fun onHistoryDone() { main.post { onChatUpdated?.invoke() } }
+
+    // MARK: - 头像拉取（磁盘缓存 + 去重）
+
+    private val avatarInFlight = java.util.Collections.synchronizedSet(mutableSetOf<String>())
+
+    /**
+     * 拉取联系人头像。命中缓存立即回调；未命中且未在拉取中则经 Go 层下载后落盘再回调。
+     * callback 在主线程，参数为缓存文件（可能为 null：无头像/拉取失败/已在拉取中）。
+     */
+    fun fetchAvatarAsync(chatJid: String, callback: ((java.io.File?) -> Unit)?) {
+        val cacheDir = java.io.File(appContext.filesDir, "avatars").apply { mkdirs() }
+        val key = chatJid.replace(Regex("[^A-Za-z0-9]"), "_")
+        val f = java.io.File(cacheDir, "$key.jpg")
+        if (f.exists() && f.length() > 0) {
+            callback?.let { main.post { it(f) } }
+            return
+        }
+        if (!avatarInFlight.add(chatJid)) {
+            // 已在拉取：仅注册回调到回调链末尾
+            return
+        }
+        Thread {
+            var out: java.io.File? = null
+            try {
+                val bytes = client.getProfilePicture(chatJid)
+                if (bytes != null && bytes.isNotEmpty()) {
+                    f.writeBytes(bytes)
+                    out = f
+                }
+            } catch (_: Throwable) {
+            } finally {
+                avatarInFlight.remove(chatJid)
+            }
+            val res = out
+            callback?.let { main.post { it(res) } }
+        }.start()
+    }
 
     // MARK: - ConnectionListener
 
