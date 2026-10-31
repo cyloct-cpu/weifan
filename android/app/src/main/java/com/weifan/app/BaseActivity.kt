@@ -41,6 +41,12 @@ abstract class BaseActivity : Activity() {
         startWatcher()
     }
 
+    override fun onResume() {
+        super.onResume()
+        // 从设置页切了主题返回时，立即重建（不等 30 秒的时段巡查器）
+        applyThemeChange()
+    }
+
     override fun onDestroy() {
         watcher?.cancel()
         watcher = null

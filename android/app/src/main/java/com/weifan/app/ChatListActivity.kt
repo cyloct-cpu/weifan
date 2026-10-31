@@ -17,7 +17,6 @@ import android.widget.ImageView
 import android.widget.LinearLayout
 import android.widget.ScrollView
 import android.widget.TextView
-import android.widget.Toast
 import com.weifan.app.chat.ChatEngine
 import com.weifan.app.data.ChatRow
 import java.text.SimpleDateFormat
@@ -376,23 +375,3 @@ class ChatListActivity : BaseActivity() {
     }
 }
 
-/** 代理设置弹窗（设置页与列表页共用） */
-object ProxyDialog {
-    fun show(activity: Activity) {
-        val prefs = Prefs(activity)
-        val input = EditText(activity).apply {
-            hint = "socks5://127.0.0.1:7892 或 http://…"
-            setText(prefs.waProxy)
-        }
-        android.app.AlertDialog.Builder(activity)
-            .setTitle("网络代理")
-            .setMessage("国内网络连接 WhatsApp 服务器需要代理。\n支持 socks5:// 与 http://，留空为直连。")
-            .setView(input)
-            .setPositiveButton("保存") { _, _ ->
-                prefs.waProxy = input.text.toString()
-                Toast.makeText(activity, "已保存，重启微翻后生效", Toast.LENGTH_LONG).show()
-            }
-            .setNegativeButton("取消", null)
-            .show()
-    }
-}

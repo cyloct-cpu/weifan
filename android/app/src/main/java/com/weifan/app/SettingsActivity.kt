@@ -103,18 +103,11 @@ class SettingsActivity : BaseActivity() {
 
         // ---- WhatsApp 连接 ----
         list.addView(section("WhatsApp 连接"))
-        list.addView(row("关联 WhatsApp 账号", "扫码码数配对 / 手机号配对码", isError = !engine().isPaired()) {
-            startActivity(Intent(this, PairingActivity::class.java))
-        })
-        list.addView(rowValue("网络代理", prefs.waProxy.ifBlank { "直连（国内网络需要配置）" }) {
-            ProxyDialog.show(this)
-            true
-        })
         list.addView(rowSwitch("收件自动翻译", "对方消息到达后自动出中文", prefs.waAutoTranslateIncoming) {
             prefs.waAutoTranslateIncoming = it
         })
-        // ---- 翻译 ----
-        list.addView(section("翻译"))
+        // ---- 翻译设置 ----
+        list.addView(section("翻译设置"))
         list.addView(row("翻译服务（九家 + 自定义接口）", "密钥、优先级、额度保护、试译") {
             startActivity(Intent(this, MainActivity::class.java))
         })
