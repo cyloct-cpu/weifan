@@ -31,9 +31,9 @@ import java.util.Locale
  * 浅色顶栏（标题 + 会员图标位 + ⋮ 菜单）、搜索框、筛选 chips、头像会话行。
  * 设置收在右上角 ⋮ 弹出菜单里（参考 WATransChat / WhatsApp 布局）。
  */
-class ChatListActivity : Activity() {
+class ChatListActivity : BaseActivity() {
 
-    private val p by lazy { Brand.palette(false) }
+    private val p get() = palette
     private lateinit var engine: ChatEngine
     private lateinit var listBox: LinearLayout
     private lateinit var searchInput: EditText
@@ -54,14 +54,14 @@ class ChatListActivity : Activity() {
 
         val root = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
-            setBackgroundColor(Color.WHITE)
+            setBackgroundColor(if (night) Color.parseColor("#0E1621") else Color.WHITE)
         }
 
         // ---- 顶栏：标题 + 会员图标 + ⋮ ----
         val top = LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL
             gravity = Gravity.CENTER_VERTICAL
-            setBackgroundColor(waGreen)
+            setBackgroundColor(if (night) WaSpec.GREEN_DARK else WaSpec.GREEN)
             setPadding(Ui.dp(this@ChatListActivity, 16), Ui.dp(this@ChatListActivity, 12),
                 Ui.dp(this@ChatListActivity, 8), Ui.dp(this@ChatListActivity, 12))
         }
@@ -73,13 +73,12 @@ class ChatListActivity : Activity() {
         }, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
 
         // 会员/状态图标（紫色圆 + 人形，对齐参考图占位）
-        top.addView(memberBadge())
         top.addView(menuButton())
         root.addView(top)
 
         // ---- 搜索框 ----
         val searchWrap = FrameLayout(this).apply {
-            setBackgroundColor(Color.WHITE)
+            setBackgroundColor(if (night) Color.parseColor("#0E1621") else Color.WHITE)
             setPadding(Ui.dp(this@ChatListActivity, 12), Ui.dp(this@ChatListActivity, 8),
                 Ui.dp(this@ChatListActivity, 12), Ui.dp(this@ChatListActivity, 4))
         }
@@ -106,14 +105,14 @@ class ChatListActivity : Activity() {
         // ---- 筛选 chips ----
         chipRow = HorizontalScrollView(this).apply {
             isHorizontalScrollBarEnabled = false
-            setBackgroundColor(Color.WHITE)
+            setBackgroundColor(if (night) Color.parseColor("#0E1621") else Color.WHITE)
             setPadding(Ui.dp(this@ChatListActivity, 8), 0, 0, Ui.dp(this@ChatListActivity, 4))
         }
         root.addView(chipRow)
         renderChips()
 
         // ---- 会话列表 ----
-        val scroll = ScrollView(this).apply { setBackgroundColor(Color.WHITE) }
+        val scroll = ScrollView(this).apply { setBackgroundColor(if (night) Color.parseColor("#0E1621") else Color.WHITE) }
         listBox = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
         scroll.addView(listBox)
         root.addView(scroll, LinearLayout.LayoutParams(
@@ -127,20 +126,6 @@ class ChatListActivity : Activity() {
         setContentView(root)
     }
 
-    private fun memberBadge(): View =
-        FrameLayout(this).apply {
-            val size = Ui.dp(this@ChatListActivity, 30)
-            layoutParams = LinearLayout.LayoutParams(size, size).apply {
-                setMargins(0, 0, Ui.dp(this@ChatListActivity, 12), 0)
-            }
-            addView(TextView(this@ChatListActivity).apply {
-                text = "👤"
-                textSize = 15f
-                gravity = Gravity.CENTER
-                background = Ui.roundBg(this@ChatListActivity, Color.parseColor("#7B61C4"), size / 2)
-            }, FrameLayout.LayoutParams(size, size))
-            setOnClickListener { openSettings() }
-        }
 
     private fun menuButton(): View =
         TextView(this).apply {
@@ -301,14 +286,14 @@ class ChatListActivity : Activity() {
         mid.addView(TextView(this@ChatListActivity).apply {
             text = chat.title.ifBlank { chat.jid.substringBefore("@") }
             textSize = 15.5f
-            setTextColor(WaSpec.TEXT_PRIMARY)
+            setTextColor(if (night) Color.parseColor("#E9EBEE") else WaSpec.TEXT_PRIMARY)
             setTypeface(typeface, Typeface.BOLD)
             maxLines = 1
         })
         mid.addView(TextView(this@ChatListActivity).apply {
             text = chat.lastMessage
             textSize = 13.5f
-            setTextColor(Color.parseColor("#667781"))
+            setTextColor(if (night) Color.parseColor("#8696A0") else Color.parseColor("#667781"))
             maxLines = 1
             setPadding(0, Ui.dp(this@ChatListActivity, 2), 0, 0)
         })

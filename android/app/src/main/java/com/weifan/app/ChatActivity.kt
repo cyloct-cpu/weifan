@@ -29,9 +29,9 @@ import java.util.Locale
  * 顶栏（返回 + 头像 + 号码/国家/语言 + ⋮）、涂鸦壁纸、绿/白气泡。
  * 发件 = 直译直发：点发送即翻译并发送，气泡里译文主行 + 中文原文副行，无「译」按钮。
  */
-class ChatActivity : Activity() {
+class ChatActivity : BaseActivity() {
 
-    private val p by lazy { Brand.palette(false) }
+    private val p get() = palette
     private lateinit var engine: ChatEngine
     private val main = Handler(Looper.getMainLooper())
 
@@ -47,9 +47,9 @@ class ChatActivity : Activity() {
     private lateinit var sendHint: TextView
 
     private val bubbleGreen = WaSpec.BUBBLE_SENT          // #E0FCD6
-    private val bubbleWhite = WaSpec.BUBBLE_RECEIVED
-    private val waText = WaSpec.TEXT_PRIMARY               // #111111
-    private val waSub = WaSpec.TEXT_SECONDARY             // #8E8E93
+    private val bubbleWhite get() = if (night) Color.parseColor("#1F2C34") else WaSpec.BUBBLE_RECEIVED
+    private val waText get() = if (night) Color.parseColor("#E9EBEE") else WaSpec.TEXT_PRIMARY
+    private val waSub get() = if (night) Color.parseColor("#8696A0") else WaSpec.TEXT_SECONDARY
     private val waOriginal = WaSpec.TEXT_SECONDARY
 
     private val timeFmt = SimpleDateFormat("HH:mm", Locale.getDefault())
@@ -60,13 +60,13 @@ class ChatActivity : Activity() {
         chatTitle = intent.getStringExtra("title") ?: ""
         engine = ChatEngine.get(this)
 
-        val root = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; setBackgroundColor(Color.WHITE) }
+        val root = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; setBackgroundColor(if (night) Color.parseColor("#17212B") else Color.WHITE) }
 
         // ---- 顶栏（白色，与 WhatsApp iOS 风格一致）----
         val top = LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL
             gravity = Gravity.CENTER_VERTICAL
-            setBackgroundColor(Color.WHITE)
+            setBackgroundColor(if (night) Color.parseColor("#17212B") else Color.WHITE)
             setPadding(Ui.dp(this@ChatActivity, 8), Ui.dp(this@ChatActivity, 10),
                 Ui.dp(this@ChatActivity, 12), Ui.dp(this@ChatActivity, 10))
         }
@@ -118,7 +118,8 @@ class ChatActivity : Activity() {
         scroll.post {
             val w = maxOf(scroll.width, 1)
             val h = maxOf(scroll.height, 1)
-            val bmp = android.graphics.BitmapFactory.decodeResource(resources, R.drawable.wa_wallpaper_doodle)
+            val res = if (night) R.drawable.wa_wallpaper_doodle_dark else R.drawable.wa_wallpaper_doodle
+            val bmp = android.graphics.BitmapFactory.decodeResource(resources, res)
             val scaled = android.graphics.Bitmap.createScaledBitmap(
                 bmp, w, maxOf(h, w * bmp.height / bmp.width), true)
             scroll.background = android.graphics.drawable.BitmapDrawable(resources, scaled)
@@ -129,7 +130,7 @@ class ChatActivity : Activity() {
         // ---- 底部输入条（WhatsApp 单圆角长条 + 绿色圆形发送）----
         val bottomWrap = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
-            setBackgroundColor(Color.WHITE)
+            setBackgroundColor(if (night) Color.parseColor("#17212B") else Color.WHITE)
         }
         sendHint = TextView(this).apply {
             textSize = 11f
@@ -148,13 +149,14 @@ class ChatActivity : Activity() {
         val inputBar = LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL
             gravity = Gravity.CENTER_VERTICAL
-            background = Ui.roundBg(this@ChatActivity, Color.parseColor("#F0F2F5"), 24)
+            background = Ui.roundBg(this@ChatActivity,
+                if (night) Color.parseColor("#1F2C34") else Color.parseColor("#F0F2F5"), 24)
         }
         input = EditText(this).apply {
             hint = "输入消息"
             textSize = 15f
             setTextColor(waText)
-            setHintTextColor(Color.parseColor("#8696A0"))
+            setHintTextColor(waSub)
             background = null
             maxLines = 4
             setPadding(Ui.dp(this@ChatActivity, 16), Ui.dp(this@ChatActivity, 10),
@@ -185,7 +187,7 @@ class ChatActivity : Activity() {
     }
 
     private fun divider(): View =
-        View(this).apply { setBackgroundColor(Color.parseColor("#E9EDEF")); layoutParams =
+        View(this).apply { setBackgroundColor(if (night) Color.parseColor("#0B141A") else Color.parseColor("#E9EDEF")); layoutParams =
             LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, Ui.dp(this@ChatActivity, 1)) }
 
     private fun avatarView(): View {

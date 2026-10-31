@@ -23,10 +23,10 @@ import java.util.Locale
  * 配对页：输入 WhatsApp 号码 → 拿到 8 位配对码 → 用户在官方 App 里输入 → 配对完成。
  * 流程状态机：输入号码 → 请求配对码（转圈）→ 显示配对码（大字 + 三步引导）→ 等待结果 → 成功回主页。
  */
-class PairingActivity : Activity(), PairListener {
+class PairingActivity : BaseActivity(), PairListener {
 
     private lateinit var client: WeifanClient
-    private val p by lazy { Brand.palette(false) }
+    private val p get() = palette
 
     private lateinit var phoneInput: EditText
     private lateinit var requestBtn: Button

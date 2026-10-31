@@ -19,9 +19,9 @@ import android.widget.Toast
  * 统一设置页（WhatsApp 风格列表）：把翻译服务、WhatsApp 连接、翻译工具全部归纳到这里。
  * 主页 ⋮ 菜单只留「设置」一个入口，跳转到本页。
  */
-class SettingsActivity : Activity() {
+class SettingsActivity : BaseActivity() {
 
-    private val p by lazy { Brand.palette(false) }
+    private val p get() = palette
     private val waGreen = Color.parseColor("#075E54")
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -30,14 +30,14 @@ class SettingsActivity : Activity() {
 
         val root = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
-            setBackgroundColor(Color.WHITE)
+            setBackgroundColor(p.bg)
         }
 
         // 顶栏
         root.addView(LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL
             gravity = Gravity.CENTER_VERTICAL
-            setBackgroundColor(waGreen)
+            setBackgroundColor(if (night) WaSpec.GREEN_DARK else WaSpec.GREEN)
             setPadding(Ui.dp(this@SettingsActivity, 8), Ui.dp(this@SettingsActivity, 12),
                 Ui.dp(this@SettingsActivity, 16), Ui.dp(this@SettingsActivity, 12))
             addView(TextView(this@SettingsActivity).apply {
@@ -58,7 +58,7 @@ class SettingsActivity : Activity() {
         val scroll = ScrollView(this)
         val list = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
-            setBackgroundColor(Color.WHITE)
+            setBackgroundColor(p.bg)
         }
         scroll.addView(list)
         root.addView(scroll, LinearLayout.LayoutParams(
@@ -124,12 +124,12 @@ class SettingsActivity : Activity() {
             addView(TextView(this@SettingsActivity).apply {
                 text = title
                 textSize = 15.5f
-                setTextColor(if (isError) Color.parseColor("#CC4444") else Color.parseColor("#111B21"))
+                setTextColor(if (isError) Color.parseColor("#CC4444") else p.text)
             })
             addView(TextView(this@SettingsActivity).apply {
                 text = note
                 textSize = 12.5f
-                setTextColor(Color.parseColor("#667781"))
+                setTextColor(p.text2)
                 setPadding(0, Ui.dp(this@SettingsActivity, 2), 0, 0)
             })
         }
@@ -137,7 +137,7 @@ class SettingsActivity : Activity() {
         val wrap = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
         wrap.addView(this_row)
         wrap.addView(View(this).apply {
-            setBackgroundColor(Color.parseColor("#E9EDEF"))
+            setBackgroundColor(p.line)
             layoutParams = LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, Ui.dp(this@SettingsActivity, 1))
         })
         return wrap
@@ -149,7 +149,7 @@ class SettingsActivity : Activity() {
         TextView(this).apply {
             text = "$title\n$value"
             textSize = 15.5f
-            setTextColor(Color.parseColor("#111B21"))
+            setTextColor(p.text)
             setPadding(Ui.dp(this@SettingsActivity, 16), Ui.dp(this@SettingsActivity, 12),
                 Ui.dp(this@SettingsActivity, 16), Ui.dp(this@SettingsActivity, 12))
             setOnClickListener {
@@ -171,12 +171,12 @@ class SettingsActivity : Activity() {
             col.addView(TextView(this@SettingsActivity).apply {
                 text = title
                 textSize = 15.5f
-                setTextColor(Color.parseColor("#111B21"))
+                setTextColor(p.text)
             })
             col.addView(TextView(this@SettingsActivity).apply {
                 text = note
                 textSize = 12.5f
-                setTextColor(Color.parseColor("#667781"))
+                setTextColor(p.text2)
                 setPadding(0, Ui.dp(this@SettingsActivity, 2), Ui.dp(this@SettingsActivity, 8), 0)
             })
             addView(col, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
