@@ -9,7 +9,7 @@ import android.database.sqlite.SQLiteOpenHelper
  * 会话与消息存储。零依赖：直接 SQLiteOpenHelper，不引 Room。
  * 表结构对齐 Go 层 whatsmeow store（它自己存协议状态；这里只存 UI 需要的会话/消息/译文）。
  */
-class ChatDb(context: Context) : SQLiteOpenHelper(context, "chats.db", null, 1) {
+class ChatDb(context: Context) : SQLiteOpenHelper(context, "chats.db", null, 2) {
 
     override fun onCreate(db: SQLiteDatabase) {
         db.execSQL("""
@@ -28,6 +28,7 @@ class ChatDb(context: Context) : SQLiteOpenHelper(context, "chats.db", null, 1) 
               sender_jid TEXT NOT NULL,
               from_me INTEGER NOT NULL,
               text TEXT NOT NULL,
+              original TEXT NOT NULL DEFAULT '',
               translated TEXT NOT NULL DEFAULT '',
               translated_lang TEXT NOT NULL DEFAULT '',
               ts INTEGER NOT NULL,
@@ -38,7 +39,10 @@ class ChatDb(context: Context) : SQLiteOpenHelper(context, "chats.db", null, 1) 
     }
 
     override fun onUpgrade(db: SQLiteDatabase, oldVersion: Int, newVersion: Int) {
-        // v1 无升级
+        // v2: 发件直译直发 —— 发出去的是译文，用户敲的原文存 original 字段
+        if (oldVersion < 2) {
+            db.execSQL("ALTER TABLE messages ADD COLUMN original TEXT NOT NULL DEFAULT ''")
+        }
     }
 
     // MARK: - 会话
@@ -89,6 +93,8 @@ class ChatDb(context: Context) : SQLiteOpenHelper(context, "chats.db", null, 1) 
             put("sender_jid", m.senderJid)
             put("from_me", if (m.fromMe) 1 else 0)
             put("text", m.text)
+            put("original", m.original)
+            put("translated", m.translated)
             put("translated", m.translated)
             put("translated_lang", m.translatedLang)
             put("ts", m.ts)
@@ -105,7 +111,7 @@ class ChatDb(context: Context) : SQLiteOpenHelper(context, "chats.db", null, 1) 
 
     fun messages(chatJid: String, limit: Int = 200): List<MessageRow> {
         return readableDatabase.rawQuery(
-            "SELECT id, chat_jid, sender_jid, from_me, text, translated, translated_lang, ts " +
+            "SELECT id, chat_jid, sender_jid, from_me, text, original, translated, translated_lang, ts " +
             "FROM messages WHERE chat_jid=? ORDER BY ts ASC LIMIT $limit", arrayOf(chatJid)
         ).use { c ->
             val out = mutableListOf<MessageRow>()
@@ -113,7 +119,8 @@ class ChatDb(context: Context) : SQLiteOpenHelper(context, "chats.db", null, 1) 
                 out += MessageRow(
                     id = c.getString(0), chatJid = c.getString(1), senderJid = c.getString(2),
                     fromMe = c.getInt(3) == 1, text = c.getString(4),
-                    translated = c.getString(5), translatedLang = c.getString(6), ts = c.getLong(7))
+                    original = c.getString(5),
+                    translated = c.getString(6), translatedLang = c.getString(7), ts = c.getLong(8))
             }
             out
         }
@@ -133,7 +140,10 @@ data class MessageRow(
     val chatJid: String,
     val senderJid: String,
     val fromMe: Boolean,
+    /** 显示主文本：收件=对方原文；发件=译文（实际发出去的） */
     val text: String,
+    /** 副文本：发件=用户敲的中文原文；收件恒空 */
+    val original: String,
     var translated: String,
     var translatedLang: String,
     val ts: Long

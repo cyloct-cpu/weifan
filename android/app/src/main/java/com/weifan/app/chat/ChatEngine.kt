@@ -41,7 +41,7 @@ class ChatEngine private constructor(context: Context) : MessageListener, Connec
     }
 
     /** 每个会话最近确认的语言（"es" 等；会话级记忆） */
-    private val chatLangMemory = ConcurrentHashMap<String, String>()
+    val chatLangMemory = ConcurrentHashMap<String, String>()
 
     /** UI 订阅 */
     var onChatUpdated: (() -> Unit)? = null
@@ -99,7 +99,8 @@ class ChatEngine private constructor(context: Context) : MessageListener, Connec
             val id = "demo-$idx"
             db.insertMessage(com.weifan.app.data.MessageRow(
                 id = id, chatJid = jid, senderJid = jid, fromMe = false,
-                text = text, translated = "", translatedLang = "", ts = ts))
+                text = text, original = "",
+                translated = "", translatedLang = "", ts = ts))
             db.upsertChat(jid, title, text, ts, incrementUnread = idx < 2)
             db.updateTranslation(jid, id, translated, "en")
         }
@@ -121,7 +122,8 @@ class ChatEngine private constructor(context: Context) : MessageListener, Connec
 
             val row = MessageRow(
                 id = id, chatJid = chatJid, senderJid = o.optString("senderJid"),
-                fromMe = fromMe, text = text, translated = "", translatedLang = "", ts = ts)
+                fromMe = fromMe, text = text, original = "",
+                translated = "", translatedLang = "", ts = ts)
             val inserted = db.insertMessage(row)
             db.upsertChat(chatJid, pushName, text, ts, incrementUnread = !fromMe)
 
@@ -182,14 +184,64 @@ class ChatEngine private constructor(context: Context) : MessageListener, Connec
 
     // MARK: - 发送
 
-    fun sendText(chatJid: String, text: String, onResult: (serverId: String?, error: String?) -> Unit) {
+    /**
+     * 直译直发：先把用户敲的中文原文翻译成对方语言，把译文发给对方，
+     * 再把「译文(主) + 原文(副)」落库。失败时不发送（原文留在输入框）。
+     */
+    fun sendWithTranslation(chatJid: String, originalText: String,
+                            onResult: (serverId: String?, error: String?) -> Unit) {
+        Thread {
+            try {
+                val res = Engine.translateForSending(
+                    text = originalText,
+                    prefs = prefs,
+                    explicitTarget = prefs.waTargetLang.ifBlank { null },
+                    chatLanguage = chatLangMemory[chatJid]
+                )
+                if (res.translated.isBlank()) {
+                    main.post { onResult(null, "翻译失败，消息未发送") }
+                    return@Thread
+                }
+                chatLangMemory[chatJid] = res.target
+                if (prefs.waPreviewMode) {
+                    // 预览模式：没有真实连接，本地回显「已翻译待发」气泡
+                    val now = System.currentTimeMillis()
+                    val localId = "preview-$now"
+                    db.insertMessage(MessageRow(
+                        id = localId, chatJid = chatJid, senderJid = "",
+                        fromMe = true, text = res.translated, original = originalText,
+                        translated = "", translatedLang = res.target, ts = now))
+                    db.upsertChat(chatJid, "", res.translated, now, incrementUnread = false)
+                    main.post { onChatUpdated?.invoke() }
+                    main.post { onResult(localId, null) }
+                    return@Thread
+                }
+                val msgId = client.sendMessage(chatJid, res.translated)
+                val now = System.currentTimeMillis()
+                db.insertMessage(MessageRow(
+                    id = msgId ?: "local-$now", chatJid = chatJid, senderJid = "",
+                    fromMe = true, text = res.translated, original = originalText,
+                    translated = "", translatedLang = res.target, ts = now))
+                db.upsertChat(chatJid, "", res.translated, now, incrementUnread = false)
+                main.post { onChatUpdated?.invoke() }
+                main.post { onResult(msgId, null) }
+            } catch (e: Throwable) {
+                main.post { onResult(null, e.message ?: e.toString()) }
+            }
+        }.start()
+    }
+
+    /** 纯发送（已翻译好的文本，预览模式/直接发原文用） */
+    fun sendText(chatJid: String, text: String, original: String = "",
+                 onResult: (serverId: String?, error: String?) -> Unit) {
         Thread {
             try {
                 val msgId = client.sendMessage(chatJid, text)
                 val now = System.currentTimeMillis()
                 db.insertMessage(MessageRow(
                     id = msgId ?: "local-$now", chatJid = chatJid, senderJid = "",
-                    fromMe = true, text = text, translated = "", translatedLang = "", ts = now))
+                    fromMe = true, text = text, original = original,
+                    translated = "", translatedLang = "", ts = now))
                 db.upsertChat(chatJid, "", text, now, incrementUnread = false)
                 main.post { onChatUpdated?.invoke() }
                 main.post { onResult(msgId, null) }

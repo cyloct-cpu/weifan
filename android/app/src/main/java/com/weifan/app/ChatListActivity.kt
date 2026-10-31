@@ -2,83 +2,213 @@ package com.weifan.app
 
 import android.app.Activity
 import android.content.Intent
+import android.graphics.Color
 import android.graphics.Typeface
 import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
+import android.text.Editable
+import android.text.TextWatcher
 import android.view.Gravity
 import android.view.View
 import android.view.ViewGroup
-import android.widget.Button
 import android.widget.EditText
+import android.widget.FrameLayout
+import android.widget.HorizontalScrollView
+import android.widget.ImageView
 import android.widget.LinearLayout
 import android.widget.ScrollView
 import android.widget.TextView
 import android.widget.Toast
 import com.weifan.app.chat.ChatEngine
 import com.weifan.app.data.ChatRow
+import java.text.SimpleDateFormat
+import java.util.Date
+import java.util.Locale
 
 /**
- * 主页：聊天列表 + 配对入口 + 连接状态。
- * 未配对 → 显示配对引导卡；已配对 → 会话列表（点进会话页）。
+ * 主页 —— WhatsApp 原生风格聊天列表：
+ * 浅色顶栏（标题 + 会员图标位 + ⋮ 菜单）、搜索框、筛选 chips、头像会话行。
+ * 设置收在右上角 ⋮ 弹出菜单里（参考 WATransChat / WhatsApp 布局）。
  */
 class ChatListActivity : Activity() {
 
     private val p by lazy { Brand.palette(false) }
     private lateinit var engine: ChatEngine
     private lateinit var listBox: LinearLayout
-    private lateinit var statusDot: TextView
-    private lateinit var statusText: TextView
-    private lateinit var pairCard: LinearLayout
+    private lateinit var searchInput: EditText
+    private lateinit var chipRow: HorizontalScrollView
+    private lateinit var emptyText: TextView
     private val main = Handler(Looper.getMainLooper())
+    private var filter = "全部"
+    private var query = ""
+
+    private val waGreen = Color.parseColor("#075E54")     // WhatsApp 顶栏墨绿
+    private val chipSel = Color.parseColor("#DCF8C6")     // 选中 chip 浅绿
+    private val bubbleGreen = Color.parseColor("#DCF8C6")
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         engine = ChatEngine.get(this)
 
-        val pad = Ui.dp(this, 16)
         val root = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
-            setBackgroundColor(p.bg)
+            setBackgroundColor(Color.WHITE)
         }
 
-        // 顶栏：标题 + 状态
+        // ---- 顶栏：标题 + 会员图标 + ⋮ ----
         val top = LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL
             gravity = Gravity.CENTER_VERTICAL
-            setPadding(pad, pad, pad, Ui.dp(this@ChatListActivity, 8))
+            setBackgroundColor(waGreen)
+            setPadding(Ui.dp(this@ChatListActivity, 16), Ui.dp(this@ChatListActivity, 12),
+                Ui.dp(this@ChatListActivity, 8), Ui.dp(this@ChatListActivity, 12))
         }
         top.addView(TextView(this).apply {
             text = "微翻"
-            textSize = 20f
-            setTextColor(p.text)
+            textSize = 19f
+            setTextColor(Color.WHITE)
             setTypeface(typeface, Typeface.BOLD)
         }, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
-        statusDot = TextView(this).apply { textSize = 12f; setTextColor(p.text3) }
-        statusText = TextView(this).apply { textSize = 12f; setTextColor(p.text3) }
-        top.addView(statusText)
-        top.addView(Ui.withMargin(this, statusDot, top = 0).apply { minimumWidth = Ui.dp(this@ChatListActivity, 8) })
+
+        // 会员/状态图标（紫色圆 + 人形，对齐参考图占位）
+        top.addView(memberBadge())
+        top.addView(menuButton())
         root.addView(top)
 
-        val scroll = ScrollView(this)
-        listBox = LinearLayout(this).apply {
-            orientation = LinearLayout.VERTICAL
-            setPadding(pad, 0, pad, pad)
+        // ---- 搜索框 ----
+        val searchWrap = FrameLayout(this).apply {
+            setBackgroundColor(Color.WHITE)
+            setPadding(Ui.dp(this@ChatListActivity, 12), Ui.dp(this@ChatListActivity, 8),
+                Ui.dp(this@ChatListActivity, 12), Ui.dp(this@ChatListActivity, 4))
         }
+        searchInput = EditText(this).apply {
+            hint = "🔍  搜索会话"
+            textSize = 14f
+            setTextColor(p.text)
+            setHintTextColor(Color.parseColor("#9AA5AD"))
+            setBackgroundResource(0)
+            background = Ui.roundBg(this@ChatListActivity, Color.parseColor("#F0F2F5"), 22)
+            setSingleLine(true)
+            setPadding(Ui.dp(this@ChatListActivity, 18), Ui.dp(this@ChatListActivity, 9),
+                Ui.dp(this@ChatListActivity, 12), Ui.dp(this@ChatListActivity, 9))
+        }
+        searchInput.addTextChangedListener(object : TextWatcher {
+            override fun beforeTextChanged(s: CharSequence?, a: Int, b: Int, c: Int) {}
+            override fun onTextChanged(s: CharSequence?, a: Int, b: Int, c: Int) {}
+            override fun afterTextChanged(s: Editable?) { query = s?.toString() ?: ""; renderChats() }
+        })
+        searchWrap.addView(searchInput, FrameLayout.LayoutParams(
+            ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT))
+        root.addView(searchWrap)
+
+        // ---- 筛选 chips ----
+        chipRow = HorizontalScrollView(this).apply {
+            isHorizontalScrollBarEnabled = false
+            setBackgroundColor(Color.WHITE)
+            setPadding(Ui.dp(this@ChatListActivity, 8), 0, 0, Ui.dp(this@ChatListActivity, 4))
+        }
+        root.addView(chipRow)
+        renderChips()
+
+        // ---- 会话列表 ----
+        val scroll = ScrollView(this).apply { setBackgroundColor(Color.WHITE) }
+        listBox = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
         scroll.addView(listBox)
         root.addView(scroll, LinearLayout.LayoutParams(
-            ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT))
+            ViewGroup.LayoutParams.MATCH_PARENT, 0, 1f))
+
+        emptyText = TextView(this).apply {
+            text = ""
+            gravity = Gravity.CENTER
+        }
 
         setContentView(root)
+    }
+
+    private fun memberBadge(): View =
+        FrameLayout(this).apply {
+            val size = Ui.dp(this@ChatListActivity, 30)
+            layoutParams = LinearLayout.LayoutParams(size, size).apply {
+                setMargins(0, 0, Ui.dp(this@ChatListActivity, 12), 0)
+            }
+            addView(TextView(this@ChatListActivity).apply {
+                text = "👤"
+                textSize = 15f
+                gravity = Gravity.CENTER
+                background = Ui.roundBg(this@ChatListActivity, Color.parseColor("#7B61C4"), size / 2)
+            }, FrameLayout.LayoutParams(size, size))
+            setOnClickListener { openSettings() }
+        }
+
+    private fun menuButton(): View =
+        TextView(this).apply {
+            text = "⋮"
+            textSize = 24f
+            setTextColor(Color.WHITE)
+            gravity = Gravity.CENTER
+            setPadding(Ui.dp(this@ChatListActivity, 10), 0, Ui.dp(this@ChatListActivity, 10), 0)
+            setOnClickListener { showMenu() }
+        }
+
+    private fun showMenu() {
+        val items = arrayOf(
+            "设置（翻译服务 / 触发词 / 术语）",
+            "关联 WhatsApp 账号",
+            "网络代理设置",
+            if (engine.isPaired() && Prefs(this).waPreviewMode) "退出预览模式" else "预览模式（跳过配对）",
+            "给一个号码发消息")
+        val checked = booleanArrayOf(false, false, false, false, false)
+        android.app.AlertDialog.Builder(this)
+            .setItems(items) { _, which ->
+                when (which) {
+                    0 -> openSettings()
+                    1 -> startActivity(Intent(this, PairingActivity::class.java))
+                    2 -> ProxyDialog.show(this)
+                    3 -> {
+                        val prefs = Prefs(this)
+                        prefs.waPreviewMode = !prefs.waPreviewMode
+                        Toast.makeText(this, if (prefs.waPreviewMode) "预览模式已开启" else "已退出预览模式",
+                            Toast.LENGTH_SHORT).show()
+                        renderChats()
+                    }
+                    4 -> newChatDialog()
+                }
+            }
+            .show()
+    }
+
+    private fun openSettings() = startActivity(Intent(this, MainActivity::class.java))
+
+    private fun renderChips() {
+        val row = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL }
+        for (name in listOf("全部", "未读", "群组", "特别关注")) {
+            val selected = name == filter
+            row.addView(TextView(this).apply {
+                text = name
+                textSize = 13f
+                setTextColor(if (selected) Color.parseColor("#5E5E5E") else Color.parseColor("#075E54"))
+                setTypeface(typeface, if (selected) Typeface.BOLD else Typeface.NORMAL)
+                background = Ui.roundBg(this@ChatListActivity,
+                    if (selected) chipSel else Color.parseColor("#F0F2F5"), 18)
+                setPadding(Ui.dp(this@ChatListActivity, 16), Ui.dp(this@ChatListActivity, 6),
+                    Ui.dp(this@ChatListActivity, 16), Ui.dp(this@ChatListActivity, 6))
+                setOnClickListener { filter = name; renderChips(); renderChats() }
+            }, LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT,
+                ViewGroup.LayoutParams.WRAP_CONTENT).apply {
+                setMargins(0, 0, Ui.dp(this@ChatListActivity, 8), 0)
+            })
+        }
+        chipRow.removeAllViews()
+        chipRow.addView(row)
     }
 
     override fun onResume() {
         super.onResume()
         engine.onChatUpdated = { main.post { renderChats() } }
-        engine.onConnectionChanged = { c -> main.post { renderStatus(c) } }
+        engine.onConnectionChanged = { _ -> main.post { renderChats() } }
         engine.connectAsync()
         renderChats()
-        renderStatus(engine.isConnected())
     }
 
     override fun onPause() {
@@ -87,145 +217,148 @@ class ChatListActivity : Activity() {
         engine.onConnectionChanged = null
     }
 
-    private fun renderStatus(connected: Boolean) {
-        statusText.text = when {
-            !engine.isPaired() -> "未关联"
-            connected -> "已连接"
-            else -> "离线"
-        }
-        statusDot.text = if (connected) "●" else "○"
-        statusDot.setTextColor(if (connected) 0xFF34A853.toInt() else p.text3)
-        if (::pairCard.isInitialized) {
-            pairCard.visibility = if (engine.isPaired()) View.GONE else View.VISIBLE
-        }
-    }
-
     private fun renderChats() {
         listBox.removeAllViews()
-        val paired = engine.isPaired()
-        if (paired) engine.seedPreviewData()
-
-        // 未配对：配对引导卡
-        if (!paired) {
-            pairCard = LinearLayout(this).apply {
-                orientation = LinearLayout.VERTICAL
-                background = Ui.roundBg(this@ChatListActivity, p.surface, 14, 1, p.line)
-                setPadding(Ui.dp(this@ChatListActivity, 20), Ui.dp(this@ChatListActivity, 24),
-                    Ui.dp(this@ChatListActivity, 20), Ui.dp(this@ChatListActivity, 24))
-                addView(Ui.label(this@ChatListActivity, "还没有关联 WhatsApp 账号", p.text, 16f, bold = true))
-                addView(Ui.withMargin(this@ChatListActivity,
-                    Ui.label(this@ChatListActivity,
-                        "输入手机号获取 8 位配对码，在官方 WhatsApp 里完成关联。微信式的流程，一次配对长期有效。",
-                        p.text2, 13f), top = 8, bottom = 16))
-                addView(Ui.button(this@ChatListActivity, "开始配对", primary = true) {
-                    startActivity(Intent(this@ChatListActivity, PairingActivity::class.java))
-                })
-            }
-            listBox.addView(pairCard)
-
-            // 翻译工具入口保留（划词/文本/文档）
-            listBox.addView(Ui.withMargin(this, toolCard(), top = 16))
-
-            // 预览模式开关（测试用）+ 代理设置
-            listBox.addView(Ui.withMargin(this,
-                Ui.button(this, "预览模式（跳过配对看 UI）", primary = false) {
-                    val prefs = Prefs(this@ChatListActivity)
-                    prefs.waPreviewMode = !prefs.waPreviewMode
-                    Toast.makeText(this@ChatListActivity,
-                        if (prefs.waPreviewMode) "预览模式已开启" else "预览模式已关闭",
-                        Toast.LENGTH_SHORT).show()
-                    renderChats()
-                }, top = 12))
-            listBox.addView(Ui.withMargin(this,
-                Ui.button(this, "网络代理设置（国内网络需要）", primary = false) {
-                    ProxyDialog.show(this)
-                }, top = 12))
+        if (!engine.isPaired()) {
+            listBox.addView(unpairedCard())
+            listBox.addView(hintRow("提示：右上角 ⋮ 可打开设置与预览模式"))
             return
         }
-
-        // 已配对：会话列表
-        val chats = engine.db.chats()
-        if (chats.isEmpty()) {
-            listBox.addView(Ui.label(this, "暂无会话。等对方发一条消息，或从官方 App 发一条。",
-                p.text3, 13f))
+        engine.seedPreviewData()
+        val all = engine.db.chats()
+        val filtered = all.filter { c ->
+            val matchFilter = when (filter) {
+                "未读" -> c.unread > 0
+                "群组" -> c.jid.contains("@g.us")
+                "特别关注" -> false // TODO: 星标
+                else -> true
+            }
+            val matchQuery = query.isBlank() || c.title.contains(query, true) ||
+                c.lastMessage.contains(query, true) || c.jid.contains(query)
+            matchFilter && matchQuery
+        }
+        if (filtered.isEmpty()) {
+            listBox.addView(hintRow(if (all.isEmpty()) "暂无会话，等对方发一条消息" else "没有匹配的会话"))
             return
         }
-        for (chat in chats) {
-            listBox.addView(chatRow(chat))
+        val timeFmt = SimpleDateFormat("HH:mm", Locale.getDefault())
+        val dayFmt = SimpleDateFormat("M月d日", Locale.getDefault())
+        for (chat in filtered) {
+            listBox.addView(chatRow(chat, timeFmt, dayFmt))
         }
-        listBox.addView(Ui.withMargin(this,
-            Ui.button(this, "给一个号码发消息", primary = false) { newChatDialog() }, top = 12))
-        // 已配对状态下也保留预览开关与设置入口
-        listBox.addView(Ui.withMargin(this,
-            Ui.button(this, "设置（翻译服务 / 触发词 / 术语）", primary = false) {
-                startActivity(Intent(this@ChatListActivity, MainActivity::class.java))
-            }, top = 12))
-        listBox.addView(Ui.withMargin(this,
-            Ui.button(this, "退出预览模式", primary = false) {
-                Prefs(this@ChatListActivity).waPreviewMode = false
-                Toast.makeText(this@ChatListActivity, "已退出预览模式", Toast.LENGTH_SHORT).show()
-                renderChats()
-            }, top = 12))
     }
 
-    private fun toolCard(): View {
-        val box = LinearLayout(this).apply {
+    private fun unpairedCard(): View =
+        LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
-            background = Ui.roundBg(this@ChatListActivity, p.surface, 14, 1, p.line)
-            setPadding(Ui.dp(this@ChatListActivity, 16), Ui.dp(this@ChatListActivity, 14),
-                Ui.dp(this@ChatListActivity, 16), Ui.dp(this@ChatListActivity, 14))
-        }
-        box.addView(Ui.label(this, "翻译工具", p.text, 14f, bold = true))
-        box.addView(Ui.withMargin(this,
-            Ui.button(this, "文本翻译", primary = false) {
-                startActivity(Intent(this, TranslateActivity::class.java))
-            }, top = 10))
-        box.addView(Ui.withMargin(this,
-            Ui.button(this, "文档翻译", primary = false) {
-                startActivity(Intent(this, TranslateDocActivity::class.java))
-            }, top = 8))
-        return box
-    }
-
-    private fun chatRow(chat: ChatRow): View {
-        val row = LinearLayout(this).apply {
-            orientation = LinearLayout.VERTICAL
-            background = Ui.roundBg(this@ChatListActivity, p.surface, 12, 1, p.line)
-            setPadding(Ui.dp(this@ChatListActivity, 14), Ui.dp(this@ChatListActivity, 12),
-                Ui.dp(this@ChatListActivity, 14), Ui.dp(this@ChatListActivity, 12))
-            setOnClickListener {
-                startActivity(Intent(this@ChatListActivity, ChatActivity::class.java)
-                    .putExtra("jid", chat.jid)
-                    .putExtra("title", chat.title))
-            }
-        }
-        val titleLine = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL }
-        titleLine.addView(TextView(this).apply {
-            text = chat.title.ifBlank { chat.jid.substringBefore("@") }
-            textSize = 14.5f
-            setTextColor(p.text)
-            setTypeface(typeface, Typeface.BOLD)
-        }, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
-        if (chat.unread > 0) {
-            titleLine.addView(TextView(this).apply {
-                text = chat.unread.toString()
-                textSize = 11f
-                setTextColor(p.ink)
-                background = Ui.roundBg(this@ChatListActivity, p.warm, 10)
-                setPadding(Ui.dp(this@ChatListActivity, 6), 0, Ui.dp(this@ChatListActivity, 6), 0)
+            setPadding(Ui.dp(this@ChatListActivity, 24), Ui.dp(this@ChatListActivity, 32),
+                Ui.dp(this@ChatListActivity, 24), Ui.dp(this@ChatListActivity, 16))
+            addView(TextView(this@ChatListActivity).apply {
+                text = "还没有关联 WhatsApp 账号"
+                textSize = 17f
+                setTextColor(p.text)
+                setTypeface(typeface, Typeface.BOLD)
+            })
+            addView(TextView(this@ChatListActivity).apply {
+                text = "输入手机号获取 8 位配对码，在官方 WhatsApp 里完成关联（与网页版同机制）。"
+                textSize = 13.5f
+                setTextColor(p.text2)
+                setPadding(0, Ui.dp(this@ChatListActivity, 8), 0, Ui.dp(this@ChatListActivity, 16))
+            })
+            addView(Ui.button(this@ChatListActivity, "开始配对", primary = true) {
+                startActivity(Intent(this@ChatListActivity, PairingActivity::class.java))
             })
         }
-        row.addView(titleLine)
-        row.addView(Ui.withMargin(this, TextView(this).apply {
-            text = chat.lastMessage
+
+    private fun hintRow(text: String): View =
+        TextView(this).apply {
+            this.text = text
             textSize = 12.5f
-            setTextColor(p.text2)
-            maxLines = 1
-        }, top = 3))
-        return Ui.withMargin(this, row, top = 8)
+            setTextColor(p.text3)
+            gravity = Gravity.CENTER
+            setPadding(Ui.dp(this@ChatListActivity, 24), Ui.dp(this@ChatListActivity, 24),
+                Ui.dp(this@ChatListActivity, 24), Ui.dp(this@ChatListActivity, 8))
+        }
+
+    private fun avatar(jid: String, title: String): View {
+        val size = Ui.dp(this, 50)
+        val cjk = title.firstOrNull { ch -> ch.toInt() > 0x2E80 }
+        val letter = cjk?.toString() ?: title.firstOrNull()?.toString() ?: jid.take(2)
+        return FrameLayout(this).apply {
+            layoutParams = LinearLayout.LayoutParams(size, size).apply {
+                setMargins(0, 0, Ui.dp(this@ChatListActivity, 12), 0)
+            }
+            addView(TextView(this@ChatListActivity).apply {
+                text = letter
+                textSize = 19f
+                setTextColor(Color.WHITE)
+                gravity = Gravity.CENTER
+                // 按会话 hash 取色（WhatsApp 的多彩头像池）
+                val palette = arrayOf("#25D366", "#34B7F1", "#FFB74D", "#9575CD", "#4DB6AC", "#F06292")
+                val color = Color.parseColor(palette[(jid.hashCode() and 0xff) % palette.size])
+                background = Ui.roundBg(this@ChatListActivity, color, Ui.dp(this@ChatListActivity, size / 2) / 2)
+            }, FrameLayout.LayoutParams(size, size))
+        }
     }
 
-    /** 输入手机号/JID 开始新会话 */
+    private fun chatRow(chat: ChatRow, timeFmt: SimpleDateFormat, dayFmt: SimpleDateFormat): View {
+        val pad = Ui.dp(this, 12)
+        val row = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER_VERTICAL
+            setPadding(Ui.dp(this@ChatListActivity, 14), pad, Ui.dp(this@ChatListActivity, 14), pad)
+            setBackgroundResource(0)
+            setOnClickListener {
+                startActivity(Intent(this@ChatListActivity, ChatActivity::class.java)
+                    .putExtra("jid", chat.jid).putExtra("title", chat.title))
+            }
+        }
+        row.addView(avatar(chat.jid, chat.title))
+
+        val mid = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+        }
+        mid.addView(TextView(this@ChatListActivity).apply {
+            text = chat.title.ifBlank { chat.jid.substringBefore("@") }
+            textSize = 15.5f
+            setTextColor(Color.parseColor("#111B21"))
+            setTypeface(typeface, Typeface.BOLD)
+            maxLines = 1
+        })
+        mid.addView(TextView(this@ChatListActivity).apply {
+            text = chat.lastMessage
+            textSize = 13.5f
+            setTextColor(Color.parseColor("#667781"))
+            maxLines = 1
+            setPadding(0, Ui.dp(this@ChatListActivity, 2), 0, 0)
+        })
+        row.addView(mid, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
+
+        val right = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            gravity = Gravity.CENTER_HORIZONTAL or Gravity.TOP
+        }
+        right.addView(TextView(this@ChatListActivity).apply {
+            text = timeFmt.format(Date(chat.lastTs))
+            textSize = 11.5f
+            setTextColor(if (chat.unread > 0) Color.parseColor("#25D366") else Color.parseColor("#8696A0"))
+        })
+        if (chat.unread > 0) {
+            right.addView(TextView(this@ChatListActivity).apply {
+                text = chat.unread.toString()
+                textSize = 11f
+                setTextColor(Color.WHITE)
+                setTypeface(typeface, Typeface.BOLD)
+                gravity = Gravity.CENTER
+                background = Ui.roundBg(this@ChatListActivity, Color.parseColor("#25D366"), 11)
+                setPadding(Ui.dp(this@ChatListActivity, 7), 1, Ui.dp(this@ChatListActivity, 7), 1)
+            }, LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT,
+                ViewGroup.LayoutParams.WRAP_CONTENT).apply { setMargins(0, Ui.dp(this@ChatListActivity, 6), 0, 0) })
+        }
+        row.addView(right)
+        return row
+    }
+
     private fun newChatDialog() {
         val input = EditText(this).apply { hint = "+86 138…" }
         android.app.AlertDialog.Builder(this)
@@ -247,7 +380,7 @@ class ChatListActivity : Activity() {
     }
 }
 
-/** 代理设置弹窗（独立文件级函数以便复用） */
+/** 代理设置弹窗（设置页与列表页共用） */
 object ProxyDialog {
     fun show(activity: Activity) {
         val prefs = Prefs(activity)
@@ -261,7 +394,7 @@ object ProxyDialog {
             .setView(input)
             .setPositiveButton("保存") { _, _ ->
                 prefs.waProxy = input.text.toString()
-                Toast.makeText(activity, "已保存，重启微翻后生效", Toast.LENGTH_LONG).show()
+                android.widget.Toast.makeText(activity, "已保存，重启微翻后生效", android.widget.Toast.LENGTH_LONG).show()
             }
             .setNegativeButton("取消", null)
             .show()
