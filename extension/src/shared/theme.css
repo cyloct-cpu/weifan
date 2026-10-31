@@ -1,36 +1,56 @@
 /* 微翻 · 设计 token（唯一来源）
-   色板来自品牌规范（brand/brand-spec.png）：
-   暖 #FD6C4E = 发件，冷 #2FB6FF = 收件，强调 #00E9DD，正文 #161B22，深底 #0F1720。
-   界面里唯一的彩色就是「方向」，结构一律中性。
+   色板对齐 WhatsApp 官方规格（值取自 android/.../WaSpec.kt，反编译自 同类客户端）：
+   顶栏绿 #128C7E · 深绿 #075E54 · 亮绿 #25D366 · 发送钮 #06CE9B ·
+   壁纸 #F5F1EB · 发件气泡 #E0FCD6 · 已读蓝 #34B7F1。
+   本文只描述「界面骨架」的用途：主操作 = 绿，收件方向 = 蓝，译文 = 青。
 
-   popup 与设置页共用这份变量，改色只改这里。 */
+   popup / 设置页 / 文本页 / 文档页共用这份变量，改色只改这里。
+   变量名沿用旧名（--warm / --cool / --teal…），语义改为：
+   --warm = 主操作（发件方向） · --cool = 收件方向 · --teal = 译文与成功态 */
 
 :root {
   color-scheme: light;
 
-  --bg: #f4f6f8;
+  /* ── WhatsApp 结构色 ── */
+  --wa-green: #128c7e;        /* 顶栏、主按钮、开关 */
+  --wa-green-dark: #075e54;   /* 设置页标题、深色强调 */
+  --wa-green-light: #25d366;  /* 未读、成功 */
+  --wa-send: #06ce9b;         /* 发送圆钮 */
+  --wa-read: #34b7f1;         /* 已读双勾 */
+  --wa-paper: #f5f1eb;        /* 聊天壁纸 */
+  --wa-doodle: #eae0d3;       /* 壁纸涂鸦 */
+  --wa-bubble-sent: #e0fcd6;  /* 发件气泡 */
+  --tr-ink: #0a7ea4;          /* 译文行（本产品唯一新增色） */
+  --tr-rule: rgba(10, 126, 164, 0.22);
+
+  /* ── 中性骨架 ── */
+  --bg: #eff2f5;
   --surface: #ffffff;
-  --surface-2: #f5f7f9;
-  --line: rgba(22, 27, 34, 0.09);
-  --line-strong: rgba(22, 27, 34, 0.16);
+  --surface-2: #f5f6f6;
+  --line: rgba(11, 20, 26, 0.09);
+  --line-strong: rgba(11, 20, 26, 0.16);
 
-  --text: #161b22;
-  --text-2: #55606e;
-  --text-3: #8b97a5;
+  --text: #111b21;
+  --text-2: #667781;
+  --text-3: #8696a0;
 
-  --warm: #fd6c4e;
-  --warm-deep: #ff4353;
-  --cool: #2fb6ff;
-  --teal: #00e9dd;
-  --teal-ink: #00806f;
+  /* ── 语义色（旧名保留，值换成 WhatsApp 体系） ── */
+  --warm: #128c7e;
+  --warm-deep: #0e7c6f;
+  --cool: #34b7f1;
+  --teal: #25d366;
+  --teal-ink: #0e7c6f;
   --warn-ink: #b06a1f;
+  --warm-grad: linear-gradient(135deg, #0e7c6f, #128c7e);
+  --cool-grad: linear-gradient(135deg, #2fa9e8, #34b7f1);
 
-  --warm-grad: linear-gradient(135deg, #ff4353, #fd6c4e 45%, #ff9064);
-  --cool-grad: linear-gradient(135deg, #4c9bf7, #2fb6ff 45%, #00e9dd);
-
-  --shadow-card: 0 1px 2px rgba(22, 27, 34, 0.04), 0 10px 28px -18px rgba(22, 27, 34, 0.16);
-  --shadow-pop: 0 1px 3px rgba(22, 27, 34, 0.14);
+  --shadow-card: 0 1px 2px rgba(11, 20, 26, 0.05), 0 10px 28px -18px rgba(11, 20, 26, 0.2);
+  --shadow-pop: 0 1px 3px rgba(11, 20, 26, 0.16);
   --ease: cubic-bezier(0.22, 0.9, 0.31, 1);
+
+  --radius-sm: 8px;
+  --radius: 12px;
+  --radius-lg: 16px;
 
   --sans: -apple-system, BlinkMacSystemFont, "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", sans-serif;
   --mono: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
@@ -42,23 +62,30 @@
    判定逻辑见 src/shared/theme.js（扩展与 Android 同规格）。
 */
 :root[data-theme='dark'] {
-    color-scheme: dark;
+  color-scheme: dark;
 
-    --bg: #0f1720;
-    --surface: #161c24;
-    --surface-2: #1d242e;
-    --line: #2a333f;
-    --line-strong: #3a4552;
+  --bg: #0b141a;              /* WhatsApp 夜间底 */
+  --surface: #111b21;
+  --surface-2: #182229;
+  --line: #22303a;
+  --line-strong: #2f3f4a;
 
-    --text: #e6eaf0;
-    --text-2: #a9b4c2;
-    --text-3: #8b96a6;
+  --text: #e9edef;
+  --text-2: #a3b1bb;
+  --text-3: #8696a0;
 
-    --teal-ink: #00e9dd;
-    --warn-ink: #f1a45c;
+  --wa-green: #0e7c6f;
+  --wa-green-dark: #075e54;
+  --wa-paper: #0b141a;
+  --wa-bubble-sent: #005c4b;
+  --tr-ink: #7fd3ef;
+  --tr-rule: rgba(127, 211, 239, 0.28);
 
-    --shadow-card: 0 1px 2px rgba(0, 0, 0, 0.3), 0 12px 30px -18px rgba(0, 0, 0, 0.6);
-    --shadow-pop: 0 1px 3px rgba(0, 0, 0, 0.4);
+  --teal-ink: #25d366;
+  --warn-ink: #f0a85c;
+
+  --shadow-card: 0 1px 2px rgba(0, 0, 0, 0.35), 0 12px 30px -18px rgba(0, 0, 0, 0.65);
+  --shadow-pop: 0 1px 3px rgba(0, 0, 0, 0.45);
 }
 
 /* ── 顶栏昼夜循环图标（D-54/D-57：弹窗、设置、文本、文档四页共用） ── */
@@ -102,3 +129,20 @@
 
 /* 顶栏里按钮与右侧徽标之间留个缝 */
 .topbar .theme-btn { margin-left: 10px; }
+
+/* 未写入 data-mode 时先显示日轮，避免首帧是个空白方块 */
+.theme-btn:not([data-mode]) {
+  --theme-mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cpath d='M12 7.6a4.4 4.4 0 1 0 0 8.8 4.4 4.4 0 0 0 0-8.8ZM10.8 1.8h2.4v2.8h-2.4zM10.8 19.4h2.4v2.8h-2.4zM1.8 10.8h2.8v2.4H1.8zM19.4 10.8h2.8v2.4h-2.8zM4.3 5.7l1.4-1.4 2 2-1.4 1.4zM16.3 17.7l2-2 1.4 1.4-2 2zM16.3 6.3l1.4-1.4 2 2-1.4 1.4zM4.3 18.3l2-2 1.4 1.4-2 2z'/%3E%3C/svg%3E");
+}
+
+/* 绿顶栏内的反白按钮（弹窗 / 设置页共用） */
+.theme-btn.on-green {
+  border-color: rgba(255, 255, 255, 0.28);
+  background: rgba(255, 255, 255, 0.14);
+  color: #fff;
+}
+.theme-btn.on-green:hover {
+  background: rgba(255, 255, 255, 0.22);
+  border-color: rgba(255, 255, 255, 0.45);
+  color: #fff;
+}

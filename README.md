@@ -1,6 +1,6 @@
 # 微翻 WeiFan
 
-<p align="center"><img src="brand/lockup-horizontal.svg" alt="微翻 WeiFan" width="360" /></p>
+<p align="center"><img src="brand-v2/st/w-ink.svg" alt="微翻 WeiFan" width="104" /></p>
 
 <p align="center"><img src="https://github.com/cyloct-cpu/weifan/actions/workflows/ci.yml/badge.svg" alt="ci" /></p>
 
@@ -14,9 +14,12 @@ WhatsApp 跨境沟通的自动翻译工具：**你打中文，发出去的是对
   - **浏览器扩展已可运行**（划词 / 悬停 / 文档翻译 / 九家服务商）
   - **Android 独立 WhatsApp 客户端打通**（v1.0 核心）：whatsmeow 协议层 + 手机号配对码 +
     WhatsApp 原生风格 UI + 直译直发（敲中文点发送，发出的自动是对方语言）—— 决策与落地见
-    `docs/10-对齐WATransChat-差距分析与方案-2026-10-31.md`、`docs/11-独立客户端落地记录-2026-10-31.md`
+    `docs/10-对齐同类客户端-差距分析与方案-2026-10-31.md`、`docs/11-独立客户端落地记录-2026-10-31.md`
   - iOS 源码与构建脚本就绪（受 Xcode 阻塞）
 - 定位：自用 / 小范围，不上架商店
+- 品牌：标识为「W」手写体（`brand-v2/st/orig-w.svg`），界面色板与 WhatsApp 官方规格对齐
+  （顶栏 `#128C7E`、深绿 `#075E54`、亮绿 `#25D366`、发送钮 `#06CE9B`、发件气泡 `#E0FCD6`），
+  唯一新增色是译文行 `#0A7EA4`。完整规格见 `docs/12-品牌与UI重构方案-2026-10-31.md`
 
 > 2026-10-29 做过两轮修订：
 > ① 原计划 iOS 键盘首发，因"iOS 是唯一既读不到对方消息、又做不了无障碍的端"+ 开发机没有 Xcode，改为**浏览器扩展优先**；

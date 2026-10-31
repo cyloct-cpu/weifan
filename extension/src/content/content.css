@@ -1,22 +1,24 @@
 /* 微翻 · WhatsApp Web 注入样式
-   品牌色（见 brand/brand-spec.png）：暖 #FD6C4E = 发件，冷 #2FB6FF = 收件，强调 #00E9DD。
-   收件译文挂冷色条，发件按钮挂暖色；面板与提示条在 WhatsApp 的浅色 / 深色主题下各自适配。 */
+   品牌色对齐 WhatsApp 官方规格（WaSpec.kt）：发件 = 顶栏绿 #128C7E，
+   收件 = 已读蓝 #34B7F1，译文行 = 青 #0A7EA4。
+   页面内的气泡与按钮保持 WhatsApp 原生观感，不做个性化改造。 */
 
 :root {
-  --wf-warm: #fd6c4e;
-  --wf-warm-grad: linear-gradient(135deg, #ff4353, #fd6c4e 55%, #ff9064);
-  --wf-cool: #2fb6ff;
-  --wf-teal: #00e9dd;
-  --wf-ink: #1a0e0a; /* 暖色底上的深色字 */
+  --wf-warm: #128c7e;
+  --wf-warm-grad: linear-gradient(135deg, #0e7c6f, #128c7e 55%, #16a394);
+  --wf-cool: #34b7f1;
+  --wf-teal: #25d366;
+  --wf-tr: #0a7ea4;   /* 译文行 */
+  --wf-ink: #ffffff;  /* 绿底上的白字 */
   --wf-warn: #b06a1f;
   --wf-err: #d63c41;
 
   --wf-surface: #ffffff;
   --wf-surface-2: #f2f4f7;
   --wf-line: rgba(22, 27, 34, 0.1);
-  --wf-text: #161b22;
-  --wf-text-2: #55606e;
-  --wf-text-3: #8b97a5;
+  --wf-text: #111b21;
+  --wf-text-2: #667781;
+  --wf-text-3: #8696a0;
 
   --wf-shadow: 0 6px 24px -8px rgba(22, 27, 34, 0.22), 0 1px 3px rgba(22, 27, 34, 0.1);
   --wf-ease: cubic-bezier(0.22, 0.9, 0.31, 1);
@@ -208,7 +210,7 @@
   font-weight: 600;
 }
 
-.wf-panel-actions button.wf-primary:hover { background: #ff7e60; color: var(--wf-ink); }
+.wf-panel-actions button.wf-primary:hover { background: #0e7c6f; color: var(--wf-ink); }
 
 /* ── 提示条 ─────────────────────────────────────── */
 

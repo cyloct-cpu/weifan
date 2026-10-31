@@ -7,7 +7,9 @@ import com.weifan.app.core.Theme
 
 /**
  * 品牌色板。浅色为默认，深色是夜间那一套。
- * 界面里唯一的彩色就是「方向」：暖 = 发件，冷 = 收件，混 = 双向通用。
+ * 取值对齐 WhatsApp 官方规格（WaSpec.kt）：主操作 = 顶栏绿 #128C7E，
+ * 收件方向 = 已读蓝 #34B7F1，成功/未读 = 亮绿 #25D366。
+ * warm / cool 是旧字段名，语义未变：warm = 发件（主操作），cool = 收件。
  *
  * 深浅由 Theme.isNight() 判定（不是直接读系统 uiMode）——
  * 用户可以手动定昼/夜，也可以设自定义夜间时段，所以色板得由上层决定传哪一套。
@@ -27,9 +29,9 @@ class Palette(
     val warn: Int,
     val err: Int
 ) {
-    val warmGrad: IntArray get() = intArrayOf(Color.parseColor("#FF4353"), Color.parseColor("#FF9064"))
-    val coolGrad: IntArray get() = intArrayOf(Color.parseColor("#4C9BF7"), Color.parseColor("#00E9DD"))
-    val mixGrad: IntArray get() = intArrayOf(Color.parseColor("#FD6C4E"), Color.parseColor("#2FB6FF"))
+    val warmGrad: IntArray get() = intArrayOf(Color.parseColor("#0E7C6F"), Color.parseColor("#128C7E"))
+    val coolGrad: IntArray get() = intArrayOf(Color.parseColor("#2FA9E8"), Color.parseColor("#34B7F1"))
+    val mixGrad: IntArray get() = intArrayOf(Color.parseColor("#128C7E"), Color.parseColor("#25D366"))
 }
 
 object Brand {
@@ -41,35 +43,35 @@ object Brand {
 
     /** 浅色（昼） */
     val LIGHT = Palette(
-        bg = Color.parseColor("#F4F6F8"),
+        bg = Color.parseColor("#EFF2F5"),
         surface = Color.WHITE,
-        surface2 = Color.parseColor("#F5F7F9"),
-        line = Color.parseColor("#E7EAEE"),
-        text = Color.parseColor("#161B22"),
-        text2 = Color.parseColor("#55606E"),
-        text3 = Color.parseColor("#8B97A5"),
-        warm = Color.parseColor("#FD6C4E"),
-        cool = Color.parseColor("#2FB6FF"),
-        teal = Color.parseColor("#00E9DD"),
-        ink = Color.parseColor("#1A0E0A"),
+        surface2 = Color.parseColor("#F5F6F6"),
+        line = Color.parseColor("#E4E7EA"),
+        text = Color.parseColor("#111B21"),
+        text2 = Color.parseColor("#667781"),
+        text3 = Color.parseColor("#8696A0"),
+        warm = Color.parseColor("#128C7E"),
+        cool = Color.parseColor("#34B7F1"),
+        teal = Color.parseColor("#25D366"),
+        ink = Color.WHITE,
         warn = Color.parseColor("#B06A1F"),
         err = Color.parseColor("#D63C41")
     )
 
     /** 深色（夜） */
     val DARK = Palette(
-        bg = Color.parseColor("#0F1720"),
-        surface = Color.parseColor("#161C24"),
-        surface2 = Color.parseColor("#1D242E"),
-        line = Color.parseColor("#2A333F"),
-        text = Color.parseColor("#E6EAF0"),
-        text2 = Color.parseColor("#A9B4C2"),
-        text3 = Color.parseColor("#8B96A6"),
-        warm = Color.parseColor("#FD6C4E"),
-        cool = Color.parseColor("#2FB6FF"),
-        teal = Color.parseColor("#00E9DD"),
-        ink = Color.parseColor("#1A0E0A"),
-        warn = Color.parseColor("#F1A45C"),
+        bg = Color.parseColor("#0B141A"),
+        surface = Color.parseColor("#111B21"),
+        surface2 = Color.parseColor("#182229"),
+        line = Color.parseColor("#22303A"),
+        text = Color.parseColor("#E9EDEF"),
+        text2 = Color.parseColor("#A3B1BB"),
+        text3 = Color.parseColor("#8696A0"),
+        warm = Color.parseColor("#0E7C6F"),
+        cool = Color.parseColor("#34B7F1"),
+        teal = Color.parseColor("#25D366"),
+        ink = Color.WHITE,
+        warn = Color.parseColor("#F0A85C"),
         err = Color.parseColor("#F15C6D")
     )
 

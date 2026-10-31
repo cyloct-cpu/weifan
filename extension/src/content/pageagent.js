@@ -96,7 +96,7 @@
             min-width: 180px;
             max-width: 320px;
             background: #ffffff;
-            color: #161b22;
+            color: #111b21;
             border: 1px solid rgba(22,27,34,.12);
             border-radius: 12px;
             box-shadow: 0 6px 24px -8px rgba(22,27,34,.28);
@@ -112,26 +112,26 @@
             font-size: 10px; font-weight: 600; color: #00806f;
             background: rgba(0,233,221,.16); border-radius: 999px; padding: 2px 7px;
           }
-          .tag.ghost { color: #8b97a5; background: #f5f7f9; border: 1px solid rgba(22,27,34,.09); }
+          .tag.ghost { color: #8696a0; background: #f5f6f6; border: 1px solid rgba(22,27,34,.09); }
           .text { white-space: pre-wrap; word-break: break-word; }
-          .text.busy { color: #8b97a5; }
+          .text.busy { color: #8696a0; }
           textarea {
             width: 100%; min-height: 54px; resize: vertical;
-            background: #f5f7f9; border: 1px solid rgba(22,27,34,.12); border-radius: 8px;
-            color: #161b22; font: 13px/1.55 inherit; padding: 7px 8px; outline: none;
+            background: #f5f6f6; border: 1px solid rgba(22,27,34,.12); border-radius: 8px;
+            color: #111b21; font: 13px/1.55 inherit; padding: 7px 8px; outline: none;
           }
-          textarea:focus { border-color: #fd6c4e; box-shadow: 0 0 0 3px rgba(253,108,78,.16); }
+          textarea:focus { border-color: #128c7e; box-shadow: 0 0 0 3px rgba(18,140,126,.18); }
           .acts { display: flex; gap: 6px; margin-top: 7px; }
           button {
-            flex: 1; background: #f5f7f9; border: 1px solid rgba(22,27,34,.1); border-radius: 7px;
-            padding: 5px 8px; font: 12px/1.3 inherit; color: #55606e; cursor: pointer;
+            flex: 1; background: #f5f6f6; border: 1px solid rgba(22,27,34,.1); border-radius: 7px;
+            padding: 5px 8px; font: 12px/1.3 inherit; color: #667781; cursor: pointer;
           }
-          button:hover { color: #161b22; border-color: rgba(22,27,34,.2); }
+          button:hover { color: #111b21; border-color: rgba(22,27,34,.2); }
           button:disabled { opacity: .45; cursor: default; }
-          button.primary { background: #fd6c4e; border-color: #fd6c4e; color: #1a0e0a; font-weight: 600; }
+          button.primary { background: #128c7e; border-color: #128c7e; color: #fff; font-weight: 600; }
           @media (prefers-color-scheme: dark) {
-            .box { background: #161c24; color: #e6eaf0; border-color: #2a333f; box-shadow: 0 8px 26px -8px rgba(0,0,0,.6); }
-            textarea, button { background: #1d242e; border-color: #2a333f; color: #e6eaf0; }
+            .box { background: #111b21; color: #e9edef; border-color: #22303a; box-shadow: 0 8px 26px -8px rgba(0,0,0,.6); }
+            textarea, button { background: #182229; border-color: #22303a; color: #e9edef; }
             .tag.ghost { background: #1d242e; border-color: #2a333f; color: #8b96a6; }
           }
         </style>

@@ -96,14 +96,14 @@ textarea {
 .actions { display: flex; align-items: center; gap: 12px; margin-top: 14px; }
 .btn-primary {
   background: var(--warm);
-  color: #1a0e0a;
+  color: #fff;
   border: none;
   border-radius: 10px;
   padding: 10px 22px;
   font: 600 13px/1 var(--sans);
   cursor: pointer;
 }
-.btn-primary:hover { background: #ff7e60; }
+.btn-primary:hover { background: #0e7c6f; }
 .btn-primary:disabled { opacity: 0.55; cursor: default; }
 .btn-ghost {
   background: var(--surface);

@@ -3,8 +3,8 @@ package com.weifan.app
 import android.graphics.Color
 
 /**
- * WaSpec —— WATransChat 设计规格对齐 token。
- * 全部取值反编译自 WATransChat3.55.apk resources（aapt2 dump resources），
+ * WaSpec —— 同类客户端 设计规格对齐 token。
+ * 全部取值反编译自 同类客户端安装包的资源（aapt2 dump resources），
  * 命名保持对方原名，便于后续对照升级。日期 2026-10-31。
  */
 object WaSpec {

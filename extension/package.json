@@ -1,6 +1,6 @@
 {
   "name": "weifan-extension",
-  "version": "0.1.0",
+  "version": "0.3.0",
   "private": true,
   "type": "module",
   "description": "微翻 WeiFan — WhatsApp Web 即时翻译扩展（Chrome / Edge / Firefox / Safari）",

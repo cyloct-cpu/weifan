@@ -29,7 +29,7 @@ import java.util.Locale
 /**
  * 主页 —— WhatsApp 原生风格聊天列表：
  * 浅色顶栏（标题 + 会员图标位 + ⋮ 菜单）、搜索框、筛选 chips、头像会话行。
- * 设置收在右上角 ⋮ 弹出菜单里（参考 WATransChat / WhatsApp 布局）。
+ * 设置收在右上角 ⋮ 弹出菜单里（参考 同类客户端 / WhatsApp 布局）。
  */
 class ChatListActivity : BaseActivity() {
 

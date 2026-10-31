@@ -50,3 +50,7 @@ android/.idea/
 *.iml
 *.apk
 *.aab
+
+# 本地参考资料（原始分析材料，不随仓库分发）
+.local-only/
+brand-v2/out/

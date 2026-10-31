@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "微翻 WeiFan",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "description": "浏览器即时翻译：选区、划词、悬停、整段文档都能翻；密钥只留在本机。",
   "icons": {
     "16": "src/icons/icon16.png",

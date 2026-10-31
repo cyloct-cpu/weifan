@@ -75,14 +75,14 @@ select:focus { border-color: var(--warm); box-shadow: 0 0 0 3px color-mix(in srg
 .actions { display: flex; align-items: center; gap: 12px; margin-top: 14px; }
 .btn-primary {
   background: var(--warm);
-  color: #1a0e0a;
+  color: #fff;
   border: none;
   border-radius: 10px;
   padding: 10px 22px;
   font: 600 13px/1 var(--sans);
   cursor: pointer;
 }
-.btn-primary:hover:not(:disabled) { background: #ff7e60; }
+.btn-primary:hover:not(:disabled) { background: #0e7c6f; }
 .btn-primary:disabled { opacity: 0.5; cursor: default; }
 #status { font-size: 12px; color: var(--text-3); }
 #status.is-err { color: #e5484d; }
