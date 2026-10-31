@@ -113,7 +113,16 @@ class ChatActivity : Activity() {
                 Ui.dp(this@ChatActivity, WaSpec.MESSAGE_LIST_PADDING_H_DP), Ui.dp(this@ChatActivity, 8))
         }
         scroll.addView(listBox)
-        DoodleWallpaper.applyTo(scroll, dark = false)
+        // 官方 WhatsApp 涂鸦壁纸位图（wa_wallpaper_doodle.jpg，760x1396）
+        // cover 铺满：保持比例放大到 View 尺寸，居中裁切
+        scroll.post {
+            val w = maxOf(scroll.width, 1)
+            val h = maxOf(scroll.height, 1)
+            val bmp = android.graphics.BitmapFactory.decodeResource(resources, R.drawable.wa_wallpaper_doodle)
+            val scaled = android.graphics.Bitmap.createScaledBitmap(
+                bmp, w, maxOf(h, w * bmp.height / bmp.width), true)
+            scroll.background = android.graphics.drawable.BitmapDrawable(resources, scaled)
+        }
         root.addView(scroll, LinearLayout.LayoutParams(
             ViewGroup.LayoutParams.MATCH_PARENT, 0, 1f))
 
