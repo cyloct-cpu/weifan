@@ -87,6 +87,9 @@ class ChatEngine private constructor(context: Context) : MessageListener, Connec
             val ts = o.optLong("timestamp", System.currentTimeMillis())
             val pushName = o.optString("pushName")
             val fromHistory = o.optBoolean("history")
+            // LID 会话的真实手机号（国家检测用），缓存到会话维度
+            val pn = o.optString("pn")
+            if (pn.isNotBlank()) pnCache[chatJid] = pn
             val mediaKind = o.optString("mediaKind")
             val mediaMime = o.optString("mimeType")
             val mediaName = o.optString("fileName")
@@ -184,11 +187,29 @@ class ChatEngine private constructor(context: Context) : MessageListener, Connec
      * 下载消息媒体：命中本地文件立即回调；否则按 mediaMeta 回传 Go 层下载（走代理），
      * 落盘 files/media/ 后更新 DB，再回调。callback 主线程，参数为文件或 null。
      */
+    private var pnCache = ConcurrentHashMap<String, String>()
+
+    /** 该会话最近一次收到的真实手机号 JID（Go 层随消息下发）；空=未知 */
+    fun lastPnFor(chatJid: String): String = pnCache[chatJid] ?: ""
+
+    /** 主动解析 LID→手机号（进会话页时调用，回调主线程） */
+    fun resolvePnAsync(chatJid: String, callback: ((String) -> Unit)) {
+        pnCache[chatJid]?.let { callback(it); return }
+        Thread {
+            val pn = try { client.resolvePN(chatJid) ?: "" } catch (_: Throwable) { "" }
+            if (pn.isNotBlank()) pnCache[chatJid] = pn
+            callback(pn)
+        }.start()
+    }
+
     fun fetchMediaAsync(chatJid: String, id: String, callback: ((java.io.File?) -> Unit)?) {
         val dir = java.io.File(appContext.filesDir, "media").apply { mkdirs() }
         val key = (chatJid + "_" + id).replace(Regex("[^A-Za-z0-9]"), "_")
         val f = java.io.File(dir, key)
         if (f.exists() && f.length() > 0) {
+            if (db.messages(chatJid).firstOrNull { it.id == id }?.mediaPath.isNullOrBlank()) {
+                db.updateMediaPath(chatJid, id, f.absolutePath)
+            }
             callback?.let { main.post { it(f) } }
             return
         }

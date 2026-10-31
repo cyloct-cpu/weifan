@@ -49,6 +49,24 @@ class ChatActivity : BaseActivity() {
     private lateinit var subtitle: TextView
     private lateinit var translateBtn: TextView
 
+    /** 语音播放器（单例：同一时间只播一条）*/
+    private var player: android.media.MediaPlayer? = null
+    private var playingRow: LinearLayout? = null
+    private var playingRowViewRef: Pair<LinearLayout, TextView>? = null
+
+    private fun stopPlayback() {
+        try { player?.release() } catch (_: Throwable) { }
+        player = null
+        playingRowViewRef?.second?.text = playingRowViewRef?.second?.tag?.toString() ?: "语音消息"
+        playingRow = null
+        playingRowViewRef = null
+    }
+
+    override fun onDestroy() {
+        stopPlayback()
+        super.onDestroy()
+    }
+
     private var translateOn = true
 
     private val timeFmt = SimpleDateFormat("HH:mm", Locale.getDefault())
@@ -102,7 +120,25 @@ class ChatActivity : BaseActivity() {
             ellipsize = TextUtils.TruncateAt.END
             gravity = Gravity.START
         })
-        chatLangLabel = engine.chatLangMemory[chatJid]?.let { Lang.name(it) } ?: "自动检测"
+        // 国家检测：优先真实手机号（Go 层已把 LID 解析回 PN），再看会话语言记忆
+        val pn = engine.lastPnFor(chatJid)
+        val detected = com.weifan.app.core.CountryDetect.label(pn.ifBlank { chatJid })
+        chatLangLabel = when {
+            detected.isNotBlank() -> detected
+            else -> engine.chatLangMemory[chatJid]?.let { com.weifan.app.core.CountryDetect.langName(it) }
+                ?: "自动检测"
+        }
+        val seedLang = com.weifan.app.core.CountryDetect.detect(pn.ifBlank { chatJid })?.lang
+        if (seedLang != null) engine.chatLangMemory.putIfAbsent(chatJid, seedLang)
+        // 主动解析 LID→手机号（异步），拿到后刷新副标题与翻译目标语言
+        engine.resolvePnAsync(chatJid) { pn ->
+            if (isDestroyed || isFinishing) return@resolvePnAsync
+            val lb = com.weifan.app.core.CountryDetect.label(pn.ifBlank { chatJid })
+            if (lb.isNotBlank()) {
+                chatLangLabel = lb
+                subtitle.text = "最近上线 · $chatLangLabel"
+            }
+        }
         subtitle = TextView(this).apply {
             text = "最近上线 · $chatLangLabel"
             textSize = WaSpec.CHAT_HEADER_SUBTITLE_SP.toFloat()
@@ -305,6 +341,11 @@ class ChatActivity : BaseActivity() {
             return
         }
         for (m in msgs) listBox.addView(bubble(m))
+        // 图片/贴纸/语音/文档自动下载（视频仍手动点）；下载完重渲染一次
+        for (m in msgs.filter { it.mediaKind.isNotBlank() && it.mediaKind != "video" &&
+            it.mediaPath.isBlank() }) {
+            engine.fetchMediaAsync(m.chatJid, m.id) { _ -> main.post { renderMessages() } }
+        }
         for (m in msgs.filter { !it.fromMe && it.translated.isBlank() && it.text.isNotBlank() }) {
             engine.translateIncomingAsync(m.chatJid, m.id, m.text)
         }
@@ -368,8 +409,18 @@ class ChatActivity : BaseActivity() {
         fun showImage(f: java.io.File?) {
             val bmp = f?.let { android.graphics.BitmapFactory.decodeFile(it.absolutePath) }
                 ?: decodeThumb(m.mediaThumb)
-            if (bmp != null) imageView.setImageBitmap(roundBmp(bmp))
+            if (bmp != null) {
+                imageView.setImageBitmap(roundBmp(bmp))
+            } else {
+                // 无缩略图且未下载：可见占位框
+                imageView.setImageDrawable(null)
+                imageView.background = Ui.roundBg(this@ChatActivity,
+                    if (night) WaSpec.SURFACE_NIGHT else WaSpec.GRAY6, 8, 1, WaSpec.divider(night))
+                imageView.minimumHeight = dp(120)
+                imageView.minimumWidth = dp(180)
+            }
         }
+
 
         return when (m.mediaKind) {
             "image", "sticker", "video" -> {
@@ -412,15 +463,16 @@ class ChatActivity : BaseActivity() {
                     textSize = 18f
                 })
                 val colX = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
-                colX.addView(TextView(this).apply {
-                    text = m.mediaName.ifBlank {
+                val status = TextView(this).apply {
+                    text = (m.mediaName.ifBlank {
                         if (m.mediaKind == "audio") "语音消息" else "文件"
-                    }
+                    })
                     textSize = 14f
                     setTextColor(WaSpec.textPrimary(night))
                     maxLines = 1
                     ellipsize = android.text.TextUtils.TruncateAt.MIDDLE
-                })
+                }
+                colX.addView(status)
                 colX.addView(TextView(this).apply {
                     text = fileSizeLabel()
                     textSize = 11.5f
@@ -429,17 +481,46 @@ class ChatActivity : BaseActivity() {
                 row.addView(colX, LinearLayout.LayoutParams(0,
                     ViewGroup.LayoutParams.WRAP_CONTENT, 1f).apply { marginStart = dp(8) })
                 row.setOnClickListener {
+                    // 正在播就停掉
+                    if (m.mediaKind == "audio" && playingRow === row) { stopPlayback(); return@setOnClickListener }
                     engine.fetchMediaAsync(m.chatJid, m.id) { f ->
-                        if (f != null && m.mediaKind == "audio") {
+                        if (f == null) {
+                            android.widget.Toast.makeText(this@ChatActivity,
+                                "下载失败，请点重试", android.widget.Toast.LENGTH_SHORT).show()
+                            return@fetchMediaAsync
+                        }
+                        if (m.mediaKind == "audio") {
+                            stopPlayback()
                             try {
                                 val mp = android.media.MediaPlayer()
                                 mp.setDataSource(f.absolutePath)
+                                mp.setOnCompletionListener {
+                                    status.text = m.mediaName.ifBlank { "语音消息" }
+                                    playingRow = null
+                                    it.release()
+                                    if (player === it) player = null
+                                }
+                                mp.setOnErrorListener { p, _, _ ->
+                                    status.text = m.mediaName.ifBlank { "语音消息" }
+                                    playingRow = null
+                                    p.release(); if (player === p) player = null
+                                    android.widget.Toast.makeText(this@ChatActivity,
+                                        "该语音格式不支持播放", android.widget.Toast.LENGTH_SHORT).show()
+                                    true
+                                }
                                 mp.prepare()
                                 mp.start()
-                            } catch (_: Throwable) { }
+                                player = mp
+                                playingRow = row
+                                status.text = "播放中… 点击停止"
+                            } catch (e: Throwable) {
+                                android.widget.Toast.makeText(this@ChatActivity,
+                                    "播放失败：${e.message ?: "未知"}", android.widget.Toast.LENGTH_SHORT).show()
+                            }
                         }
                     }
                 }
+                if (m.mediaKind == "audio") playingRowViewRef = row to status
                 row
             }
         }
