@@ -31,11 +31,11 @@ class SettingsActivity : BaseActivity() {
 
     private val p get() = palette
 
-    /** 顶部那枚昼夜图标：昼 → 夜 → 跟随系统 三档循环 */
-    private fun themeGlyph(mode: String): String = when (mode) {
-        Theme.MODE_LIGHT -> "☀"
-        Theme.MODE_DARK -> "☾"
-        else -> "◐"
+    /** 昼夜模式展示名：浅色 / 深色 / 跟随系统 */
+    private fun themeModeLabel(mode: String): String = when (mode) {
+        Theme.MODE_LIGHT -> "浅色"
+        Theme.MODE_DARK -> "深色"
+        else -> "跟随系统"
     }
 
     /** 版本号取自安装包信息，避免和 build.gradle 里的版本各说各话 */
@@ -79,11 +79,6 @@ class SettingsActivity : BaseActivity() {
         }, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f).apply {
             marginStart = dp(6)
         })
-        // 昼夜切换：昼 → 夜 → 跟随系统 → 昼，点一下立即生效
-        top.addView(Ui.headerIconButton(this, themeGlyph(prefs.themeMode), night, 20f) {
-            prefs.themeMode = Theme.nextMode(prefs.themeMode)
-            recreate()
-        })
         root.addView(top)
         root.addView(View(this).apply { setBackgroundColor(WaSpec.divider(night)) },
             LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(1)))
@@ -97,6 +92,14 @@ class SettingsActivity : BaseActivity() {
         root.addView(scroll, LinearLayout.LayoutParams(
             ViewGroup.LayoutParams.MATCH_PARENT, 0, 1f))
         setContentView(root)
+
+        // ---- 通用 ----
+        list.addView(section("通用"))
+        list.addView(rowValue("外观", themeModeLabel(prefs.themeMode)) {
+            prefs.themeMode = com.weifan.app.core.Theme.nextMode(prefs.themeMode)
+            recreate()
+            true
+        })
 
         // ---- WhatsApp 连接 ----
         list.addView(section("WhatsApp 连接"))
@@ -115,16 +118,38 @@ class SettingsActivity : BaseActivity() {
         list.addView(row("翻译服务（九家 + 自定义接口）", "密钥、优先级、额度保护、试译") {
             startActivity(Intent(this, MainActivity::class.java))
         })
-        list.addView(row("翻译工具（划词 / 文本 / 文档）", "与 WhatsApp 无关的通用翻译") {
-            startActivity(Intent(this, TranslateActivity::class.java))
-        })
-        list.addView(row("翻译文档", "txt / md / csv / docx / PDF，本机解析") {
-            startActivity(Intent(this, TranslateDocActivity::class.java))
+        list.addView(row("打赏", "觉得好用请作者吗杯奶茶 ☕") {
+            showDonateDialog()
         })
 
         // ---- 关于 ----
         list.addView(section("关于"))
         list.addView(rowValue("版本", appVersion(), onClick = null))
+    }
+
+    /** 打赏弹窗：大图二维码 + 提示保存后微信扫码 */
+    private fun showDonateDialog() {
+        val box = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            gravity = Gravity.CENTER
+            setPadding(dp(20), dp(20), dp(20), dp(8))
+        }
+        box.addView(android.widget.ImageView(this).apply {
+            setImageResource(R.drawable.qr_donate)
+            adjustViewBounds = true
+            maxWidth = dp(320)
+        })
+        box.addView(TextView(this).apply {
+            text = "保存这张图片，用微信扫码打赏"
+            textSize = 15f
+            setTextColor(WaSpec.textPrimary(night))
+            gravity = Gravity.CENTER
+            setPadding(0, dp(14), 0, 0)
+        })
+        android.app.AlertDialog.Builder(this)
+            .setView(box)
+            .setPositiveButton("关闭", null)
+            .show()
     }
 
 

@@ -396,26 +396,6 @@ class PairingActivity : BaseActivity(), PairListener {
             topMargin = dp(16)
         })
 
-        // ── 右下角在线客服（白底胶囊，marginEnd 20 / bottom 24）
-        val support = TextView(this).apply {
-            text = "💬  在线客服"
-            textSize = 14f
-            setTextColor(accent)
-            typeface = Typeface.create("sans-serif-medium", Typeface.NORMAL)
-            gravity = Gravity.CENTER
-            background = Ui.roundBg(this@PairingActivity, pageBg, 22, 1, stepInactive)
-            setPadding(dp(18), dp(11), dp(18), dp(11))
-            isClickable = true
-            setOnClickListener {
-                Toast.makeText(this@PairingActivity, "如需协助，请通过项目仓库反馈", Toast.LENGTH_SHORT).show()
-            }
-        }
-        frame.addView(support, FrameLayout.LayoutParams(
-            ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply {
-            gravity = Gravity.END or Gravity.BOTTOM
-            marginEnd = dp(20)
-            bottomMargin = dp(24)
-        })
 
         setContentView(frame)
 

@@ -60,11 +60,8 @@ class ChatListActivity : BaseActivity() {
             setBackgroundColor(WaSpec.surface(night))
         }
 
-        // ── 顶栏：标题 20sp medium + 两个 42dp 图标按钮（对齐 memberButton / moreMenuButton）
+        // ── 顶栏：标题 20sp medium + 右侧菜单按钮
         val top = Ui.listHeader(this, "微翻", night, listOf(
-            Ui.headerIconButton(this, "◍", night, 20f) {
-                startActivity(Intent(this, AccountActivity::class.java))
-            },
             Ui.headerIconButton(this, "⋮", night, 24f) { openSettings() }
         ))
         root.addView(top, LinearLayout.LayoutParams(
