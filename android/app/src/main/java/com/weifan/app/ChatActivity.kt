@@ -236,6 +236,11 @@ class ChatActivity : Activity() {
             return
         }
         for (m in msgs) listBox.addView(bubble(m))
+        // 收件未翻译的（非中文且无译文）：后台补翻，完成后整页刷新
+        val pending = msgs.filter { !it.fromMe && it.translated.isBlank() }
+        for (m in pending) {
+            engine.translateIncomingAsync(m.chatJid, m.id, m.text)
+        }
         main.post { scroll.fullScroll(ScrollView.FOCUS_DOWN) }
     }
 
@@ -256,6 +261,16 @@ class ChatActivity : Activity() {
             textSize = 15f
             setTextColor(waText)
         })
+        // 收件：中文译文行（翻译完成后出现在原文下方，蓝色，与参考产品一致）
+        if (!m.fromMe && m.translated.isNotBlank()) {
+            col.addView(TextView(this).apply {
+                text = m.translated
+                textSize = 14.5f
+                setTextColor(Color.parseColor("#0A7EA4"))
+                setTypeface(typeface, Typeface.BOLD)
+                setPadding(0, Ui.dp(this@ChatActivity, 3), 0, 0)
+            })
+        }
         // 副文本：发件时的中文原文（灰色小字）
         if (m.fromMe && m.original.isNotBlank() && m.original != m.text) {
             col.addView(TextView(this).apply {

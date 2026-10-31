@@ -145,7 +145,7 @@ class ChatEngine private constructor(context: Context) : MessageListener, Connec
     // MARK: - 翻译（复用 core.Engine）
 
     /** 收件：对方语言 → 中文 */
-    private fun translateIncomingAsync(chatJid: String, id: String, text: String) {
+    fun translateIncomingAsync(chatJid: String, id: String, text: String) {
         Thread {
             try {
                 val res = Engine.translateIncoming(text, prefs)
