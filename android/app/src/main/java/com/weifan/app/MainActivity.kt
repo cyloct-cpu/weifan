@@ -40,9 +40,9 @@ import com.weifan.app.service.WeiFanAccessibilityService
 /**
  * 设置页。刻意不用 AndroidX / Compose：一个设置页不值得引入整套 UI 框架。
  *
- * 视觉按品牌规范（brand/brand-spec.png）：
- * - 暖 #FD6C4E = 发件（触发词、阈值、自动替换）；冷 #2FB6FF = 收件；
- *   #00E9DD = 双向通用（服务、术语）。界面里唯一的彩色就是「方向」。
+ * 视觉按品牌规范（brand-v2/，色值对齐 WhatsApp 官方规格）：
+ * - 主操作 #128C7E（发件/触发词/阈值/自动替换）；收件 #34B7F1；
+ *   成功与未读 #25D366；译文行 #0A7EA4。
  * - 浅色为默认，深色跟随系统（uiMode），两套 token 见 [palette]。
  *
  * 服务商表单由 Providers.DEFS 自动生成 —— 加一家服务商不用改这个文件。
