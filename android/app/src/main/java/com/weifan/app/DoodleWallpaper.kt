@@ -37,8 +37,8 @@ object DoodleWallpaper {
         val size = 720
         val bmp = Bitmap.createBitmap(size, size, Bitmap.Config.ARGB_8888)
         val canvas = Canvas(bmp)
-        val bg = if (dark) Color.parseColor("#0B141A") else Color.parseColor("#EFE5DB")
-        val ink = if (dark) Color.parseColor("#182229") else Color.parseColor("#E3D8CC")
+        val bg = if (dark) Color.parseColor("#0B141A") else WaSpec.WALLPAPER_BASE
+        val ink = if (dark) Color.parseColor("#182229") else WaSpec.WALLPAPER_DOODLE
         canvas.drawColor(bg)
 
         val paint = Paint(Paint.ANTI_ALIAS_FLAG).apply {

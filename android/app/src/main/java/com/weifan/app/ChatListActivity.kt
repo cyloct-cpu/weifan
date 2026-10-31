@@ -43,8 +43,9 @@ class ChatListActivity : Activity() {
     private var filter = "全部"
     private var query = ""
 
-    private val waGreen = Color.parseColor("#075E54")     // WhatsApp 顶栏墨绿
-    private val chipSel = Color.parseColor("#DCF8C6")     // 选中 chip 浅绿
+    private val waGreen = WaSpec.GREEN                    // #128C7E 官方顶栏绿
+    private val chipSel = WaSpec.CHIP_SELECTED            // #EBEBEF 官方选中灰
+    private val chipBorder = WaSpec.CHIP_BORDER           // #E0E0E4
     private val bubbleGreen = Color.parseColor("#DCF8C6")
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -88,7 +89,7 @@ class ChatListActivity : Activity() {
             setTextColor(p.text)
             setHintTextColor(Color.parseColor("#9AA5AD"))
             setBackgroundResource(0)
-            background = Ui.roundBg(this@ChatListActivity, Color.parseColor("#F0F2F5"), 22)
+            background = Ui.roundBg(this@ChatListActivity, WaSpec.GRAY6, 22)  // #F2F2F7 官方搜索底
             setSingleLine(true)
             setPadding(Ui.dp(this@ChatListActivity, 18), Ui.dp(this@ChatListActivity, 9),
                 Ui.dp(this@ChatListActivity, 12), Ui.dp(this@ChatListActivity, 9))
@@ -165,10 +166,11 @@ class ChatListActivity : Activity() {
             row.addView(TextView(this).apply {
                 text = name
                 textSize = 13f
-                setTextColor(if (selected) Color.parseColor("#5E5E5E") else Color.parseColor("#075E54"))
+                setTextColor(if (selected) WaSpec.CHIP_TEXT_SELECTED else WaSpec.CHIP_TEXT_GREEN)
                 setTypeface(typeface, if (selected) Typeface.BOLD else Typeface.NORMAL)
                 background = Ui.roundBg(this@ChatListActivity,
-                    if (selected) chipSel else Color.parseColor("#F0F2F5"), 18)
+                    if (selected) chipSel else WaSpec.CHIP_UNSELECTED, 18,
+                    1, if (selected) WaSpec.CHIP_SELECTED_BORDER else chipBorder)
                 setPadding(Ui.dp(this@ChatListActivity, 16), Ui.dp(this@ChatListActivity, 6),
                     Ui.dp(this@ChatListActivity, 16), Ui.dp(this@ChatListActivity, 6))
                 setOnClickListener { filter = name; renderChips(); renderChats() }
@@ -299,7 +301,7 @@ class ChatListActivity : Activity() {
         mid.addView(TextView(this@ChatListActivity).apply {
             text = chat.title.ifBlank { chat.jid.substringBefore("@") }
             textSize = 15.5f
-            setTextColor(Color.parseColor("#111B21"))
+            setTextColor(WaSpec.TEXT_PRIMARY)
             setTypeface(typeface, Typeface.BOLD)
             maxLines = 1
         })
@@ -319,7 +321,7 @@ class ChatListActivity : Activity() {
         right.addView(TextView(this@ChatListActivity).apply {
             text = timeFmt.format(Date(chat.lastTs))
             textSize = 11.5f
-            setTextColor(if (chat.unread > 0) Color.parseColor("#25D366") else Color.parseColor("#8696A0"))
+            setTextColor(if (chat.unread > 0) WaSpec.GREEN_LIGHT else WaSpec.TEXT_SECONDARY)
         })
         if (chat.unread > 0) {
             right.addView(TextView(this@ChatListActivity).apply {
@@ -328,7 +330,7 @@ class ChatListActivity : Activity() {
                 setTextColor(Color.WHITE)
                 setTypeface(typeface, Typeface.BOLD)
                 gravity = Gravity.CENTER
-                background = Ui.roundBg(this@ChatListActivity, Color.parseColor("#25D366"), 11)
+                background = Ui.roundBg(this@ChatListActivity, WaSpec.GREEN_LIGHT, 11)
                 setPadding(Ui.dp(this@ChatListActivity, 7), 1, Ui.dp(this@ChatListActivity, 7), 1)
             }, LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT,
                 ViewGroup.LayoutParams.WRAP_CONTENT).apply { setMargins(0, Ui.dp(this@ChatListActivity, 6), 0, 0) })

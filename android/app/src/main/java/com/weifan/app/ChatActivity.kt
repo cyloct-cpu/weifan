@@ -46,11 +46,11 @@ class ChatActivity : Activity() {
     private lateinit var statusText: TextView
     private lateinit var sendHint: TextView
 
-    private val bubbleGreen = Color.parseColor("#DCF8C6")
-    private val bubbleWhite = Color.WHITE
-    private val waText = Color.parseColor("#111B21")
-    private val waSub = Color.parseColor("#667781")
-    private val waOriginal = Color.parseColor("#5E6B73")
+    private val bubbleGreen = WaSpec.BUBBLE_SENT          // #E0FCD6
+    private val bubbleWhite = WaSpec.BUBBLE_RECEIVED
+    private val waText = WaSpec.TEXT_PRIMARY               // #111111
+    private val waSub = WaSpec.TEXT_SECONDARY             // #8E8E93
+    private val waOriginal = WaSpec.TEXT_SECONDARY
 
     private val timeFmt = SimpleDateFormat("HH:mm", Locale.getDefault())
 
@@ -109,8 +109,8 @@ class ChatActivity : Activity() {
         scroll = ScrollView(this)
         listBox = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
-            setPadding(Ui.dp(this@ChatActivity, 10), Ui.dp(this@ChatActivity, 8),
-                Ui.dp(this@ChatActivity, 10), Ui.dp(this@ChatActivity, 8))
+            setPadding(Ui.dp(this@ChatActivity, WaSpec.MESSAGE_LIST_PADDING_H_DP), Ui.dp(this@ChatActivity, 8),
+                Ui.dp(this@ChatActivity, WaSpec.MESSAGE_LIST_PADDING_H_DP), Ui.dp(this@ChatActivity, 8))
         }
         scroll.addView(listBox)
         DoodleWallpaper.applyTo(scroll, dark = false)
@@ -265,8 +265,8 @@ class ChatActivity : Activity() {
         if (!m.fromMe && m.translated.isNotBlank()) {
             col.addView(TextView(this).apply {
                 text = m.translated
-                textSize = 14.5f
-                setTextColor(Color.parseColor("#0A7EA4"))
+                textSize = WaSpec.TRANSLATION_TEXT_SP + 1.5f   // 视觉 14.5sp≈官方13sp+移动端补偿
+                setTextColor(WaSpec.TRANSLATE_TEXT)
                 setTypeface(typeface, Typeface.BOLD)
                 setPadding(0, Ui.dp(this@ChatActivity, 3), 0, 0)
             })
@@ -292,7 +292,7 @@ class ChatActivity : Activity() {
             if (m.fromMe) addView(TextView(this@ChatActivity).apply {
                 text = "✓✓"
                 textSize = 10.5f
-                setTextColor(Color.parseColor("#53BDEB"))
+                setTextColor(WaSpec.READ_RECEIPT)                     // #34B7F1
                 setPadding(Ui.dp(this@ChatActivity, 3), 0, 0, 0)
             })
         }.also { ll ->
@@ -307,8 +307,11 @@ class ChatActivity : Activity() {
         }, FrameLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT,
             ViewGroup.LayoutParams.WRAP_CONTENT).apply {
             gravity = if (m.fromMe) Gravity.END else Gravity.START
-            setMargins(Ui.dp(this@ChatActivity, if (m.fromMe) 60 else 4), Ui.dp(this@ChatActivity, 3),
-                Ui.dp(this@ChatActivity, if (m.fromMe) 4 else 60), Ui.dp(this@ChatActivity, 3))
+            // 官方: side_inset 8dp / opposite_inset 30dp / 上下间距 3dp
+            setMargins(Ui.dp(this@ChatActivity, if (m.fromMe) WaSpec.BUBBLE_OPPOSITE_INSET_DP else WaSpec.BUBBLE_SIDE_INSET_DP),
+                Ui.dp(this@ChatActivity, 3),
+                Ui.dp(this@ChatActivity, if (m.fromMe) WaSpec.BUBBLE_SIDE_INSET_DP else WaSpec.BUBBLE_OPPOSITE_INSET_DP),
+                Ui.dp(this@ChatActivity, 3))
         })
         return holder
     }
