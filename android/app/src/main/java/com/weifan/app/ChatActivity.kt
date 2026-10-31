@@ -1,13 +1,12 @@
 package com.weifan.app
 
-import android.app.Activity
-import android.graphics.Bitmap
+import android.content.Intent
 import android.graphics.Color
 import android.graphics.Typeface
-import android.graphics.drawable.BitmapDrawable
 import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
+import android.text.TextUtils
 import android.view.Gravity
 import android.view.View
 import android.view.ViewGroup
@@ -25,13 +24,17 @@ import java.util.Date
 import java.util.Locale
 
 /**
- * 会话页 —— WhatsApp 原生风格：
- * 顶栏（返回 + 头像 + 号码/国家/语言 + ⋮）、涂鸦壁纸、绿/白气泡。
- * 发件 = 直译直发：点发送即翻译并发送，气泡里译文主行 + 中文原文副行，无「译」按钮。
+ * 会话页 —— 按参考客户端 activity_chat 的规格 1:1 重排：
+ *
+ *   顶栏：paddingH 12dp / paddingV 8dp / minHeight 72dp；返回键 40dp；头像 43dp；
+ *        标题 16sp medium（左对齐）、副标题 13sp（"最近上线"）；底部分隔线
+ *   消息区：涂鸦壁纸、气泡 10dp 圆角、左右 inset 8/30dp、上下间距 3dp
+ *   输入区：外层 padding 8dp；胶囊 minHeight 48dp / paddingH 6dp；
+ *        ＋(28dp)、😊(28dp)、输入框(16sp / minHeight 36dp / maxLines 4)、译按钮(36dp)；
+ *        发送圆钮 48dp、左间距 4dp
  */
 class ChatActivity : BaseActivity() {
 
-    private val p get() = palette
     private lateinit var engine: ChatEngine
     private val main = Handler(Looper.getMainLooper())
 
@@ -43,14 +46,10 @@ class ChatActivity : BaseActivity() {
     private lateinit var scroll: ScrollView
     private lateinit var input: EditText
     private lateinit var sendBtn: View
-    private lateinit var statusText: TextView
-    private lateinit var sendHint: TextView
+    private lateinit var subtitle: TextView
+    private lateinit var translateBtn: TextView
 
-    private val bubbleGreen = WaSpec.BUBBLE_SENT          // #E0FCD6
-    private val bubbleWhite get() = if (night) Color.parseColor("#1F2C34") else WaSpec.BUBBLE_RECEIVED
-    private val waText get() = if (night) Color.parseColor("#E9EBEE") else WaSpec.TEXT_PRIMARY
-    private val waSub get() = if (night) Color.parseColor("#8696A0") else WaSpec.TEXT_SECONDARY
-    private val waOriginal = WaSpec.TEXT_SECONDARY
+    private var translateOn = true
 
     private val timeFmt = SimpleDateFormat("HH:mm", Locale.getDefault())
 
@@ -60,61 +59,84 @@ class ChatActivity : BaseActivity() {
         chatTitle = intent.getStringExtra("title") ?: ""
         engine = ChatEngine.get(this)
 
-        val root = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; setBackgroundColor(if (night) Color.parseColor("#17212B") else Color.WHITE) }
+        val root = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            setBackgroundColor(WaSpec.surface(night))
+        }
 
-        // ---- 顶栏（白色，与 WhatsApp iOS 风格一致）----
+        // ── 顶栏：minHeight 72dp，paddingH 12 / paddingV 8
         val top = LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL
             gravity = Gravity.CENTER_VERTICAL
-            setBackgroundColor(if (night) Color.parseColor("#17212B") else Color.WHITE)
-            setPadding(Ui.dp(this@ChatActivity, 8), Ui.dp(this@ChatActivity, 10),
-                Ui.dp(this@ChatActivity, 12), Ui.dp(this@ChatActivity, 10))
+            setBackgroundColor(WaSpec.surface(night))
+            setPadding(dp(WaSpec.CHAT_HEADER_PADDING_H_DP), dp(WaSpec.CHAT_HEADER_PADDING_V_DP),
+                dp(WaSpec.CHAT_HEADER_PADDING_H_DP), dp(WaSpec.CHAT_HEADER_PADDING_V_DP))
+            minimumHeight = dp(WaSpec.CHAT_HEADER_MIN_HEIGHT_DP)
         }
+
+        // 返回键 40dp
         top.addView(TextView(this).apply {
             text = "‹"
-            textSize = 30f
-            setTextColor(waText)
-            setPadding(Ui.dp(this@ChatActivity, 6), 0, Ui.dp(this@ChatActivity, 10), 0)
+            textSize = 26f
+            gravity = Gravity.CENTER
+            setTextColor(WaSpec.textPrimary(night))
+            contentDescription = "返回"
+            isClickable = true
             setOnClickListener { finish() }
+        }, LinearLayout.LayoutParams(dp(WaSpec.CHAT_BACK_BTN_DP), dp(WaSpec.CHAT_BACK_BTN_DP)))
+
+        // 头像 43dp，左间距 4dp
+        top.addView(avatarView(), LinearLayout.LayoutParams(
+            dp(WaSpec.CHAT_AVATAR_SIZE_DP), dp(WaSpec.CHAT_AVATAR_SIZE_DP)).apply {
+            marginStart = dp(4)
         })
-        top.addView(avatarView())
+
+        // 标题列：16sp medium + 13sp 副标题（"最近上线"），左间距 8dp
         val titleCol = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
         titleCol.addView(TextView(this).apply {
             text = chatTitle.ifBlank { chatJid.substringBefore("@") }
-            textSize = 16.5f
-            setTextColor(waText)
-            setTypeface(typeface, Typeface.BOLD)
+            textSize = WaSpec.CHAT_HEADER_TITLE_SP.toFloat()
+            setTextColor(WaSpec.textPrimary(night))
+            typeface = Typeface.create("sans-serif-medium", Typeface.NORMAL)
             maxLines = 1
+            ellipsize = TextUtils.TruncateAt.END
+            gravity = Gravity.START
         })
         chatLangLabel = engine.chatLangMemory[chatJid]?.let { Lang.name(it) } ?: "自动检测"
-        titleCol.addView(TextView(this).apply {
-            text = "$chatLangLabel · 在线"
-            textSize = 12f
-            setTextColor(waSub)
+        subtitle = TextView(this).apply {
+            text = "最近上线 · $chatLangLabel"
+            textSize = WaSpec.CHAT_HEADER_SUBTITLE_SP.toFloat()
+            setTextColor(WaSpec.textSecondary(night))
+            maxLines = 1
+            ellipsize = TextUtils.TruncateAt.END
+            setPadding(0, dp(2), 0, 0)
+        }
+        titleCol.addView(subtitle)
+        top.addView(titleCol, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f).apply {
+            marginStart = dp(8)
         })
-        top.addView(titleCol, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
+
         top.addView(TextView(this).apply {
             text = "⋮"
-            textSize = 22f
-            setTextColor(waText)
-            setPadding(Ui.dp(this@ChatActivity, 10), 0, Ui.dp(this@ChatActivity, 4), 0)
-            setOnClickListener {
-                Toast.makeText(this@ChatActivity, "设置在主页右上角 ⋮ 菜单里", Toast.LENGTH_SHORT).show()
-            }
-        })
-        root.addView(top)
-        root.addView(divider())
+            textSize = 20f
+            gravity = Gravity.CENTER
+            setTextColor(WaSpec.textPrimary(night))
+            isClickable = true
+            setOnClickListener { finish() }
+        }, LinearLayout.LayoutParams(dp(WaSpec.CHAT_BACK_BTN_DP), dp(WaSpec.CHAT_BACK_BTN_DP)))
 
-        // ---- 消息流（涂鸦壁纸背景）----
+        root.addView(top)
+        root.addView(View(this).apply { setBackgroundColor(WaSpec.divider(night)) },
+            LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, 1))
+
+        // ── 消息流（涂鸦壁纸）
         scroll = ScrollView(this)
         listBox = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
-            setPadding(Ui.dp(this@ChatActivity, WaSpec.MESSAGE_LIST_PADDING_H_DP), Ui.dp(this@ChatActivity, 8),
-                Ui.dp(this@ChatActivity, WaSpec.MESSAGE_LIST_PADDING_H_DP), Ui.dp(this@ChatActivity, 8))
+            setPadding(dp(WaSpec.MESSAGE_LIST_PADDING_H_DP), dp(8),
+                dp(WaSpec.MESSAGE_LIST_PADDING_H_DP), dp(8))
         }
         scroll.addView(listBox)
-        // 官方 WhatsApp 涂鸦壁纸位图（wa_wallpaper_doodle.jpg，760x1396）
-        // cover 铺满：保持比例放大到 View 尺寸，居中裁切
         scroll.post {
             val w = maxOf(scroll.width, 1)
             val h = maxOf(scroll.height, 1)
@@ -127,95 +149,120 @@ class ChatActivity : BaseActivity() {
         root.addView(scroll, LinearLayout.LayoutParams(
             ViewGroup.LayoutParams.MATCH_PARENT, 0, 1f))
 
-        // ---- 底部输入条（WhatsApp 单圆角长条 + 绿色圆形发送）----
+        // ── 输入区：外层 padding 8dp，胶囊 + 48dp 发送圆钮
         val bottomWrap = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
-            setBackgroundColor(if (night) Color.parseColor("#17212B") else Color.WHITE)
+            setBackgroundColor(WaSpec.surface(night))
+            setPadding(dp(WaSpec.INPUT_AREA_PADDING_DP), dp(WaSpec.INPUT_AREA_PADDING_DP),
+                dp(WaSpec.INPUT_AREA_PADDING_DP), dp(WaSpec.INPUT_AREA_PADDING_DP))
         }
-        sendHint = TextView(this).apply {
-            textSize = 11f
-            setTextColor(waSub)
-            setPadding(Ui.dp(this@ChatActivity, 16), Ui.dp(this@ChatActivity, 4),
-                Ui.dp(this@ChatActivity, 16), 0)
-            text = "直接发送，发出的消息自动翻译成对方的语言"
+        val row = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.BOTTOM
         }
-        bottomWrap.addView(sendHint)
-        val bottom = LinearLayout(this).apply {
+
+        val capsule = LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL
             gravity = Gravity.CENTER_VERTICAL
-            setPadding(Ui.dp(this@ChatActivity, 10), Ui.dp(this@ChatActivity, 6),
-                Ui.dp(this@ChatActivity, 10), Ui.dp(this@ChatActivity, 10))
+            background = Ui.roundBg(this@ChatActivity, WaSpec.surface(night),
+                WaSpec.INPUT_CAPSULE_MIN_HEIGHT_DP / 2, 1,
+                if (night) WaSpec.INPUT_BORDER_NIGHT else WaSpec.INPUT_BORDER)
+            setPadding(dp(WaSpec.INPUT_CAPSULE_PADDING_DP), 0, dp(WaSpec.INPUT_CAPSULE_PADDING_DP), 0)
+            minimumHeight = dp(WaSpec.INPUT_CAPSULE_MIN_HEIGHT_DP)
         }
-        val inputBar = LinearLayout(this).apply {
-            orientation = LinearLayout.HORIZONTAL
-            gravity = Gravity.CENTER_VERTICAL
-            background = Ui.roundBg(this@ChatActivity,
-                if (night) Color.parseColor("#1F2C34") else Color.parseColor("#F0F2F5"), 24)
+        for (glyph in listOf("＋", "😊")) {
+            capsule.addView(TextView(this).apply {
+                text = glyph
+                textSize = 16f
+                gravity = Gravity.CENTER
+                setTextColor(WaSpec.textPrimary(night))
+            }, LinearLayout.LayoutParams(
+                dp(WaSpec.ATTACH_BUTTON_SIZE_DP), dp(WaSpec.ATTACH_BUTTON_SIZE_DP)))
         }
         input = EditText(this).apply {
             hint = "输入消息"
-            textSize = 15f
-            setTextColor(waText)
-            setHintTextColor(waSub)
-            background = null
-            maxLines = 4
-            setPadding(Ui.dp(this@ChatActivity, 16), Ui.dp(this@ChatActivity, 10),
-                Ui.dp(this@ChatActivity, 12), Ui.dp(this@ChatActivity, 10))
+            textSize = WaSpec.MESSAGE_INPUT_SP.toFloat()
+            setTextColor(WaSpec.textPrimary(night))
+            setHintTextColor(WaSpec.textSecondary(night))
+            setBackgroundResource(0)
+            maxLines = WaSpec.MESSAGE_INPUT_MAX_LINES
+            gravity = Gravity.CENTER_VERTICAL
+            minimumHeight = dp(WaSpec.MESSAGE_INPUT_MIN_HEIGHT_DP)
+            setPadding(dp(4), dp(6), dp(4), dp(6))
         }
-        inputBar.addView(input, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
-        bottom.addView(inputBar, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f)
-            .apply { setMargins(0, 0, Ui.dp(this@ChatActivity, 8), 0) })
+        capsule.addView(input, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
 
-        // WhatsApp 绿色圆形发送按钮（纸飞机）
-        sendBtn = FrameLayout(this).apply {
-            val s = Ui.dp(this@ChatActivity, 52)
-            layoutParams = LinearLayout.LayoutParams(s, s)
-            addView(TextView(this@ChatActivity).apply {
-                text = "➤"
-                textSize = 20f
-                setTextColor(Color.WHITE)
-                gravity = Gravity.CENTER
-                background = Ui.roundBg(this@ChatActivity, Color.parseColor("#25D366"), s / 2)
-            }, FrameLayout.LayoutParams(s, s))
+        // 译按钮 36dp：开/关切换（关闭时发原文）
+        translateBtn = TextView(this).apply {
+            text = "译"
+            textSize = WaSpec.TRANSLATE_BUTTON_TEXT_SP.toFloat()
+            setTextColor(Color.WHITE)
+            gravity = Gravity.CENTER
+            background = Ui.roundBg(this@ChatActivity, WaSpec.GREEN_LIGHT, 10)
+            setPadding(dp(WaSpec.TRANSLATE_BUTTON_PADDING_H_DP), 0,
+                dp(WaSpec.TRANSLATE_BUTTON_PADDING_H_DP), 0)
+            isClickable = true
+            setOnClickListener {
+                translateOn = !translateOn
+                background = Ui.roundBg(this@ChatActivity,
+                    if (translateOn) WaSpec.GREEN_LIGHT else WaSpec.GRAY6, 10)
+                setTextColor(if (translateOn) Color.WHITE else WaSpec.textSecondary(night))
+            }
+        }
+        capsule.addView(translateBtn, LinearLayout.LayoutParams(
+            ViewGroup.LayoutParams.WRAP_CONTENT, dp(WaSpec.TRANSLATE_BUTTON_HEIGHT_DP)).apply {
+            marginStart = dp(6)
+        })
+        row.addView(capsule, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
+
+        // 发送圆钮 48dp，左间距 4dp
+        sendBtn = TextView(this).apply {
+            text = "➤"
+            textSize = 18f
+            gravity = Gravity.CENTER
+            setTextColor(Color.WHITE)
+            background = Ui.roundBg(this@ChatActivity, WaSpec.INPUT_CIRCLE_GREEN,
+                WaSpec.PTT_SEND_BUTTON_SIZE_DP / 2)
+            isClickable = true
             setOnClickListener { onSend() }
         }
-        bottom.addView(sendBtn)
-        bottomWrap.addView(bottom)
+        row.addView(sendBtn, LinearLayout.LayoutParams(
+            dp(WaSpec.PTT_SEND_BUTTON_SIZE_DP), dp(WaSpec.PTT_SEND_BUTTON_SIZE_DP)).apply {
+            marginStart = dp(WaSpec.PTT_SEND_MARGIN_DP)
+            bottomMargin = dp(2)
+        })
+
+        bottomWrap.addView(row)
         root.addView(bottomWrap)
 
         setContentView(root)
     }
 
-    private fun divider(): View =
-        View(this).apply { setBackgroundColor(if (night) Color.parseColor("#0B141A") else Color.parseColor("#E9EDEF")); layoutParams =
-            LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, Ui.dp(this@ChatActivity, 1)) }
+    private fun dp(v: Int) = Ui.dp(this, v)
 
     private fun avatarView(): View {
-        val size = Ui.dp(this, 42)
+        val size = dp(WaSpec.CHAT_AVATAR_SIZE_DP)
         val cjk = chatTitle.firstOrNull { ch -> ch.toInt() > 0x2E80 }
         val letter = cjk?.toString() ?: chatTitle.firstOrNull()?.toString() ?: chatJid.take(2)
+        val colors = arrayOf("#25D366", "#34B7F1", "#FFB74D", "#9575CD", "#4DB6AC", "#F06292")
         return TextView(this).apply {
             text = letter
             textSize = 17f
             setTextColor(Color.WHITE)
             gravity = Gravity.CENTER
-            setTypeface(typeface, Typeface.BOLD)
-            val palette = arrayOf("#25D366", "#34B7F1", "#FFB74D", "#9575CD", "#4DB6AC", "#F06292")
+            typeface = Typeface.create("sans-serif-medium", Typeface.NORMAL)
             background = Ui.roundBg(this@ChatActivity,
-                Color.parseColor(palette[(chatJid.hashCode() and 0xff) % palette.size]), size / 2)
-            layoutParams = LinearLayout.LayoutParams(size, size).apply {
-                setMargins(0, 0, Ui.dp(this@ChatActivity, 10), 0)
-            }
+                Color.parseColor(colors[(chatJid.hashCode() and 0xff) % colors.size]), size / 2)
         }
     }
 
     override fun onResume() {
         super.onResume()
-        engine.onMessageTranslated = { jid, id, translated ->
-            main.post { if (jid == chatJid) refreshOne(id, translated) }
+        engine.onMessageTranslated = { jid, _, _ ->
+            main.post { if (jid == chatJid) renderMessages() }
         }
         engine.onConnectionChanged = { c ->
-            main.post { statusText(connected = c || engine.isPaired()) }
+            main.post { subtitle.text = (if (c) "在线" else "离线") + " · $chatLangLabel" }
         }
         engine.db.markChatRead(chatJid)
         renderMessages()
@@ -228,120 +275,112 @@ class ChatActivity : BaseActivity() {
         engine.onConnectionChanged = null
     }
 
-    private fun statusText(connected: Boolean) {
-        // 顶栏副行显示连接态（简单起见重建标题列文字）
-        // 已在 onCreate 布局；这里只更新语言行
-    }
-
     private fun renderMessages() {
         listBox.removeAllViews()
         val msgs = engine.db.messages(chatJid)
         if (msgs.isEmpty()) {
             listBox.addView(TextView(this).apply {
                 text = "暂无消息\n给对方发一条中文，发出的自动是对方的语言"
-                textSize = 12.5f
-                setTextColor(waSub)
+                textSize = WaSpec.EMPTY_HINT_SP.toFloat()
+                setTextColor(WaSpec.textSecondary(night))
                 gravity = Gravity.CENTER
-                setPadding(0, Ui.dp(this@ChatActivity, 40), 0, 0)
+                setPadding(0, dp(40), 0, 0)
             })
             return
         }
         for (m in msgs) listBox.addView(bubble(m))
-        // 收件未翻译的（非中文且无译文）：后台补翻，完成后整页刷新
-        val pending = msgs.filter { !it.fromMe && it.translated.isBlank() }
-        for (m in pending) {
+        for (m in msgs.filter { !it.fromMe && it.translated.isBlank() }) {
             engine.translateIncomingAsync(m.chatJid, m.id, m.text)
         }
         main.post { scroll.fullScroll(ScrollView.FOCUS_DOWN) }
     }
 
-    private fun refreshOne(id: String, translated: String) {
-        // 收件翻译回调：重绘（消息量小，直接重绘最简单可靠）
-        renderMessages()
-    }
-
-    /** WhatsApp 气泡：发件绿色右对齐（译文主行 + 原文副行 + 时间✓✓），收件白色左对齐 */
+    /** 气泡：10dp 圆角、左右 inset 8/30dp、上下 3dp；发件绿、收件白 */
     private fun bubble(m: MessageRow): View {
-        val padV = Ui.dp(this, 8)
-        val padH = Ui.dp(this, 10)
-
         val col = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
-        // 主文本
         col.addView(TextView(this).apply {
             text = m.text
             textSize = 15f
-            setTextColor(waText)
+            setTextColor(WaSpec.textPrimary(night))
         })
-        // 收件：中文译文行（翻译完成后出现在原文下方，蓝色，与参考产品一致）
+        // 收件：译文行（蓝色，13sp）
         if (!m.fromMe && m.translated.isNotBlank()) {
             col.addView(TextView(this).apply {
                 text = m.translated
-                textSize = WaSpec.TRANSLATION_TEXT_SP + 1.5f   // 视觉 14.5sp≈官方13sp+移动端补偿
+                textSize = WaSpec.TRANSLATION_TEXT_SP.toFloat()
                 setTextColor(WaSpec.TRANSLATE_TEXT)
-                setTypeface(typeface, Typeface.BOLD)
-                setPadding(0, Ui.dp(this@ChatActivity, 3), 0, 0)
+                typeface = Typeface.create("sans-serif-medium", Typeface.NORMAL)
+                setPadding(0, dp(3), 0, 0)
             })
         }
-        // 副文本：发件时的中文原文（灰色小字）
+        // 发件：中文原文副行（灰色）
         if (m.fromMe && m.original.isNotBlank() && m.original != m.text) {
             col.addView(TextView(this).apply {
                 text = m.original
-                textSize = 13.5f
-                setTextColor(waOriginal)
-                setPadding(0, Ui.dp(this@ChatActivity, 2), 0, 0)
+                textSize = 13f
+                setTextColor(WaSpec.textSecondary(night))
+                setPadding(0, dp(2), 0, 0)
             })
         }
-        // 时间 + 状态
         col.addView(LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL
             gravity = Gravity.END or Gravity.CENTER_VERTICAL
             addView(TextView(this@ChatActivity).apply {
                 text = timeFmt.format(Date(m.ts))
                 textSize = 10.5f
-                setTextColor(waSub)
+                setTextColor(WaSpec.textSecondary(night))
             })
             if (m.fromMe) addView(TextView(this@ChatActivity).apply {
                 text = "✓✓"
                 textSize = 10.5f
-                setTextColor(WaSpec.READ_RECEIPT)                     // #34B7F1
-                setPadding(Ui.dp(this@ChatActivity, 3), 0, 0, 0)
+                setTextColor(WaSpec.READ_RECEIPT)
+                setPadding(dp(3), 0, 0, 0)
             })
-        }.also { ll ->
-            ll.setPadding(0, Ui.dp(this@ChatActivity, 3), 0, 0)
-        }, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT,
-            ViewGroup.LayoutParams.WRAP_CONTENT))
+            setPadding(0, dp(3), 0, 0)
+        }, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT))
 
         val holder = FrameLayout(this)
         holder.addView(col.apply {
-            background = Ui.roundBg(this@ChatActivity, if (m.fromMe) bubbleGreen else bubbleWhite, 10)
-            setPadding(padH + Ui.dp(this@ChatActivity, 2), padV, padH + Ui.dp(this@ChatActivity, 2), padV - 2)
+            background = Ui.roundBg(this@ChatActivity,
+                WaSpec.bubbleSent(night).let { if (m.fromMe) it else WaSpec.bubbleReceived(night) },
+                WaSpec.BUBBLE_CORNER_DP)
+            setPadding(dp(12), dp(8), dp(12), dp(6))
         }, FrameLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT,
             ViewGroup.LayoutParams.WRAP_CONTENT).apply {
             gravity = if (m.fromMe) Gravity.END else Gravity.START
-            // 官方: side_inset 8dp / opposite_inset 30dp / 上下间距 3dp
-            setMargins(Ui.dp(this@ChatActivity, if (m.fromMe) WaSpec.BUBBLE_OPPOSITE_INSET_DP else WaSpec.BUBBLE_SIDE_INSET_DP),
-                Ui.dp(this@ChatActivity, 3),
-                Ui.dp(this@ChatActivity, if (m.fromMe) WaSpec.BUBBLE_SIDE_INSET_DP else WaSpec.BUBBLE_OPPOSITE_INSET_DP),
-                Ui.dp(this@ChatActivity, 3))
+            setMargins(
+                dp(if (m.fromMe) WaSpec.BUBBLE_OPPOSITE_INSET_DP else WaSpec.BUBBLE_SIDE_INSET_DP),
+                dp(3),
+                dp(if (m.fromMe) WaSpec.BUBBLE_SIDE_INSET_DP else WaSpec.BUBBLE_OPPOSITE_INSET_DP),
+                dp(3))
         })
         return holder
     }
 
-    /**
-     * 发送 = 直译直发：点一下就翻译并发送译文。
-     * 风险闸门（含金额）在引擎里：translateForSending 抛出的错误走 toast，消息不发出。
-     */
+    /** 发送：默认直译直发；「译」按钮关掉后发原文 */
     private fun onSend() {
         val text = input.text.toString().trim()
         if (text.isBlank()) return
         sendBtn.isEnabled = false
-        engine.sendWithTranslation(chatJid, text) { _, err ->
-            sendBtn.isEnabled = true
-            if (err != null) {
-                Toast.makeText(this, err, Toast.LENGTH_LONG).show()
-            } else {
-                input.setText("")
-                renderMessages()
+        if (translateOn) {
+            engine.sendWithTranslation(chatJid, text) { _, err ->
+                sendBtn.isEnabled = true
+                if (err != null) {
+                    Toast.makeText(this, err, Toast.LENGTH_LONG).show()
+                } else {
+                    input.setText("")
+                    renderMessages()
+                }
+            }
+        } else {
+            engine.sendText(chatJid, text) { _, err ->
+                sendBtn.isEnabled = true
+                if (err != null) {
+                    Toast.makeText(this, err, Toast.LENGTH_LONG).show()
+                } else {
+                    input.setText("")
+                    renderMessages()
+                }
             }
         }
     }

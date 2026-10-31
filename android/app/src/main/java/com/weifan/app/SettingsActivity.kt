@@ -8,7 +8,6 @@ import android.os.Bundle
 import android.view.Gravity
 import android.view.View
 import android.view.ViewGroup
-import android.widget.EditText
 import android.widget.LinearLayout
 import android.widget.ScrollView
 import android.widget.Switch
@@ -18,15 +17,21 @@ import android.widget.Toast
 import com.weifan.app.core.Theme
 
 /**
- * 统一设置页（WhatsApp 风格列表）：把翻译服务、WhatsApp 连接、翻译工具全部归纳到这里。
- * 主页 ⋮ 菜单只留「设置」一个入口，跳转到本页。
+ * 设置页 —— 视觉语言与会话列表统一（对齐 activity_chat_list 的顶栏与列表规格）：
+ *
+ *   顶栏：白底、‹ 44dp + 标题 20sp medium、右侧昼夜图标 42dp，底部分隔线
+ *   分组标题：13sp medium、色 #6B7280、paddingH 16 / top 18 / bottom 6
+ *   行：标题 15.5sp、说明 12.5sp、paddingH 16 / V 12，1px 分隔线（从 16dp 起）
+ *   开关行：右侧 Switch，与文字垂直居中
+ *
+ * 说明：参考客户端没有独立设置页（设置项从会话列表菜单进入），
+ * 所以本页保留自有信息结构，只把版式语言对齐。
  */
 class SettingsActivity : BaseActivity() {
 
     private val p get() = palette
-    private val waGreen = Color.parseColor("#075E54")
 
-    /** 顶部那枚昼夜图标：与主设置页同规格 */
+    /** 顶部那枚昼夜图标：昼 → 夜 → 跟随系统 三档循环 */
     private fun themeGlyph(mode: String): String = when (mode) {
         Theme.MODE_LIGHT -> "☀"
         Theme.MODE_DARK -> "☾"
@@ -46,51 +51,47 @@ class SettingsActivity : BaseActivity() {
 
         val root = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
-            setBackgroundColor(p.bg)
+            setBackgroundColor(WaSpec.surface(night))
         }
 
-        // 顶栏
-        root.addView(LinearLayout(this).apply {
+        // ── 顶栏：与列表页一致（白底 / 20sp medium / 右侧 42dp 图标）
+        val top = LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL
             gravity = Gravity.CENTER_VERTICAL
-            setBackgroundColor(if (night) WaSpec.GREEN_DARK else WaSpec.GREEN)
-            setPadding(Ui.dp(this@SettingsActivity, 8), Ui.dp(this@SettingsActivity, 12),
-                Ui.dp(this@SettingsActivity, 16), Ui.dp(this@SettingsActivity, 12))
-            addView(TextView(this@SettingsActivity).apply {
-                text = "‹"
-                textSize = 30f
-                setTextColor(Color.WHITE)
-                setPadding(Ui.dp(this@SettingsActivity, 8), 0, Ui.dp(this@SettingsActivity, 12), 0)
-                setOnClickListener { finish() }
-            })
-            addView(TextView(this@SettingsActivity).apply {
-                text = "设置"
-                textSize = 19f
-                setTextColor(Color.WHITE)
-                setTypeface(typeface, Typeface.BOLD)
-            })
-            // 昼夜切换：昼 → 夜 → 跟随系统 → 昼，点一下立即生效
-            addView(TextView(this@SettingsActivity).apply {
-                text = themeGlyph(prefs.themeMode)
-                textSize = 20f
-                gravity = Gravity.CENTER
-                setTextColor(Color.WHITE)
-                setPadding(Ui.dp(this@SettingsActivity, 10), 0, Ui.dp(this@SettingsActivity, 10), 0)
-                contentDescription = "昼夜切换"
-                isClickable = true
-                setOnClickListener {
-                    prefs.themeMode = Theme.nextMode(prefs.themeMode)
-                    recreate()
-                }
-            }, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f).apply {
-                gravity = Gravity.END
-            })
+            setBackgroundColor(WaSpec.surface(night))
+            setPadding(dp(8), dp(6), dp(8), dp(6))
+            minimumHeight = dp(WaSpec.TOOLBAR_HEIGHT_DP)
+        }
+        top.addView(TextView(this).apply {
+            text = "‹"
+            textSize = 26f
+            gravity = Gravity.CENTER
+            setTextColor(WaSpec.textPrimary(night))
+            contentDescription = "返回"
+            isClickable = true
+            setOnClickListener { finish() }
+        }, LinearLayout.LayoutParams(dp(40), dp(40)))
+        top.addView(TextView(this).apply {
+            text = "设置"
+            textSize = WaSpec.LIST_TITLE_SP.toFloat()
+            setTextColor(WaSpec.textPrimary(night))
+            typeface = Typeface.create("sans-serif-medium", Typeface.NORMAL)
+        }, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f).apply {
+            marginStart = dp(6)
         })
+        // 昼夜切换：昼 → 夜 → 跟随系统 → 昼，点一下立即生效
+        top.addView(Ui.headerIconButton(this, themeGlyph(prefs.themeMode), night, 20f) {
+            prefs.themeMode = Theme.nextMode(prefs.themeMode)
+            recreate()
+        })
+        root.addView(top)
+        root.addView(View(this).apply { setBackgroundColor(WaSpec.divider(night)) },
+            LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(1)))
 
         val scroll = ScrollView(this)
         val list = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
-            setBackgroundColor(p.bg)
+            setBackgroundColor(WaSpec.surface(night))
         }
         scroll.addView(list)
         root.addView(scroll, LinearLayout.LayoutParams(
@@ -109,11 +110,6 @@ class SettingsActivity : BaseActivity() {
         list.addView(rowSwitch("收件自动翻译", "对方消息到达后自动出中文", prefs.waAutoTranslateIncoming) {
             prefs.waAutoTranslateIncoming = it
         })
-        list.addView(rowSwitch("预览模式（测试 UI）", "跳过真实配对，用演示会话过界面", prefs.waPreviewMode) {
-            prefs.waPreviewMode = it
-            Toast.makeText(this, if (it) "预览模式已开启" else "已关闭", Toast.LENGTH_SHORT).show()
-        })
-
         // ---- 翻译 ----
         list.addView(section("翻译"))
         list.addView(row("翻译服务（九家 + 自定义接口）", "密钥、优先级、额度保护、试译") {
@@ -131,59 +127,58 @@ class SettingsActivity : BaseActivity() {
         list.addView(rowValue("版本", appVersion(), onClick = null))
     }
 
+
+    private fun dp(v: Int) = Ui.dp(this, v)
+
     private fun engine() = ChatEngineHolder.get(this)
 
     // ---- 构建小块 ----
 
+    /** 分组标题：13sp medium、#6B7280（夜 #8696A0）、paddingH 16 / top 18 / bottom 6 */
     private fun section(title: String): View =
         TextView(this).apply {
             text = title
             textSize = 13f
-            setTextColor(Color.parseColor("#075E54"))
-            setTypeface(typeface, Typeface.BOLD)
-            setPadding(Ui.dp(this@SettingsActivity, 16), Ui.dp(this@SettingsActivity, 18),
-                Ui.dp(this@SettingsActivity, 16), Ui.dp(this@SettingsActivity, 6))
+            setTextColor(WaSpec.textSecondary(night))
+            typeface = Typeface.create("sans-serif-medium", Typeface.NORMAL)
+            setPadding(dp(16), dp(18), dp(16), dp(6))
         }
 
     private fun row(title: String, note: String, isError: Boolean = false, onClick: () -> Unit): View {
-        val this_row = LinearLayout(this).apply {
+        val row = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
-            setPadding(Ui.dp(this@SettingsActivity, 16), Ui.dp(this@SettingsActivity, 12),
-                Ui.dp(this@SettingsActivity, 16), Ui.dp(this@SettingsActivity, 12))
+            setPadding(dp(16), dp(12), dp(16), dp(12))
             isClickable = true
             isFocusable = true
             setOnClickListener { onClick() }
             addView(TextView(this@SettingsActivity).apply {
                 text = title
                 textSize = 15.5f
-                setTextColor(if (isError) Color.parseColor("#CC4444") else p.text)
+                setTextColor(if (isError) Color.parseColor("#CC4444") else WaSpec.textPrimary(night))
             })
             addView(TextView(this@SettingsActivity).apply {
                 text = note
                 textSize = 12.5f
-                setTextColor(p.text2)
-                setPadding(0, Ui.dp(this@SettingsActivity, 2), 0, 0)
+                setTextColor(WaSpec.textSecondary(night))
+                setPadding(0, dp(2), 0, 0)
             })
         }
-        // 带分隔线
         val wrap = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
-        wrap.addView(this_row)
-        wrap.addView(View(this).apply {
-            setBackgroundColor(p.line)
-            layoutParams = LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, Ui.dp(this@SettingsActivity, 1))
-        })
+        wrap.addView(row)
+        wrap.addView(View(this).apply { setBackgroundColor(WaSpec.divider(night)) },
+            LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(1)).apply {
+                marginStart = dp(16)
+            })
         return wrap
     }
-
 
     /** 带右侧值的行；onClick 返回 true 表示自己刷新值 */
     private fun rowValue(title: String, value: String, onClick: (() -> Boolean)?): TextView =
         TextView(this).apply {
             text = "$title\n$value"
             textSize = 15.5f
-            setTextColor(p.text)
-            setPadding(Ui.dp(this@SettingsActivity, 16), Ui.dp(this@SettingsActivity, 12),
-                Ui.dp(this@SettingsActivity, 16), Ui.dp(this@SettingsActivity, 12))
+            setTextColor(WaSpec.textPrimary(night))
+            setPadding(dp(16), dp(12), dp(16), dp(12))
             setOnClickListener {
                 if (onClick?.invoke() == true) {
                     text = "$title\n${Prefs(this@SettingsActivity).waProxy.ifBlank { "直连（国内网络需要配置）" }}"
@@ -195,21 +190,20 @@ class SettingsActivity : BaseActivity() {
         LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL
             gravity = Gravity.CENTER_VERTICAL
-            setPadding(Ui.dp(this@SettingsActivity, 16), Ui.dp(this@SettingsActivity, 10),
-                Ui.dp(this@SettingsActivity, 16), Ui.dp(this@SettingsActivity, 10))
+            setPadding(dp(16), dp(10), dp(16), dp(10))
             val col = LinearLayout(this@SettingsActivity).apply {
                 orientation = LinearLayout.VERTICAL
             }
             col.addView(TextView(this@SettingsActivity).apply {
                 text = title
                 textSize = 15.5f
-                setTextColor(p.text)
+                setTextColor(WaSpec.textPrimary(night))
             })
             col.addView(TextView(this@SettingsActivity).apply {
                 text = note
                 textSize = 12.5f
-                setTextColor(p.text2)
-                setPadding(0, Ui.dp(this@SettingsActivity, 2), Ui.dp(this@SettingsActivity, 8), 0)
+                setTextColor(WaSpec.textSecondary(night))
+                setPadding(0, dp(2), dp(8), 0)
             })
             addView(col, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
             addView(Switch(this@SettingsActivity).apply {

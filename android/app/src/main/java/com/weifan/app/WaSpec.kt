@@ -3,49 +3,92 @@ package com.weifan.app
 import android.graphics.Color
 
 /**
- * WaSpec —— 同类客户端 设计规格对齐 token。
- * 全部取值反编译自 同类客户端安装包的资源（aapt2 dump resources），
- * 命名保持对方原名，便于后续对照升级。日期 2026-10-31。
+ * WaSpec —— 参考客户端（WATransChat 3.55）的 1:1 设计规格 token。
+ *
+ * 全部取值反编译自安装包资源（aapt2 dump resources + dump xmltree），
+ * 每条都带对方的原始资源名与昼/夜两档色值，方便日后对照升级。
+ * 品牌名、图标、专有文案不照搬，只对齐版式、间距、字号、圆角、配色与交互。
+ * 采集日期 2026-11-01。
  */
 object WaSpec {
-    // ---- 顶栏 / 品牌绿 ----
-    val GREEN = Color.parseColor("#128C7E")        // wa_green 顶栏墨绿
-    val GREEN_DARK = Color.parseColor("#075E54")   // wa_green_dark
-    val GREEN_LIGHT = Color.parseColor("#25D366")  // wa_green_light 发送按钮/未读
-    val INPUT_CIRCLE_GREEN = Color.parseColor("#06CE9B") // wa_input_circle_green 现版发送圆钮
 
-    // ---- 聊天壁纸 ----
-    val WALLPAPER_BASE = Color.parseColor("#F5F1EB")   // chat_wallpaper_base
-    val WALLPAPER_DOODLE = Color.parseColor("#EAE0D3") // chat_wallpaper_doodle
+    // ─────────────────────────── 顶栏 / 品牌绿 ───────────────────────────
+    val GREEN = Color.parseColor("#128C7E")             // wa_green        顶栏墨绿
+    val GREEN_DARK = Color.parseColor("#075E54")        // wa_green_dark
+    val GREEN_LIGHT = Color.parseColor("#25D366")       // wa_green_light  发送/未读
+    val INPUT_CIRCLE_GREEN = Color.parseColor("#06CE9B")// wa_input_circle_green 发送圆钮
 
-    // ---- 气泡 ----
-    val BUBBLE_SENT = Color.parseColor("#E0FCD6")      // wa_bubble_sent（比 WhatsApp 原版更浅）
-    val BUBBLE_RECEIVED = Color.WHITE                  // wa_bubble_received
-    val TEXT_PRIMARY = Color.parseColor("#111111")     // wa_text_primary
-    val TEXT_SECONDARY = Color.parseColor("#8E8E93")   // wa_text_secondary 时间戳
-    val READ_RECEIPT = Color.parseColor("#34B7F1")     // wa_read_receipt 已读✓✓蓝
-    val TRANSLATE_TEXT = Color.parseColor("#0A7EA4")   // 译文行（沿用微翻既定蓝）
+    // ─────────────────────────── 聊天壁纸 ───────────────────────────
+    val WALLPAPER_BASE = Color.parseColor("#F5F1EB")    // chat_wallpaper_base
+    val WALLPAPER_DOODLE = Color.parseColor("#EAE0D3")  // chat_wallpaper_doodle
+    val WALLPAPER_BASE_NIGHT = Color.parseColor("#0B141A")
+    val WALLPAPER_DOODLE_NIGHT = 0x0AFFFFFF
 
-    // ---- 列表 ----
-    val DIVIDER = Color.parseColor("#E5E5EA")          // wa_divider
-    val GRAY6 = Color.parseColor("#F2F2F7")            // wa_gray6 搜索框底
-    val CHIP_UNSELECTED = Color.WHITE                  // chat_filter_chip_unselected
-    val CHIP_SELECTED = Color.parseColor("#EBEBEF")    // chat_filter_chip_selected
-    val CHIP_BORDER = Color.parseColor("#E0E0E4")      // chat_filter_chip_border
+    // ─────────────────────────── 气泡 ───────────────────────────
+    val BUBBLE_SENT = Color.parseColor("#E0FCD6")       // wa_bubble_sent
+    val BUBBLE_SENT_NIGHT = Color.parseColor("#005C4B")
+    val BUBBLE_RECEIVED = Color.WHITE                    // wa_bubble_received
+    val BUBBLE_RECEIVED_NIGHT = Color.parseColor("#1F2C34")
+
+    val TEXT_PRIMARY = Color.parseColor("#111111")      // wa_text_primary
+    val TEXT_PRIMARY_NIGHT = Color.parseColor("#E9EDEF")
+    val TEXT_SECONDARY = Color.parseColor("#8E8E93")    // wa_text_secondary
+    val TEXT_SECONDARY_NIGHT = Color.parseColor("#8696A0")
+    val READ_RECEIPT = Color.parseColor("#34B7F1")      // wa_read_receipt
+    val TRANSLATE_TEXT = Color.parseColor("#0A7EA4")    // 译文行
+
+    // ─────────────────────────── 列表 / 搜索 / chips ───────────────────────────
+    val SURFACE = Color.WHITE                            // wa_surface
+    val SURFACE_NIGHT = Color.parseColor("#1C1C1E")
+    val DIVIDER = Color.parseColor("#E5E5EA")           // wa_divider
+    val DIVIDER_NIGHT = Color.parseColor("#38383A")
+    val GRAY6 = Color.parseColor("#F2F2F7")             // wa_gray6
+    val GRAY6_NIGHT = Color.BLACK
+    val SEARCH_BG = Color.parseColor("#F2F2F7")         // chat_search_background
+    val SEARCH_BG_NIGHT = Color.parseColor("#2C2C2E")
+    val SEARCH_ICON = Color.parseColor("#6F6F6F")       // chat_search_icon
+    val SEARCH_ICON_NIGHT = Color.parseColor("#8696A0")
+
+    val CHIP_UNSELECTED = Color.WHITE                   // chat_filter_chip_unselected
+    val CHIP_UNSELECTED_NIGHT = Color.parseColor("#1C1C1E")
+    val CHIP_SELECTED = Color.parseColor("#EBEBEF")     // chat_filter_chip_selected
+    val CHIP_SELECTED_NIGHT = Color.parseColor("#3A3A3C")
+    val CHIP_BORDER = Color.parseColor("#E0E0E4")       // chat_filter_chip_border
+    val CHIP_BORDER_NIGHT = Color.parseColor("#48484A")
     val CHIP_SELECTED_BORDER = Color.parseColor("#D1D1D6")
-    val CHIP_TEXT_GREEN = GREEN                        // chip 文字用墨绿
+    val CHIP_SELECTED_BORDER_NIGHT = Color.parseColor("#636366")
     val CHIP_TEXT_SELECTED = Color.parseColor("#5E5E5E")
 
-    // ---- 输入区 ----
-    val INPUT_BG = Color.parseColor("#F2F2F7")         // chat_search_background 同灰
-    val INPUT_BORDER = 0x14000000                      // wa_input_border 8% 黑
+    // ─────────────────────────── 输入区 ───────────────────────────
+    val INPUT_BG = Color.parseColor("#F2F2F7")          // chat_search_background 同灰
+    val INPUT_BORDER = 0x14000000                        // wa_input_border 8% 黑
+    val INPUT_BORDER_NIGHT = 0x33FFFFFF
+    val ACTION_BTN_RIPPLE = 0x33000000                   // wa_input_action_btn_ripple
+    val ACTION_BTN_RIPPLE_NIGHT = 0x33FFFFFF
 
-    // ---- 尺寸（dp/sp）----
+    // ─────────────────────────── 登录 / 语言页（auth 体系）───────────────────────────
+    val AUTH_PAGE_BG = Color.WHITE                       // auth_page_bg
+    val AUTH_PAGE_BG_NIGHT = Color.parseColor("#1C1C1E")
+    val AUTH_TEXT_PRIMARY = Color.parseColor("#1A2B4A")  // auth_text_primary
+    val AUTH_TEXT_PRIMARY_NIGHT = Color.parseColor("#E8EAED")
+    val LOGIN_TEXT_MUTED = Color.parseColor("#6B7280")   // login_text_muted
+    val LOGIN_TEXT_MUTED_NIGHT = Color.parseColor("#AEAEB2")
+    val LOGIN_TEXT_HINT = Color.parseColor("#9CA3AF")    // login_text_hint
+    val LOGIN_TEXT_HINT_NIGHT = Color.parseColor("#8E8E93")
+    val PRIMARY_COLOR = Color.parseColor("#4A4AF4")      // login_accent 紫蓝（按钮/进度）
+    val PRIMARY_COLOR_NIGHT = Color.parseColor("#7B7BFF")
+    val LOGIN_BANNER_BG = Color.parseColor("#EEF2FF")    // bg_login_trial_banner 浅紫
+    val LOGIN_INPUT_BORDER = Color.parseColor("#E5E7EB") // bg_login_input 描边
+    val LOGIN_INPUT_BORDER_NIGHT = Color.parseColor("#3A3A3C")
+    val LOGIN_BTN_GRADIENT_END = Color.parseColor("#4A4AF4") // 单色（参考页按钮是纯紫蓝）
+    val LOGOUT_BANNER_TEXT = Color.parseColor("#C2410C") // logout_banner_text
+
+    // ─────────────────────────── 尺寸（dp / sp，全部来自资源表）───────────────────────────
     const val TOOLBAR_HEIGHT_DP = 56
     const val SEARCH_CAPSULE_HEIGHT_DP = 36
     const val SEARCH_BAR_ROW_HEIGHT_DP = 44
-    const val LIST_AVATAR_SIZE_DP = 50                 // 参考截图实测 ~50dp
-    const val CHAT_AVATAR_SIZE_DP = 40                 // 会话页头头像
+    const val LIST_AVATAR_SIZE_DP = 50                 // 列表头像
+    const val CHAT_AVATAR_SIZE_DP = 43                 // 会话页头头像 headerAvatarContainer
     const val SENDER_AVATAR_SIZE_DP = 25               // 群内发送者小头像
     const val BUBBLE_MAX_WIDTH_DP = 280
     const val BUBBLE_CORNER_DP = 10
@@ -53,7 +96,129 @@ object WaSpec {
     const val BUBBLE_OPPOSITE_INSET_DP = 30
     const val MESSAGE_LIST_PADDING_H_DP = 8
     const val MESSAGE_LIST_BOTTOM_SPACING_DP = 8
-    const val TRANSLATION_TEXT_SP = 13                 // chat_translation_text_size
+    const val TRANSLATION_TEXT_SP = 13
     const val SCROLL_TO_BOTTOM_SIZE_DP = 42
     const val SCROLL_TO_BOTTOM_CORNER_DP = 21
+
+    /** 会话页顶栏：paddingH 12dp / paddingV 8dp / minHeight 72dp */
+    const val CHAT_HEADER_PADDING_H_DP = 12
+    const val CHAT_HEADER_PADDING_V_DP = 8
+    const val CHAT_HEADER_MIN_HEIGHT_DP = 72
+    const val CHAT_HEADER_TITLE_SP = 16
+    const val CHAT_HEADER_SUBTITLE_SP = 13
+    const val CHAT_BACK_BTN_DP = 40
+
+    /** 输入胶囊：外框 paddingH 8dp，胶囊内 paddingH 6dp，minHeight 48dp */
+    const val INPUT_AREA_PADDING_DP = 8
+    const val INPUT_CAPSULE_PADDING_DP = 6
+    const val INPUT_CAPSULE_MIN_HEIGHT_DP = 48
+    const val ATTACH_BUTTON_SIZE_DP = 28
+    const val ATTACH_BUTTON_PADDING_DP = 3
+    const val MESSAGE_INPUT_SP = 16
+    const val MESSAGE_INPUT_MIN_HEIGHT_DP = 36
+    const val MESSAGE_INPUT_MAX_LINES = 4
+    const val TRANSLATE_BUTTON_HEIGHT_DP = 36
+    const val TRANSLATE_BUTTON_PADDING_H_DP = 6
+    const val TRANSLATE_BUTTON_TEXT_SP = 12
+    const val PTT_SEND_BUTTON_SIZE_DP = 48
+    const val PTT_SEND_MARGIN_DP = 4
+    const val SEND_BUTTON_PADDING_DP = 12
+    const val COMPOSER_SCRIM_HEIGHT_DP = 72
+
+    /** 列表页：顶栏 paddingTop 10 / paddingBottom 4，标题 20sp medium，图标按钮 42dp */
+    const val LIST_HEADER_PADDING_TOP_DP = 10
+    const val LIST_HEADER_PADDING_BOTTOM_DP = 4
+    const val LIST_HEADER_PADDING_START_DP = 16
+    const val LIST_HEADER_PADDING_END_DP = 8
+    const val LIST_TITLE_SP = 20
+    const val LIST_ICON_BUTTON_DP = 42
+
+    /** 搜索框：高 40dp，左右外边距 12dp，内边距 14dp，图标 18dp */
+    const val SEARCH_BAR_HEIGHT_DP = 40
+    const val SEARCH_BAR_MARGIN_H_DP = 12
+    const val SEARCH_BAR_MARGIN_TOP_DP = 10
+    const val SEARCH_BAR_PADDING_H_DP = 14
+    const val SEARCH_ICON_SIZE_DP = 18
+    const val SEARCH_INPUT_SP = 15
+    const val SEARCH_INPUT_GAP_DP = 8
+
+    /** chips 行：上下外边距 8/10dp，chip 间距 8dp，加号按钮 32dp */
+    const val CHIP_ROW_MARGIN_TOP_DP = 8
+    const val CHIP_ROW_MARGIN_BOTTOM_DP = 10
+    const val CHIP_ROW_PADDING_H_DP = 12
+    const val CHIP_GAP_DP = 8
+    const val CHIP_ADD_BUTTON_DP = 32
+    const val CHIP_ADD_PADDING_DP = 6
+
+    /** 连接状态条：paddingH 16 / paddingV 10，文字 13sp，进度与文字间距 10dp */
+    const val CONNECTING_BAR_PADDING_H_DP = 16
+    const val CONNECTING_BAR_PADDING_V_DP = 10
+    const val CONNECTING_TEXT_SP = 13
+    const val CONNECTING_GAP_DP = 10
+
+    /** 空态：文字 15sp 标题 / 14sp 统计 / 13sp 提示，间距 12/8/8dp，左右 24dp */
+    const val EMPTY_PADDING_H_DP = 24
+    const val EMPTY_TITLE_SP = 15
+    const val EMPTY_STATS_SP = 14
+    const val EMPTY_HINT_SP = 13
+    const val EMPTY_GAP_1_DP = 12
+    const val EMPTY_GAP_2_DP = 8
+
+    /** 登录 / 语言页（auth 体系）*/
+    const val AUTH_PADDING_H_DP = 24
+    const val AUTH_TITLE_SP = 45
+    const val AUTH_SUBTITLE_SP = 22
+    const val AUTH_DESC_SP = 14
+    const val AUTH_HINT_SP = 13
+    const val AUTH_INPUT_HEIGHT_DP = 56
+    const val AUTH_INPUT_PADDING_H_DP = 14
+    const val AUTH_INPUT_TEXT_SP = 15
+    const val AUTH_INPUT_ICON_DP = 22
+    const val AUTH_INPUT_GAP_DP = 10
+    const val AUTH_INPUT_RADIUS_DP = 14
+    const val AUTH_BUTTON_TEXT_SP = 16
+    const val AUTH_BUTTON_PADDING_V_DP = 16
+    const val AUTH_BUTTON_PADDING_H_DP = 24
+    const val AUTH_BUTTON_RADIUS_DP = 28
+    const val AUTH_BACK_BTN_DP = 32
+    const val AUTH_BANNER_PADDING_DP = 14
+    const val AUTH_BANNER_TEXT_SP = 14
+    const val AUTH_BANNER_ICON_DP = 20
+    const val AUTH_FOOTER_SP = 14
+    const val AUTH_TOGGLE_ICON_DP = 22
+
+    /** 语言页：标题区 paddingTop 76dp，搜索框高 48dp，语言行 48dp */
+    const val LANG_HEADER_PADDING_TOP_DP = 76
+    const val LANG_SEARCH_HEIGHT_DP = 48
+    const val LANG_ROW_HEIGHT_DP = 48
+    const val LANG_LIST_PADDING_H_DP = 16
+    const val LANG_BOTTOM_BAR_PADDING_H_DP = 24
+    const val LANG_BOTTOM_BAR_PADDING_TOP_DP = 14
+    const val LANG_BOTTOM_BAR_PADDING_BOTTOM_DP = 24
+    const val LANG_BOTTOM_BUTTON_HEIGHT_DP = 52
+    const val LANG_BOTTOM_HINT_SP = 12
+    const val LANG_BOTTOM_HINT_SP2 = 13
+
+    // ─────────────────────────── 昼夜取值助手 ───────────────────────────
+    fun surface(night: Boolean) = if (night) SURFACE_NIGHT else SURFACE
+    fun divider(night: Boolean) = if (night) DIVIDER_NIGHT else DIVIDER
+    fun textPrimary(night: Boolean) = if (night) TEXT_PRIMARY_NIGHT else TEXT_PRIMARY
+    fun textSecondary(night: Boolean) = if (night) TEXT_SECONDARY_NIGHT else TEXT_SECONDARY
+    fun searchBg(night: Boolean) = if (night) SEARCH_BG_NIGHT else SEARCH_BG
+    fun searchIcon(night: Boolean) = if (night) SEARCH_ICON_NIGHT else SEARCH_ICON
+    fun authBg(night: Boolean) = if (night) AUTH_PAGE_BG_NIGHT else AUTH_PAGE_BG
+    fun authText(night: Boolean) = if (night) AUTH_TEXT_PRIMARY_NIGHT else AUTH_TEXT_PRIMARY
+    fun authMuted(night: Boolean) = if (night) LOGIN_TEXT_MUTED_NIGHT else LOGIN_TEXT_MUTED
+    fun authHint(night: Boolean) = if (night) LOGIN_TEXT_HINT_NIGHT else LOGIN_TEXT_HINT
+    fun primary(night: Boolean) = if (night) PRIMARY_COLOR_NIGHT else PRIMARY_COLOR
+    fun chipFill(selected: Boolean, night: Boolean) =
+        if (selected) (if (night) CHIP_SELECTED_NIGHT else CHIP_SELECTED)
+        else (if (night) CHIP_UNSELECTED_NIGHT else CHIP_UNSELECTED)
+    fun chipStroke(selected: Boolean, night: Boolean) =
+        if (selected) (if (night) CHIP_SELECTED_BORDER_NIGHT else CHIP_SELECTED_BORDER)
+        else (if (night) CHIP_BORDER_NIGHT else CHIP_BORDER)
+    fun bubbleSent(night: Boolean) = if (night) BUBBLE_SENT_NIGHT else BUBBLE_SENT
+    fun bubbleReceived(night: Boolean) = if (night) BUBBLE_RECEIVED_NIGHT else BUBBLE_RECEIVED
+    fun wallpaperBase(night: Boolean) = if (night) WALLPAPER_BASE_NIGHT else WALLPAPER_BASE
+    fun wallpaperDoodle(night: Boolean) = if (night) WALLPAPER_DOODLE_NIGHT else WALLPAPER_DOODLE
 }

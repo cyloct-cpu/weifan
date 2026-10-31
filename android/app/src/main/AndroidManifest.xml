@@ -47,6 +47,13 @@
             android:exported="false"
             android:label="设置" />
 
+        <!-- 账号页：按参考客户端登录页版式，承载订阅/试用状态入口 -->
+        <activity
+            android:name=".AccountActivity"
+            android:exported="false"
+            android:label="账号" />
+
+
 
         <!--
             划词翻译：系统选中文字后的菜单里会出现「微翻」。

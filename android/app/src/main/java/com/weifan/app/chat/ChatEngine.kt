@@ -67,44 +67,12 @@ class ChatEngine private constructor(context: Context) : MessageListener, Connec
     }
 
     fun isPaired(): Boolean = try {
-        prefs.waPreviewMode || client.isPaired
+        client.isPaired
     } catch (_: Throwable) { false }
     fun isConnected(): Boolean = try {
-        prefs.waPreviewMode || client.isConnected
+        client.isConnected
     } catch (_: Throwable) { false }
 
-    /** 预览模式：塞演示会话（只塞一次） */
-    private var seeded = false
-    fun seedPreviewData() {
-        if (seeded || !prefs.waPreviewMode) return
-        seeded = true
-        val now = System.currentTimeMillis()
-        // (jid, 标题, 原文, 演示译文)
-        val demo = listOf(
-            listOf("8613800001111@s.whatsapp.net", "张伟 · 中东客户",
-                "Hello! Do you have this in stock? Need 500 pcs",
-                "你好！这个有货吗？我需要 500 件"),
-            listOf("8613800002222@s.whatsapp.net", "Maria · 拉美客户",
-                "Hola, ¿cuál es el precio FOB? Necesito una cotización",
-                "你好，FOB 价格是多少？我需要一份报价"),
-            listOf("8613800003333@s.whatsapp.net", "Ahmed · 中亚客户",
-                "Ассалому алайкум! Когда можно отправить образцы?",
-                "你好！什么时候可以寄样品？"),
-            listOf("8613800004444@s.whatsapp.net", "老客户 · 李先生",
-                "上次那批货质量很好，这次想追加订单",
-                "上次那批货质量很好，这次想追加订单（已是中文，不翻）"))
-        for ((idx, d) in demo.withIndex()) {
-            val (jid, title, text, translated) = d
-            val ts = now - idx * 3600_000L
-            val id = "demo-$idx"
-            db.insertMessage(com.weifan.app.data.MessageRow(
-                id = id, chatJid = jid, senderJid = jid, fromMe = false,
-                text = text, original = "",
-                translated = "", translatedLang = "", ts = ts))
-            db.upsertChat(jid, title, text, ts, incrementUnread = idx < 2)
-            db.updateTranslation(jid, id, translated, "en")
-        }
-    }
 
     // MARK: - MessageListener（Go 层回调，非主线程）
 
@@ -203,19 +171,6 @@ class ChatEngine private constructor(context: Context) : MessageListener, Connec
                     return@Thread
                 }
                 chatLangMemory[chatJid] = res.target
-                if (prefs.waPreviewMode) {
-                    // 预览模式：没有真实连接，本地回显「已翻译待发」气泡
-                    val now = System.currentTimeMillis()
-                    val localId = "preview-$now"
-                    db.insertMessage(MessageRow(
-                        id = localId, chatJid = chatJid, senderJid = "",
-                        fromMe = true, text = res.translated, original = originalText,
-                        translated = "", translatedLang = res.target, ts = now))
-                    db.upsertChat(chatJid, "", res.translated, now, incrementUnread = false)
-                    main.post { onChatUpdated?.invoke() }
-                    main.post { onResult(localId, null) }
-                    return@Thread
-                }
                 val msgId = client.sendMessage(chatJid, res.translated)
                 val now = System.currentTimeMillis()
                 db.insertMessage(MessageRow(
