@@ -61,18 +61,18 @@ class TranslateDocActivity : BaseActivity() {
     }
 
     private fun buildUI(): ViewGroup {
+        val screen = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            setBackgroundColor(p.bg)
+        }
+        screen.addView(Ui.topBar(this, "文档翻译", onBack = { finish() }, night = night))
+
         val root = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
             setBackgroundColor(p.bg)
             setPadding(Ui.dp(ctx, 16), Ui.dp(ctx, 14), Ui.dp(ctx, 16), Ui.dp(ctx, 28))
         }
 
-        root.addView(TextView(this).apply {
-            text = "微翻 · 文档翻译"
-            textSize = 19f
-            setTextColor(p.text)
-            setTypeface(typeface, Typeface.BOLD)
-        })
         root.addView(TextView(this).apply {
             text = "支持 txt / md / csv / docx。文件全程留在本机，不上传。"
             textSize = 12f
@@ -128,10 +128,12 @@ class TranslateDocActivity : BaseActivity() {
         saveButton.isEnabled = false
         root.addView(Ui.withMargin(ctx, saveButton, 10, 0))
 
-        return ScrollView(this).apply {
+        screen.addView(ScrollView(this).apply {
             isFillViewport = true
             addView(root)
-        }
+        }, LinearLayout.LayoutParams(
+            android.view.ViewGroup.LayoutParams.MATCH_PARENT, 0, 1f))
+        return screen
     }
 
     private fun pickFile() {

@@ -3,7 +3,6 @@ package com.weifan.app
 import android.app.Activity
 import android.app.AlertDialog
 import android.content.ClipData
-import android.content.ComponentName
 import android.content.Intent
 import android.view.DragEvent
 import android.content.res.Configuration
@@ -11,7 +10,6 @@ import android.graphics.Color
 import android.graphics.Typeface
 import android.graphics.drawable.GradientDrawable
 import android.os.Bundle
-import android.provider.Settings
 import android.text.InputType
 import android.view.Gravity
 import android.view.View
@@ -21,7 +19,6 @@ import android.widget.ArrayAdapter
 import android.widget.Button
 import android.widget.EditText
 import android.widget.GridLayout
-import android.widget.ImageView
 import android.widget.LinearLayout
 import android.widget.RadioButton
 import android.widget.RadioGroup
@@ -35,7 +32,6 @@ import com.weifan.app.core.Lang
 import com.weifan.app.core.Providers
 import com.weifan.app.core.Theme
 import com.weifan.app.core.Routing
-import com.weifan.app.service.WeiFanAccessibilityService
 
 /**
  * 设置页。刻意不用 AndroidX / Compose：一个设置页不值得引入整套 UI 框架。
@@ -50,7 +46,6 @@ import com.weifan.app.service.WeiFanAccessibilityService
 class MainActivity : BaseActivity() {
 
 
-    private lateinit var statusText: TextView
     private lateinit var triggerField: EditText
     private lateinit var thresholdField: EditText
     private lateinit var glossaryField: EditText
@@ -59,14 +54,10 @@ class MainActivity : BaseActivity() {
     private lateinit var targetSpinner: Spinner
     private lateinit var serviceSpinner: Spinner
     private lateinit var providerGridView: GridLayout
-    private lateinit var themeGlyph: TextView
     private lateinit var resultText: TextView
     private lateinit var themeGroup: RadioGroup
     private lateinit var themeNote: TextView
     private lateinit var scheduleSwitch: Switch
-    private lateinit var waProxyField: EditText
-    private lateinit var waPreviewSwitch: Switch
-    private lateinit var incomingSwitch: Switch
     private lateinit var scheduleTimes: LinearLayout
     private lateinit var scheduleStart: EditText
     private lateinit var scheduleEnd: EditText
@@ -91,11 +82,6 @@ class MainActivity : BaseActivity() {
         if (saved > 0) scrollView.post { scrollView.scrollTo(0, saved) }
     }
 
-    override fun onResume() {
-        super.onResume()
-        refreshStatus()
-    }
-
     /** 主题切换会重建界面，滚动位置要保住 */
     override fun onSaveInstanceState(outState: Bundle) {
         super.onSaveInstanceState(outState)
@@ -108,105 +94,23 @@ class MainActivity : BaseActivity() {
     // MARK: - UI
 
     private fun buildUI(): ViewGroup {
+        val screen = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            setBackgroundColor(p.bg)
+        }
+        screen.addView(Ui.topBar(this, "翻译服务", onBack = { finish() }, night = night))
+
         val root = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
             setBackgroundColor(p.bg)
             setPadding(dp(16), dp(14), dp(16), dp(28))
         }
+        // 品牌行已移到设置页；本页是子页，只保留顶栏与内容
 
-        // 品牌行：标识 + 字标
-        val brand = LinearLayout(this).apply {
-            orientation = LinearLayout.HORIZONTAL
-            gravity = Gravity.CENTER_VERTICAL
-            setPadding(dp(4), dp(6), dp(4), dp(14))
-        }
-        val mark = ImageView(this).apply {
-            setImageResource(R.mipmap.ic_launcher)
-            layoutParams = LinearLayout.LayoutParams(dp(40), dp(40))
-        }
-        val wordmark = LinearLayout(this).apply {
-            orientation = LinearLayout.VERTICAL
-            setPadding(dp(12), 0, 0, 0)
-        }
-        wordmark.addView(TextView(this).apply {
-            text = "微翻"
-            textSize = 19f
-            setTextColor(p.text)
-            setTypeface(typeface, Typeface.BOLD)
-        })
-        wordmark.addView(TextView(this).apply {
-            text = "WEIFAN"
-            textSize = 9.5f
-            setTextColor(p.text3)
-            letterSpacing = 0.32f
-        })
-        brand.addView(mark)
-        brand.addView(wordmark, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
+        root.addView(hint("填密钥、调优先级、限额度。翻译会在发件时自动完成，不自动发送。"))
+        // 说明：本页只负责「翻译服务」——无障碍状态、翻译工具、账号关联都在设置页，
+        // 不在这里重复（进设置页的前提是已经配对完成）。
 
-        // 昼夜循环图标（D-54 修订）：点一下 昼 → 夜 → 跟随系统 → 昼，立即生效
-        themeGlyph = TextView(this).apply {
-            textSize = 22f
-            gravity = Gravity.CENTER
-            setPadding(dp(10), dp(4), dp(4), dp(4))
-            isClickable = true
-            setOnClickListener {
-                prefs.themeMode = Theme.nextMode(prefs.themeMode)
-                applyThemeChange()
-                updateThemeGlyph()
-            }
-        }
-        brand.addView(themeGlyph)
-        root.addView(brand)
-
-        root.addView(hint("在任意输入框打完中文，末尾加触发词即可自动翻译并替换。不会自动发送。"))
-
-        // 状态卡
-        statusText = TextView(this).apply {
-            textSize = 12.5f
-            setLineSpacing(dp(3).toFloat(), 1f)
-            setPadding(dp(14), dp(12), dp(14), dp(12))
-        }
-        val openAccess = withMargin(
-            primaryButton("打开无障碍设置（开启微翻服务）") {
-                startActivity(Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS))
-            },
-            dp(12)
-        )
-        root.addView(card(listOf(statusText, openAccess)))
-
-        // 翻译工具（划词 / 文本 / 文档）
-        root.addView(groupCard(
-            "翻译工具",
-            "划词：在任意应用里选中文字，菜单里选「微翻」。文档：txt / md / csv / docx，本机解析不上传。",
-            p.coolGrad,
-            expanded = true
-        ) {
-            addView(ghostButton("翻译文字 / 划词") {
-                startActivity(Intent(this@MainActivity, TranslateActivity::class.java))
-            })
-            addView(ghostButton("翻译文档") {
-                startActivity(Intent(this@MainActivity, TranslateDocActivity::class.java))
-            })
-        })
-
-        // WhatsApp 连接（独立客户端）
-        root.addView(groupCard(
-            "WhatsApp 连接",
-            "以「关联设备」方式登录你的账号（与网页版同机制）。国内网络必须配代理。",
-            p.warmGrad
-        ) {
-            addView(label("代理地址（socks5:// 或 http://，留空直连）"))
-            addView(field("socks5://127.0.0.1:7892", secret = false).apply {
-                setText(prefs.waProxy)
-            }.also { waProxyField = it })
-            waPreviewSwitch = switchRow("预览模式（测试 UI 用）",
-                "开启后跳过真实配对，用演示会话过一遍界面；关闭后恢复正式流程。")
-            incomingSwitch = switchRow("收件自动翻译",
-                "对方消息到达后自动出中文。关闭后只手动翻。")
-            addView(ghostButton("重新配对 / 查看配对码") {
-                startActivity(Intent(this@MainActivity, PairingActivity::class.java))
-            })
-        })
 
         // 翻译服务（双向通用）
         // 翻译服务（双向通用）
@@ -324,7 +228,9 @@ class MainActivity : BaseActivity() {
             isFillViewport = true
             addView(root)
         }
-        return scrollView
+        screen.addView(scrollView, LinearLayout.LayoutParams(
+            ViewGroup.LayoutParams.MATCH_PARENT, 0, 1f))
+        return screen
     }
 
     /* ── 服务商胶囊（两列排布，点开弹配置框） ─────────────── */
@@ -602,8 +508,7 @@ class MainActivity : BaseActivity() {
             dialog.getButton(AlertDialog.BUTTON_POSITIVE).setOnClickListener {
                 saveProviderValues(def, inputs, endpointInput)
                 dialog.dismiss()
-                refreshStatus()
-                Toast.makeText(this, "已保存", Toast.LENGTH_SHORT).show()
+                        Toast.makeText(this, "已保存", Toast.LENGTH_SHORT).show()
             }
             // 中性按钮不关闭弹窗，好让用户看到测试结果
             dialog.getButton(AlertDialog.BUTTON_NEUTRAL).setOnClickListener {
@@ -681,8 +586,7 @@ class MainActivity : BaseActivity() {
             dialog.getButton(AlertDialog.BUTTON_POSITIVE).setOnClickListener {
                 saveCustomValues(index, nameField, baseField, keyField, modelField)
                 dialog.dismiss()
-                refreshStatus()
-                refreshServiceSpinner()
+                        refreshServiceSpinner()
                 rebuildProviderGrid()
                 Toast.makeText(this, "已保存", Toast.LENGTH_SHORT).show()
             }
@@ -729,8 +633,7 @@ class MainActivity : BaseActivity() {
                     dialog.dismiss()
                     refreshServiceSpinner()
                     rebuildProviderGrid()
-                    refreshStatus()
-                    Toast.makeText(this@MainActivity, "已删除", Toast.LENGTH_SHORT).show()
+                                Toast.makeText(this@MainActivity, "已删除", Toast.LENGTH_SHORT).show()
                 }
             }
             body.addView(delete)
@@ -1036,26 +939,13 @@ class MainActivity : BaseActivity() {
     // MARK: - 数据
 
     /** 品牌行右上角的昼夜图标：☀ 昼 / ☾ 夜 / ◐ 跟随系统 */
-    private fun updateThemeGlyph() {
-        if (!::themeGlyph.isInitialized) return
-        themeGlyph.text = when (prefs.themeMode) {
-            Theme.MODE_LIGHT -> "☀"
-            Theme.MODE_DARK -> "☾"
-            else -> "◐"
-        }
-        themeGlyph.setTextColor(p.text2)
-    }
 
     private fun loadValues() {
-        updateThemeGlyph()
         triggerField.setText(prefs.trigger)
         thresholdField.setText(prefs.longSentenceThreshold.toString())
         limitField.setText(prefs.dailyCharLimit.toString())
         glossaryField.setText(prefs.glossary)
         autoReplaceSwitch.isChecked = prefs.autoReplace
-        waProxyField.setText(prefs.waProxy)
-        waPreviewSwitch.isChecked = prefs.waPreviewMode
-        incomingSwitch.isChecked = prefs.waAutoTranslateIncoming
 
         val index = Lang.sendTargets.indexOf(prefs.defaultTarget)
         if (index >= 0) targetSpinner.setSelection(index)
@@ -1167,9 +1057,6 @@ class MainActivity : BaseActivity() {
 
     private fun save() {
 
-        prefs.waProxy = waProxyField.text.toString()
-        prefs.waPreviewMode = waPreviewSwitch.isChecked
-        prefs.waAutoTranslateIncoming = incomingSwitch.isChecked
         prefs.selection = serviceIds.getOrNull(serviceSpinner.selectedItemPosition) ?: "auto"
         prefs.trigger = triggerField.text.toString().ifBlank { "?译" }
         prefs.longSentenceThreshold = thresholdField.text.toString().toIntOrNull() ?: 60
@@ -1179,32 +1066,8 @@ class MainActivity : BaseActivity() {
         prefs.defaultTarget = Lang.sendTargets.getOrNull(targetSpinner.selectedItemPosition) ?: "en"
 
         Toast.makeText(this, "已保存", Toast.LENGTH_SHORT).show()
-        refreshStatus()
         refreshServiceSpinner()
     }
-
-    private fun refreshStatus() {
-        val enabled = isServiceEnabled()
-        val hasKey = prefs.hasAnyKey()
-        val ok = enabled && hasKey
-        statusText.text = buildString {
-            append(if (enabled) "✅ 无障碍服务已开启" else "⚠️ 无障碍服务未开启")
-            append("　")
-            append(if (hasKey) "✅ 已配置密钥" else "⚠️ 还没填翻译密钥")
-            append("\n触发词：${prefs.trigger}　兜底语言：${Lang.name(prefs.defaultTarget)}")
-            append("\n已配置服务商：${prefs.configuredProviders().size} 家")
-        }
-        statusText.setTextColor(if (ok) p.teal else p.err)
-    }
-
-    private fun isServiceEnabled(): Boolean {
-        val enabled = Settings.Secure.getString(contentResolver, Settings.Secure.ENABLED_ACCESSIBILITY_SERVICES)
-            ?: return false
-        val component = ComponentName(this, WeiFanAccessibilityService::class.java).flattenToString()
-        return enabled.split(':').any { it.equals(component, ignoreCase = true) }
-    }
-
-    // MARK: - 试译
 
     private fun testTranslate() {
         resultText.text = "翻译中…"

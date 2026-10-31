@@ -41,17 +41,24 @@ class PairingActivity : BaseActivity(), PairListener {
         super.onCreate(savedInstanceState)
         val pad = Ui.dp(this, 24)
 
+        val screen = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            setBackgroundColor(p.bg)
+        }
+        screen.addView(Ui.topBar(this, "关联账号", onBack = { finish() }, night = night))
+
         val root = ScrollView(this).apply { setBackgroundColor(p.bg) }
         val box = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
-            setPadding(pad, pad * 3 / 2, pad, pad)
+            setPadding(pad, pad, pad, pad)
         }
         root.addView(box)
+        screen.addView(root, LinearLayout.LayoutParams(
+            android.view.ViewGroup.LayoutParams.MATCH_PARENT, 0, 1f))
 
-        box.addView(Ui.label(this, "关联 WhatsApp 账号", p.text, 20f, bold = true))
         box.addView(Ui.withMargin(this,
             Ui.label(this, "微翻会作为你账号的一个「关联设备」登录，与 WhatsApp 网页版同机制。", p.text2, 13f),
-            top = 6, bottom = 24))
+            top = 0, bottom = 24))
 
         box.addView(Ui.label(this, "第一步 · 输入你的 WhatsApp 手机号（含国家区号）", p.text2, 13f, bold = true))
         phoneInput = Ui.input(this, "+86 138 0000 0000")
@@ -92,7 +99,7 @@ class PairingActivity : BaseActivity(), PairListener {
         }
         box.addView(hintLayout)
 
-        setContentView(root)
+        setContentView(screen)
 
         val app = application as WeiFanApplication
         client = app.protocol()

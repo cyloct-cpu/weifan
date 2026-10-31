@@ -20,6 +20,43 @@ import android.widget.TextView
  */
 object Ui {
 
+    /**
+     * 子页面顶栏：‹ + 标题。配对页、文本页、文档页共用，保证这三页都有可点的返回。
+     * 底色与设置页一致（绿），夜间用深绿。
+     */
+    fun topBar(
+        context: Context,
+        title: String,
+        onBack: () -> Unit,
+        night: Boolean = false,
+        action: View? = null
+    ): LinearLayout = LinearLayout(context).apply {
+        orientation = LinearLayout.HORIZONTAL
+        gravity = Gravity.CENTER_VERTICAL
+        setBackgroundColor(if (night) WaSpec.GREEN_DARK else WaSpec.GREEN)
+        setPadding(dp(context, 8), dp(context, 12), dp(context, 16), dp(context, 12))
+        addView(TextView(context).apply {
+            text = "‹"
+            textSize = 30f
+            gravity = Gravity.CENTER
+            setTextColor(Color.WHITE)
+            setPadding(dp(context, 10), 0, dp(context, 12), 0)
+            contentDescription = "返回"
+            isClickable = true
+            setOnClickListener { onBack() }
+        })
+        addView(TextView(context).apply {
+            text = title
+            textSize = 19f
+            setTextColor(Color.WHITE)
+            setTypeface(typeface, Typeface.BOLD)
+            if (action != null) {
+                layoutParams = LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f)
+            }
+        })
+        if (action != null) addView(action)
+    }
+
     fun dp(context: Context, value: Int): Int =
         (value * context.resources.displayMetrics.density).toInt()
 

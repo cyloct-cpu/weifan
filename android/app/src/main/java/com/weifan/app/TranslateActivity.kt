@@ -81,20 +81,18 @@ class TranslateActivity : BaseActivity() {
     }
 
     private fun buildUI(): ViewGroup {
+        val screen = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            setBackgroundColor(p.bg)
+        }
+        screen.addView(Ui.topBar(this, "翻译", onBack = { finish() }, night = night))
+
         val root = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
             setBackgroundColor(p.bg)
             setPadding(Ui.dp(ctx, 16), Ui.dp(ctx, 14), Ui.dp(ctx, 16), Ui.dp(ctx, 28))
         }
 
-        // 标题
-        root.addView(TextView(this).apply {
-            text = "微翻 · 翻译"
-            textSize = 19f
-            setTextColor(p.text)
-            setTypeface(typeface, Typeface.BOLD)
-            setPadding(Ui.dp(ctx, 4), Ui.dp(ctx, 4), Ui.dp(ctx, 4), Ui.dp(ctx, 2))
-        })
         subtitle = TextView(this).apply {
             textSize = 12f
             setTextColor(p.text3)
@@ -153,10 +151,12 @@ class TranslateActivity : BaseActivity() {
         replaceButton.visibility = if (canReplace) View.VISIBLE else View.GONE
         root.addView(Ui.withMargin(ctx, replaceButton, 10, 0))
 
-        return ScrollView(this).apply {
+        screen.addView(ScrollView(this).apply {
             isFillViewport = true
             addView(root)
-        }
+        }, LinearLayout.LayoutParams(
+            android.view.ViewGroup.LayoutParams.MATCH_PARENT, 0, 1f))
+        return screen
     }
 
     /** 一张译文卡片：标题 + 复制/朗读按钮 + 只读译文框 */

@@ -15,6 +15,8 @@ import android.widget.Switch
 import android.widget.TextView
 import android.widget.Toast
 
+import com.weifan.app.core.Theme
+
 /**
  * 统一设置页（WhatsApp 风格列表）：把翻译服务、WhatsApp 连接、翻译工具全部归纳到这里。
  * 主页 ⋮ 菜单只留「设置」一个入口，跳转到本页。
@@ -23,6 +25,20 @@ class SettingsActivity : BaseActivity() {
 
     private val p get() = palette
     private val waGreen = Color.parseColor("#075E54")
+
+    /** 顶部那枚昼夜图标：与主设置页同规格 */
+    private fun themeGlyph(mode: String): String = when (mode) {
+        Theme.MODE_LIGHT -> "☀"
+        Theme.MODE_DARK -> "☾"
+        else -> "◐"
+    }
+
+    /** 版本号取自安装包信息，避免和 build.gradle 里的版本各说各话 */
+    private fun appVersion(): String = try {
+        packageManager.getPackageInfo(packageName, 0).versionName ?: "—"
+    } catch (e: Exception) {
+        "—"
+    }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -52,6 +68,22 @@ class SettingsActivity : BaseActivity() {
                 textSize = 19f
                 setTextColor(Color.WHITE)
                 setTypeface(typeface, Typeface.BOLD)
+            })
+            // 昼夜切换：昼 → 夜 → 跟随系统 → 昼，点一下立即生效
+            addView(TextView(this@SettingsActivity).apply {
+                text = themeGlyph(prefs.themeMode)
+                textSize = 20f
+                gravity = Gravity.CENTER
+                setTextColor(Color.WHITE)
+                setPadding(Ui.dp(this@SettingsActivity, 10), 0, Ui.dp(this@SettingsActivity, 10), 0)
+                contentDescription = "昼夜切换"
+                isClickable = true
+                setOnClickListener {
+                    prefs.themeMode = Theme.nextMode(prefs.themeMode)
+                    recreate()
+                }
+            }, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f).apply {
+                gravity = Gravity.END
             })
         })
 
@@ -96,7 +128,7 @@ class SettingsActivity : BaseActivity() {
 
         // ---- 关于 ----
         list.addView(section("关于"))
-        list.addView(rowValue("版本", "0.1.0", onClick = null))
+        list.addView(rowValue("版本", appVersion(), onClick = null))
     }
 
     private fun engine() = ChatEngineHolder.get(this)
