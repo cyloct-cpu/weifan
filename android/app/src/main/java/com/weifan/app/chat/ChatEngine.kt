@@ -11,6 +11,8 @@ import com.weifan.app.data.MessageRow
 import mobile.ConnectionListener
 import mobile.MessageListener
 import mobile.Mobile
+import mobile.ReceiptListener
+import mobile.TypingListener
 import mobile.WeifanClient
 import org.json.JSONObject
 import java.util.concurrent.ConcurrentHashMap
