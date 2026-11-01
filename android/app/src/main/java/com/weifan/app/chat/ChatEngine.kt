@@ -24,7 +24,8 @@ import java.util.concurrent.ConcurrentHashMap
  *  - 发件：Engine.translateForSending —— 中文 → 对方语言，含术语保护/风险拦截/降级链
  *  - 会话语言记忆：每个会话记住最近一次检测的目标语言（D-19 思路）
  */
-class ChatEngine private constructor(context: Context) : MessageListener, ConnectionListener {
+class ChatEngine private constructor(context: Context) :
+    MessageListener, ConnectionListener, ReceiptListener, TypingListener {
 
     private val appContext = context.applicationContext
     val db = ChatDb(appContext)
@@ -38,6 +39,8 @@ class ChatEngine private constructor(context: Context) : MessageListener, Connec
             ?: Mobile.newClient(appContext.filesDir.absolutePath, prefs.waProxy)
         client.setMessageListener(this)
         client.setConnectionListener(this)
+        client.setReceiptListener(this)
+        client.setTypingListener(this)
     }
 
     /** 每个会话最近确认的语言（"es" 等；会话级记忆） */
@@ -47,6 +50,15 @@ class ChatEngine private constructor(context: Context) : MessageListener, Connec
     var onChatUpdated: (() -> Unit)? = null
     var onMessageTranslated: ((chatJid: String, id: String, translated: String) -> Unit)? = null
     var onConnectionChanged: ((connected: Boolean) -> Unit)? = null
+    /** 回执：哪些我方消息被送达/已读（read=true 即蓝色 ✓✓） */
+    var onReceiptChanged: ((chatJid: String, ids: List<String>, read: Boolean) -> Unit)? = null
+    /** 对方正在输入 */
+    var onTypingChanged: ((chatJid: String, typing: Boolean) -> Unit)? = null
+
+    // 我方消息被读状态（内存：msgId → 是否已读）
+    val readReceipts = ConcurrentHashMap<String, Boolean>()
+    // 对方 typing 状态（chatJid → 正在输入）
+    private val typingState = ConcurrentHashMap<String, Boolean>()
 
     companion object {
         @Volatile private var instance: ChatEngine? = null
@@ -241,6 +253,68 @@ class ChatEngine private constructor(context: Context) : MessageListener, Connec
             val res = out
             callback?.let { main.post { it(res) } }
         }.start()
+    }
+
+    // MARK: - ReceiptListener / TypingListener（P0-2/3）
+
+    override fun onReceipt(json: String?) {
+        try {
+            val o = JSONObject(json ?: return)
+            val chatJid = o.optString("chatJid")
+            val read = o.optString("type") == "read"
+            val ids = mutableListOf<String>()
+            val arr = o.optJSONArray("ids") ?: return
+            for (i in 0 until arr.length()) ids += arr.getString(i)
+            for (id in ids) if (read) readReceipts[id] = true
+            main.post { onReceiptChanged?.invoke(chatJid, ids, read) }
+        } catch (_: Throwable) { }
+    }
+
+    override fun onTyping(json: String?) {
+        try {
+            val o = JSONObject(json ?: return)
+            val chatJid = o.optString("chatJid")
+            val typing = o.optBoolean("typing")
+            typingState[chatJid] = typing
+            main.post { onTypingChanged?.invoke(chatJid, typing) }
+        } catch (_: Throwable) { }
+    }
+
+    fun isTyping(chatJid: String): Boolean = typingState[chatJid] == true
+
+    /** 上报已读（进会话页时：把该会话所有收到的消息标 read） */
+    fun markReadOnServerAsync(chatJid: String) {
+        Thread {
+            try {
+                val ids = db.messages(chatJid).filter { !it.fromMe }.map { it.id }
+                if (ids.isNotEmpty()) client.markChatRead(chatJid, ids.toString())
+            } catch (_: Throwable) { }
+        }.start()
+    }
+
+    /** 发送输入状态（有防抖：3 秒无输入自动停） */
+    private var typingSent = false
+    private val typingStopHandler = Handler(Looper.getMainLooper())
+
+    fun notifyComposing(chatJid: String) {
+        if (!typingSent) {
+            typingSent = true
+            Thread { try { client.sendChatPresence(chatJid, true) } catch (_: Throwable) { } }.start()
+        }
+        typingStopHandler.removeCallbacksAndMessages(null)
+        typingStopHandler.postDelayed({
+            typingSent = false
+            Thread { try { client.sendChatPresence(chatJid, false) } catch (_: Throwable) { } }.start()
+        }, 3000)
+    }
+
+    /** 标记自己在线（连接后调用一次；不在线收不到对方 typing） */
+    fun announceOnlineAsync() {
+        Thread { try { client.sendPresenceAvailable() } catch (_: Throwable) { } }.start()
+    }
+
+    fun subscribePresenceAsync(chatJid: String) {
+        Thread { try { client.subscribePresence(chatJid) } catch (_: Throwable) { } }.start()
     }
 
     // MARK: - ConnectionListener

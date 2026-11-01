@@ -245,6 +245,14 @@ class ChatActivity : BaseActivity() {
             setPadding(dp(4), dp(6), dp(4), dp(6))
         }
         capsule.addView(input, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
+        // 正在输入…通知（有输入就 composing，3 秒无输入自动 paused —— 引擎内防抖）
+        input.addTextChangedListener(object : android.text.TextWatcher {
+            override fun beforeTextChanged(s: CharSequence?, a: Int, b: Int, c: Int) {}
+            override fun onTextChanged(s: CharSequence?, a: Int, b: Int, c: Int) {}
+            override fun afterTextChanged(s: android.text.Editable?) {
+                if (s?.isNotBlank() == true) engine.notifyComposing(chatJid)
+            }
+        })
 
         // 译按钮 36dp：开/关切换（关闭时发原文）
         translateBtn = TextView(this).apply {
@@ -365,17 +373,44 @@ class ChatActivity : BaseActivity() {
             main.post { if (jid == chatJid) renderMessages() }
         }
         engine.onConnectionChanged = { c ->
-            main.post { subtitle.text = (if (c) "在线" else "离线") + " · $chatLangLabel" }
+            main.post {
+                if (c) engine.announceOnlineAsync()
+                subtitle.text = subtitleText(c)
+            }
+        }
+        engine.onReceiptChanged = { jid, _, _ ->
+            main.post { if (jid == chatJid) renderMessages() }
+        }
+        engine.onTypingChanged = { jid, typing ->
+            main.post {
+                if (jid == chatJid) {
+                    subtitle.text = if (typing) "正在输入…"
+                        else subtitleText(engine.isConnected())
+                }
+            }
         }
         engine.db.markChatRead(chatJid)
         renderMessages()
         engine.connectAsync()
+        engine.markReadOnServerAsync(chatJid)
+        engine.subscribePresenceAsync(chatJid)
     }
+
+    private fun subtitleText(connected: Boolean): String {
+        val country = com.weifan.app.core.CountryDetect.label(pnCache())
+        val base = (if (connected) "在线" else "离线") +
+            if (country.isNotBlank()) " · $country" else " · $chatLangLabel"
+        return base
+    }
+
+    private fun pnCache(): String = engine.lastPnFor(chatJid)
 
     override fun onPause() {
         super.onPause()
         engine.onMessageTranslated = null
         engine.onConnectionChanged = null
+        engine.onReceiptChanged = null
+        engine.onTypingChanged = null
     }
 
     private fun renderMessages() {
@@ -671,9 +706,11 @@ class ChatActivity : BaseActivity() {
                 setTextColor(WaSpec.textSecondary(night))
             })
             if (m.fromMe) addView(TextView(this@ChatActivity).apply {
+                // 官方规则：已读=蓝 ✓✓，未读/无回执=灰 ✓✓
                 text = "✓✓"
                 textSize = 10.5f
-                setTextColor(WaSpec.READ_RECEIPT)
+                setTextColor(if (engine.readReceipts[m.id] == true) WaSpec.READ_RECEIPT
+                    else WaSpec.textSecondary(night))
                 setPadding(dp(3), 0, 0, 0)
             })
             setPadding(0, dp(3), 0, 0)
