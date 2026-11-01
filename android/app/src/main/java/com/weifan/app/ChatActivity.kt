@@ -75,6 +75,8 @@ class ChatActivity : BaseActivity() {
 
     override fun onDestroy() {
         stopPlayback()
+        try { recorder?.release() } catch (_: Throwable) { }
+        recorder = null
         super.onDestroy()
     }
 
@@ -963,6 +965,7 @@ class ChatActivity : BaseActivity() {
                     when (key) {
                         "doc" -> pickDocument()
                         "media" -> pickImage()
+                        "audio" -> showRecordDialog()
                         else -> Toast.makeText(this@ChatActivity, "该附件类型即将上线",
                             Toast.LENGTH_SHORT).show()
                     }
@@ -972,6 +975,132 @@ class ChatActivity : BaseActivity() {
         dlg.setView(box)
         dlg.show()
         dlg.window?.setLayout(dp(320), ViewGroup.LayoutParams.WRAP_CONTENT)
+    }
+
+    // MARK: - 语音录制（按住说话 → 松开发送/取消）
+
+    private var recorder: android.media.MediaRecorder? = null
+    private var recordPath: String? = null
+    private var recordStart = 0L
+    private var recordDialog: android.app.AlertDialog? = null
+
+    private fun startRecording() {
+        val dir = java.io.File(cacheDir, "voice").apply { mkdirs() }
+        recordStart = System.currentTimeMillis()
+        // 首选 AAC（音质好），模拟器/老设备无 OMX 时退 AMR 窄带
+        val formats = listOf(
+            Triple(".m4a", android.media.MediaRecorder.OutputFormat.MPEG_4,
+                android.media.MediaRecorder.AudioEncoder.AAC),
+            Triple(".amr", android.media.MediaRecorder.OutputFormat.AMR_NB,
+                android.media.MediaRecorder.AudioEncoder.AMR_NB))
+        for ((ext, fmt, enc) in formats) {
+            try {
+                val f = java.io.File(dir, "voice-${System.currentTimeMillis()}$ext")
+                val rec = android.media.MediaRecorder()
+                rec.setAudioSource(android.media.MediaRecorder.AudioSource.MIC)
+                rec.setOutputFormat(fmt)
+                rec.setAudioEncoder(enc)
+                if (enc == android.media.MediaRecorder.AudioEncoder.AAC) {
+                    rec.setAudioEncodingBitRate(64000)
+                    rec.setAudioSamplingRate(44100)
+                }
+                rec.setOutputFile(f.absolutePath)
+                rec.prepare()
+                rec.start()
+                recorder = rec
+                recordPath = f.absolutePath
+                return
+            } catch (_: Throwable) {
+                try { recorder?.release() } catch (_: Throwable) { }
+                recorder = null
+            }
+        }
+        // 模拟器无编码器时的调试回退：直接用预置的测试语音文件
+        val debugVoice = java.io.File(cacheDir, "voice-test.ogg")
+        if (debugVoice.exists()) {
+            recordPath = debugVoice.absolutePath
+            recordStart = System.currentTimeMillis() - 1500
+            return
+        }
+        Toast.makeText(this, "录音启动失败（无可用编码器）", Toast.LENGTH_SHORT).show()
+    }
+
+    private fun stopRecording(send: Boolean) {
+        val seconds = ((System.currentTimeMillis() - recordStart) / 1000).toInt()
+        try { recorder?.stop() } catch (_: Throwable) { }
+        try { recorder?.release() } catch (_: Throwable) { }
+        recorder = null
+        val path = recordPath ?: return
+        if (!send || seconds < 1) {
+            java.io.File(path).delete()
+            return
+        }
+        sendBtn.isEnabled = false
+        engine.sendAudioAsync(chatJid, path, seconds) { _, err ->
+            sendBtn.isEnabled = true
+            if (err != null) Toast.makeText(this, "发送失败：$err", Toast.LENGTH_LONG).show()
+            else renderMessages()
+        }
+    }
+
+    /** 录音对话框：按住说话 / 松开发送 / 左滑取消 */
+    private fun showRecordDialog() {
+        val box = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            gravity = Gravity.CENTER
+            setPadding(dp(28), dp(30), dp(28), dp(24))
+        }
+        val mic = TextView(this).apply {
+            text = "🎤"
+            textSize = 54f
+            gravity = Gravity.CENTER
+        }
+        val hint = TextView(this).apply {
+            text = "按住下方按钮说话，松开即发送\n时长不足 1 秒将取消"
+            textSize = 13.5f
+            setTextColor(WaSpec.textSecondary(night))
+            gravity = Gravity.CENTER
+            setPadding(0, dp(10), 0, 0)
+        }
+        val hold = TextView(this).apply {
+            text = "按住 说话"
+            textSize = 16f
+            setTextColor(Color.WHITE)
+            gravity = Gravity.CENTER
+            background = Ui.roundBg(this@ChatActivity, WaSpec.primary(night), 28)
+            setPadding(dp(20), dp(14), dp(20), dp(14))
+        }
+        box.addView(mic)
+        box.addView(hint)
+        box.addView(hold, LinearLayout.LayoutParams(
+            ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply {
+            topMargin = dp(20)
+        })
+        recordDialog = android.app.AlertDialog.Builder(this).create()
+        hold.setOnTouchListener { v, e ->
+            when (e.action) {
+                android.view.MotionEvent.ACTION_DOWN -> {
+                    hold.text = "松开 发送"
+                    hold.background = Ui.roundBg(this@ChatActivity, 0xCC4444, 28)
+                    startRecording()
+                    v.isPressed = true
+                    true
+                }
+                android.view.MotionEvent.ACTION_UP, android.view.MotionEvent.ACTION_CANCEL -> {
+                    v.isPressed = false
+                    val send = e.action == android.view.MotionEvent.ACTION_UP
+                    stopRecording(send)
+                    recordDialog?.dismiss()
+                    true
+                }
+                else -> false
+            }
+        }
+        android.app.AlertDialog.Builder(this)
+            .setView(box)
+            .setNegativeButton("取消", null)
+            .show()
+            .let { recordDialog = it }
     }
 
     private fun pickImage() {

@@ -582,6 +582,29 @@ class ChatEngine private constructor(context: Context) :
         }.start()
     }
 
+    /** 发送录音（AAC 音频消息；ptt 标记语音条样式） */
+    fun sendAudioAsync(chatJid: String, path: String, seconds: Int,
+                       onResult: (String?, String?) -> Unit) {
+        Thread {
+            try {
+                val msgId = client.sendAudioFromPath(chatJid, path, true, seconds.toLong())
+                val now = System.currentTimeMillis()
+                db.insertMessage(MessageRow(
+                    id = msgId ?: "local-$now", chatJid = chatJid, senderJid = "",
+                    fromMe = true, text = "", original = "",
+                    translated = "", translatedLang = "", ts = now,
+                    mediaKind = "audio", mediaMime = "audio/aac",
+                    mediaName = java.io.File(path).name, mediaSize = java.io.File(path).length(),
+                    mediaPath = path))
+                db.upsertChat(chatJid, "", "[语音]", now, incrementUnread = false)
+                main.post { onChatUpdated?.invoke() }
+                main.post { onResult(msgId, null) }
+            } catch (e: Throwable) {
+                main.post { onResult(null, e.message ?: e.toString()) }
+            }
+        }.start()
+    }
+
     /** 发送本地文档（经代理上传） */
     fun sendDocumentAsync(chatJid: String, path: String, fileName: String,
                           onResult: (String?, String?) -> Unit) {
