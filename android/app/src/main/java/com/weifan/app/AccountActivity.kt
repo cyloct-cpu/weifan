@@ -53,7 +53,7 @@ class AccountActivity : BaseActivity() {
 
         // ── 大标题 45sp
         box.addView(TextView(this).apply {
-            text = "微翻"
+            text = "WeFlip"
             textSize = WaSpec.AUTH_TITLE_SP.toFloat()
             setTextColor(WaSpec.authText(night))
             typeface = Typeface.create("sans-serif-medium", Typeface.NORMAL)

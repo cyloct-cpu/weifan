@@ -1,4 +1,4 @@
-# 微翻 · Android
+# WeFlip · Android
 
 Android 端 v0.1。与浏览器扩展共用同一套判断逻辑（语言检测 / 术语保护 / 混合路由 / 风险闸门），只是落地方式不同。
 
@@ -41,8 +41,8 @@ adb install -r app/build/outputs/apk/debug/app-debug.apk
 
 ## 首次使用
 
-1. 打开微翻 → 填一个翻译密钥（Groq / DeepL / Google 任一）→ 保存
-2. 点「打开无障碍设置」→ 找到「微翻 · 翻译输入框」→ 开启
+1. 打开 WeFlip → 填一个翻译密钥（Groq / DeepL / Google 任一）→ 保存
+2. 点「打开无障碍设置」→ 找到「WeFlip · 翻译输入框」→ 开启
 3. **再做两件事，否则服务会被系统杀掉**（详见下方保活）
 4. 回到任意聊天 App，输入框里打「这批货下周能发吗？?译」
 
@@ -57,7 +57,7 @@ adb install -r app/build/outputs/apk/debug/app-debug.apk
 | ColorOS / realme UI | 允许自启动、允许后台运行、电池优化 → 不优化 |
 | vivo OriginOS | 后台高耗电、自启动、白名单 |
 
-通用一步：系统设置 → 电池 → 电池优化 → 找到微翻 → 设为「不优化」。
+通用一步：系统设置 → 电池 → 电池优化 → 找到 WeFlip → 设为「不优化」。
 
 ## 代码结构
 

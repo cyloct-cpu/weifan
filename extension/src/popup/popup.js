@@ -1,5 +1,5 @@
 /**
- * 微翻 · 弹窗逻辑
+ * WeFlip · 弹窗逻辑
  *
  * 面板职责：
  * - 选语言（源 / 目标）
@@ -400,7 +400,7 @@ for (const item of document.querySelectorAll('[data-menu]')) {
 /** @param {string} action */
 async function runMenu(action) {
   if (action === 'about') {
-    toast(`微翻 · 本机密钥版\n${(await version())}`);
+    toast(`WeFlip · 本机密钥版\n${(await version())}`);
     return;
   }
   if (action === 'releases') {

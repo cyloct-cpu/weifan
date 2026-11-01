@@ -104,13 +104,13 @@ jobs:
       - uses: softprops/action-gh-release@v2
         with:
           tag_name: ${{ inputs.tag || github.ref_name }}
-          name: 微翻 ${{ inputs.tag || github.ref_name }}
+          name: WeFlip ${{ inputs.tag || github.ref_name }}
           generate_release_notes: true
           body: |
             ## 安装
 
             **Android**：下载 `weifan-android-*.apk` 直接安装（debug 签名，仅供自用）。
-            装完打开微翻 → 填一个翻译密钥 → 点「打开无障碍设置」开启服务。
+            装完打开 WeFlip → 填一个翻译密钥 → 点「打开无障碍设置」开启服务。
             国产 ROM 记得做保活（见 `android/README.md`），否则息屏后服务会被杀。
 
             **Chrome / Edge / Brave / Opera**：下载 `weifan-chrome-*.zip` 解压，

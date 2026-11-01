@@ -3,7 +3,7 @@
   "version": "0.3.1",
   "private": true,
   "type": "module",
-  "description": "微翻 WeiFan — WhatsApp Web 即时翻译扩展（Chrome / Edge / Firefox / Safari）",
+  "description": "WeFlip — WhatsApp Web 即时翻译扩展（Chrome / Edge / Firefox / Safari）",
   "scripts": {
     "build": "node scripts/build.mjs",
     "test": "node tests/selftest.mjs",

@@ -1,6 +1,6 @@
 {
   "manifest_version": 3,
-  "name": "微翻 WeiFan",
+  "name": "WeFlip",
   "version": "0.3.1",
   "description": "浏览器即时翻译：选区、划词、悬停、整段文档都能翻；密钥只留在本机。",
   "icons": {
@@ -48,7 +48,7 @@
     "open_in_tab": true
   },
   "action": {
-    "default_title": "微翻",
+    "default_title": "WeFlip",
     "default_popup": "src/popup/popup.html",
     "default_icon": {
       "16": "src/icons/icon16.png",

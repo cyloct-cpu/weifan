@@ -111,7 +111,7 @@
     try {
       state.config = await send({ type: 'getConfig' });
     } catch (error) {
-      console.warn('[微翻] 初始化失败：', error);
+      console.warn('[WeFlip] 初始化失败：', error);
       return;
     }
 

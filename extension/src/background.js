@@ -315,7 +315,7 @@ function createContextMenus() {
   EXT.contextMenus.removeAll(() => {
     EXT.contextMenus.create({
       id: MENU_TRANSLATE,
-      title: '用微翻翻译“%s”',
+      title: '用 WeFlip 翻译“%s”',
       contexts: ['selection']
     });
   });

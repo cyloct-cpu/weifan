@@ -17,7 +17,7 @@ import com.weifan.app.core.Routing
 import java.util.concurrent.Executors
 
 /**
- * 微翻的无障碍服务 —— Android 端唯一的落地通道。
+ * WeFlip 的无障碍服务 —— Android 端唯一的落地通道。
  *
  * 交互（D-30，来自 SwiftSlate 的后缀触发）：
  *   在任意 App 的输入框里打完中文，末尾加「?译」
@@ -43,7 +43,7 @@ class WeiFanAccessibilityService : AccessibilityService() {
 
     override fun onServiceConnected() {
         super.onServiceConnected()
-        announce("微翻已连接：在输入框末尾打「${Prefs(this).trigger}」即可翻译")
+        announce("WeFlip 已连接：在输入框末尾打「${Prefs(this).trigger}」即可翻译")
     }
 
     override fun onAccessibilityEvent(event: AccessibilityEvent?) {
@@ -137,7 +137,7 @@ class WeiFanAccessibilityService : AccessibilityService() {
 
     private fun copyToClipboard(text: String) {
         val manager = getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
-        manager.setPrimaryClip(ClipData.newPlainText("微翻译文", text))
+        manager.setPrimaryClip(ClipData.newPlainText("WeFlip 译文", text))
     }
 
     /**

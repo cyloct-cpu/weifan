@@ -56,7 +56,7 @@
 
 
         <!--
-            划词翻译：系统选中文字后的菜单里会出现「微翻」。
+            划词翻译：系统选中文字后的菜单里会出现「WeFlip」。
             官方约定：EXTRA_PROCESS_TEXT 是选中的文字，EXTRA_PROCESS_TEXT_READONLY 表示
             原文能不能被替换；替换的做法是 setResult(RESULT_OK) + 结果里再放一份 EXTRA_PROCESS_TEXT。
         -->
@@ -78,7 +78,7 @@
             android:label="@string/doc_label" />
 
         <!--
-            无障碍服务是微翻在 Android 上唯一能"读输入框 + 改输入框"的入口。
+            无障碍服务是 WeFlip 在 Android 上唯一能"读输入框 + 改输入框"的入口。
             不 hook、不改包、不调私有 API —— 与 JevChat-Jarvis / SwiftSlate 同一路线。
         -->
         <service

@@ -60,7 +60,7 @@ class ChatListActivity : BaseActivity() {
         }
 
         // ── 顶栏：标题 20sp medium + 右侧菜单按钮
-        val top = Ui.listHeader(this, "微翻", night, listOf(
+        val top = Ui.listHeader(this, "WeFlip", night, listOf(
             Ui.headerIconButton(this, "⋮", night, 24f) { openSettings() }
         ))
         root.addView(top, LinearLayout.LayoutParams(
