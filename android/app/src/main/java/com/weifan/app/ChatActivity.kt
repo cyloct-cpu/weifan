@@ -1142,6 +1142,42 @@ class ChatActivity : BaseActivity() {
     }
 
     private fun showContactDialog() {
+        Thread {
+            val raw = try { engine.client.getAllContactsJSON() } catch (_: Throwable) { null }
+            val items = mutableListOf<Pair<String, String>>() // name to phone
+            if (raw != null) {
+                try {
+                    val arr = org.json.JSONArray(raw)
+                    for (i in 0 until arr.length()) {
+                        val o = arr.getJSONObject(i)
+                        items.add(o.getString("name") to o.getString("phone"))
+                    }
+                } catch (_: Throwable) {}
+            }
+            main.post {
+                if (isDestroyed || isFinishing) return@post
+                if (items.isEmpty()) { showContactInputDialog(); return@post }
+                val names = items.map { it.first }.toTypedArray()
+                android.app.AlertDialog.Builder(this)
+                    .setTitle("选择联系人（${items.size}）")
+                    .setItems(names) { _, i ->
+                        val (nm2, ph2) = items[i]
+                        sendBtn.isEnabled = false
+                        engine.sendContactAsync(chatJid, nm2, ph2) { _, e2 ->
+                            sendBtn.isEnabled = true
+                            if (e2 != null) Toast.makeText(this, "发送失败：$e2", Toast.LENGTH_LONG).show()
+                            else renderMessages()
+                        }
+                    }
+                    .setPositiveButton("手动输入") { _, _ -> showContactInputDialog() }
+                    .setNegativeButton("取消", null)
+                    .show()
+            }
+        }.start()
+    }
+
+    /** 手动输入姓名+手机号发送卡片 */
+    private fun showContactInputDialog() {
         val box = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
             setPadding(dp(24), dp(12), dp(24), 0)
@@ -1150,7 +1186,7 @@ class ChatActivity : BaseActivity() {
         val ph = EditText(this).apply {
             hint = "手机号，如 +5218120398050"; setSingleLine(true) }
         box.addView(nm); box.addView(ph)
-        val dlg = android.app.AlertDialog.Builder(this)
+        android.app.AlertDialog.Builder(this)
             .setTitle("发送联系人卡片")
             .setView(box)
             .setPositiveButton("发送") { _, _ ->
