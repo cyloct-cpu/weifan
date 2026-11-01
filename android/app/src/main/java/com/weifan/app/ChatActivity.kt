@@ -83,6 +83,8 @@ class ChatActivity : BaseActivity() {
 
     override fun onDestroy() {
         stopPlayback()
+        try { attachDialog?.dismiss(); recordDialog?.dismiss() } catch (_: Throwable) { }
+        attachDialog = null; recordDialog = null
         try { recorder?.release() } catch (_: Throwable) { }
         recorder = null
         super.onDestroy()
@@ -1134,7 +1136,11 @@ class ChatActivity : BaseActivity() {
 
     // MARK: - 附件面板（对齐 WATransChat 附加菜单）
 
+    private var attachDialog: android.app.AlertDialog? = null
+
     private fun showAttachmentPanel() {
+        // 泄漏治理：重复点＋先 dismiss 旧面板再建新实例（曾出现多窗口叠加）
+        attachDialog?.dismiss()
         val items = listOf(
             "📄  文档" to "doc",
             "🖼️  照片和视频" to "media",
@@ -1157,6 +1163,8 @@ class ChatActivity : BaseActivity() {
             setPadding(dp(6), dp(6), dp(6), dp(6))
         }
         val dlg = android.app.AlertDialog.Builder(this).create()
+        attachDialog = dlg
+        dlg.setOnDismissListener { if (attachDialog === dlg) attachDialog = null }
         for ((label, key) in items) {
             box.addView(TextView(this).apply {
                 text = label

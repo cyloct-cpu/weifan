@@ -11,13 +11,25 @@ android {
         applicationId = "com.weifan.app"
         minSdk = 26
         targetSdk = 34
-        versionCode = 36
-        versionName = "2.9.0"
+        versionCode = 37
+        versionName = "2.9.1"
     }
 
     buildTypes {
         release {
             isMinifyEnabled = false
+        }
+    }
+
+    // 减重：Go 协议层 libgojni.so 每 ABI 约 35–39MB，全打进去 APK 149MB。
+    // 按 ABI 拆分后每个约 40–45MB，用户只下自己架构的包。
+    // x86(32位) 已死设备不拆；模拟器测试用 x86_64 包。
+    splits {
+        abi {
+            isEnable = true
+            reset()
+            include("arm64-v8a", "armeabi-v7a", "x86_64")
+            isUniversalApk = false
         }
     }
 

@@ -37,11 +37,13 @@ jobs:
         working-directory: android
         run: ./gradlew assembleDebug --no-daemon
 
-      - name: 重命名为带版本的名字
+      - name: 重命名为带版本+架构的名字
         run: |
           VERSION="${GITHUB_REF_NAME#v}"
-          cp android/app/build/outputs/apk/debug/app-debug.apk \
-             "weifan-android-${VERSION}.apk"
+          for f in android/app/build/outputs/apk/debug/app-*-debug.apk; do
+            ABI=$(basename "$f" | sed -E 's/^app-(.*)-debug\.apk$/\1/')
+            cp "$f" "weifan-android-${VERSION}-${ABI}.apk"
+          done
           ls -lh weifan-android-*.apk
 
       - uses: actions/upload-artifact@v4
@@ -109,9 +111,10 @@ jobs:
           body: |
             ## 安装
 
-            **Android**：下载 `weifan-android-*.apk` 直接安装（debug 签名，仅供自用）。
-            装完打开 WeFlip → 填一个翻译密钥 → 点「打开无障碍设置」开启服务。
-            国产 ROM 记得做保活（见 `android/README.md`），否则息屏后服务会被杀。
+            **Android**：按设备架构下载对应包（debug 签名，仅供自用）：
+            绝大多数 2019 年后的安卓手机选 **arm64-v8a**；老旧低端机选 armeabi-v7a；模拟器/部分平板选 x86_64。
+            装完打开 WeFlip → 设置里填翻译密钥 → 「关联设备」生成配对码，手机 WhatsApp 扫码完成登录。
+            国产 ROM 记得做保活（见 `android/README.md`），否则息屏后连接会被杀。
 
             **Chrome / Edge / Brave / Opera**：下载 `weifan-chrome-*.zip` 解压，
             打开 `chrome://extensions` → 开发者模式 → 加载已解压的扩展程序 → 选解压出来的 `chrome` 目录。
