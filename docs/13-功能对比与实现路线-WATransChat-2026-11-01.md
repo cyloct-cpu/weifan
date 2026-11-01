@@ -28,7 +28,7 @@
 | 9 | 联系人同步（真实姓名） | syncContacts、saveContact、ContactListener、ContactTitleListener、formatChatDisplayTitle、chatListTitle | `client.Store.Contacts` + `events.Contact`；UI 列表标题优先联系人名 |
 | 10 | 群信息/群管理（读侧） | getGroupInfoJSON、getGroupInviteLink、GroupListener、GroupEventListener、syncGroups | `client.GetGroupInfo` / `GetGroupInfoFromLink` / `events.Group` |
 | 11 | 发送前校验号码是否注册 | checkPhoneOnWhatsApp、getErrPhoneNotOnWhatsApp | 官方 whatsmeow **现成** `client.IsOnWhatsApp()` |
-| 12 | 拉黑骚扰客户 | blockContact、unblockContact、isContactBlocked | `client.Store` + appstate；先做「应用内屏蔽」简单版 |
+| 12 | ~~拉黑骚扰客户~~ ✅ **v2.7.0 应用内屏蔽** | — | DB v6 blocked 列 + 来信丢弃 + 设置页管理；官方端拉黑（appstate）留作后续 |
 
 ### P2 —— 外贸场景差异化（对标它尊享版的商务能力，但不做 AI）
 
@@ -38,8 +38,8 @@
 | 14 | **客户备注**（CRM 属性） | setCustomerNote、syncNotes、NoteListener | 本地 SQLite 即可先行（不必用它 fork 的 appstate note） |
 | 15 | **标签系统**（它用 Label 管理客户） | createLabel/updateLabel/deleteLabel、syncLabels、assignChatsToLabel、getLabelsJSON、getRecommendedLabelsJSON、getChatLabelsJSON、LabelListener | 第一版本地标签（微翻 chips 已有雏形）；接 WhatsApp 原生 label 需读 appstate `LabelAssociation`，whatsmeow 已暴露 appstate keys |
 | 16 | 语音条播放（opus→PCM）与发送 | decodeVoiceOgg、decodeVoiceForPlayback、VoicePlaybackAudio、sendAudio | 接收：Android MediaPlayer 直接播 ogg/opus（whatsmeow Download 后即可）；发送：MediaRecorder→ogg 上传 |
-| 17 | 群管理（写侧）/建群 | createGroup、addGroupParticipants、removeGroupParticipants、promoteGroupParticipants、demoteGroupParticipants、setGroupName、setGroupTopic | whatsmeow 全有对应方法 |
-| 18 | 位置 / 联系人卡片 / 投票 | sendLocation、sendContact、sendPollWithOptionsCsv、sendPollVoteCsv、getPollResultsJSON、PollVoteListener | whatsmeow 有对应 proto 与事件 |
+| 17 | 群管理（写侧）部分完成 ✅ v2.6.0（改群名/移除成员）；建群/增员/管理员升降级待做 | — | SetGroupName/RemoveGroupParticipants 已通 |
+| 18 | 位置 / 联系人卡片 / 投票发送 ✅ v2.6.0；投票**接收**渲染与投票结果读取待做 | — | SendLocation/SendContactCard/SendPoll(BuildPollCreation) 已通，投票实测送达 |
 
 ### P3 —— 建议放弃或远期
 
