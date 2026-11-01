@@ -139,6 +139,21 @@ class ChatInfoActivity : BaseActivity() {
             })
             loadGroupInfo()
 
+            // 改群名
+            box.addView(Ui.solidButton(this, "修改群名", WaSpec.primary(night), Color.WHITE) {
+                val input = EditText(this).apply { setText(nameText.text.toString()) }
+                android.app.AlertDialog.Builder(this)
+                    .setTitle("修改群名")
+                    .setView(input)
+                    .setPositiveButton("保存") { _, _ ->
+                        val n = input.text.toString().trim()
+                        if (n.isNotBlank()) renameGroup(n)
+                    }
+                    .setNegativeButton("取消", null)
+                    .show()
+            }, LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, dp(46)).apply { topMargin = dp(12) })
+
             // 加成员
             val addRow = LinearLayout(this).apply {
                 orientation = LinearLayout.HORIZONTAL
@@ -249,6 +264,16 @@ class ChatInfoActivity : BaseActivity() {
             orientation = LinearLayout.HORIZONTAL
             gravity = Gravity.CENTER_VERTICAL
             setPadding(0, dp(10), 0, dp(10))
+            isLongClickable = true
+            setOnLongClickListener {
+                android.app.AlertDialog.Builder(this@ChatInfoActivity)
+                    .setTitle("移除成员")
+                    .setMessage("确定把 $phone 移出群聊？")
+                    .setPositiveButton("移除") { _, _ -> removeMember(phone) }
+                    .setNegativeButton("取消", null)
+                    .show()
+                true
+            }
             addView(TextView(this@ChatInfoActivity).apply {
                 text = "👤"
                 textSize = 16f
@@ -267,6 +292,23 @@ class ChatInfoActivity : BaseActivity() {
                 setTextColor(WaSpec.textSecondary(night))
             })
         }
+
+    private fun renameGroup(newName: String) {
+        Toast.makeText(this, "正在改群名…", Toast.LENGTH_SHORT).show()
+        Thread {
+            val err = try { engine().client.setGroupName(chatJid, newName); null }
+            catch (e: Throwable) { e.message ?: e.toString() }
+            main.post {
+                if (isDestroyed) return@post
+                if (err != null) Toast.makeText(this, "修改失败：$err", Toast.LENGTH_LONG).show()
+                else {
+                    nameText.text = newName
+                    engine().db.renameChat(chatJid, newName)
+                    Toast.makeText(this, "群名已更新", Toast.LENGTH_SHORT).show()
+                }
+            }
+        }.start()
+    }
 
     private fun onAddMember() {
         val input = findViewById<EditText>(2002)
@@ -324,6 +366,19 @@ class ChatInfoActivity : BaseActivity() {
             })
         }
         renderMediaContent()
+    }
+
+    private fun removeMember(phone: String) {
+        Toast.makeText(this, "正在移除…", Toast.LENGTH_SHORT).show()
+        Thread {
+            val err = try { engine().client.removeGroupParticipants(chatJid, "[\"$phone\"]"); null }
+            catch (e: Throwable) { e.message ?: e.toString() }
+            main.post {
+                if (isDestroyed) return@post
+                if (err != null) Toast.makeText(this, "移除失败：$err", Toast.LENGTH_LONG).show()
+                else { Toast.makeText(this, "已移除", Toast.LENGTH_SHORT).show(); loadGroupInfo() }
+            }
+        }.start()
     }
 
     private fun allMedia() = engine().db.messages(chatJid).filter { it.mediaKind.isNotBlank() }

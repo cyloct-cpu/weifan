@@ -966,6 +966,9 @@ class ChatActivity : BaseActivity() {
                         "doc" -> pickDocument()
                         "media" -> pickImage()
                         "audio" -> showRecordDialog()
+                        "location" -> showLocationDialog()
+                        "contact" -> showContactDialog()
+                        "poll" -> showPollDialog()
                         else -> Toast.makeText(this@ChatActivity, "该附件类型即将上线",
                             Toast.LENGTH_SHORT).show()
                     }
@@ -1101,6 +1104,101 @@ class ChatActivity : BaseActivity() {
             .setNegativeButton("取消", null)
             .show()
             .let { recordDialog = it }
+    }
+
+    private fun showLocationDialog() {
+        val box = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding(dp(24), dp(12), dp(24), 0)
+        }
+        val lat = EditText(this).apply {
+            hint = "纬度，如 19.4326（墨西哥城）"; setSingleLine(true) }
+        val lng = EditText(this).apply {
+            hint = "经度，如 -99.1332"; setSingleLine(true) }
+        val name = EditText(this).apply {
+            hint = "地点名称（可选）"; setSingleLine(true) }
+        box.addView(lat); box.addView(lng); box.addView(name)
+        val dlg = android.app.AlertDialog.Builder(this)
+            .setTitle("发送位置")
+            .setView(box)
+            .setPositiveButton("发送") { _, _ ->
+                val la = lat.text.toString().toDoubleOrNull()
+                val lo = lng.text.toString().toDoubleOrNull()
+                if (la == null || lo == null) {
+                    Toast.makeText(this, "经纬度无效", Toast.LENGTH_SHORT).show(); return@setPositiveButton
+                }
+                sendBtn.isEnabled = false
+                engine.sendLocationAsync(chatJid, la, lo,
+                    name.text.toString().trim(), "") { _, err ->
+                    sendBtn.isEnabled = true
+                    if (err != null) Toast.makeText(this, "发送失败：$err", Toast.LENGTH_LONG).show()
+                    else renderMessages()
+                }
+            }
+            .setNegativeButton("取消", null)
+            .show()
+            .also { it.window?.setSoftInputMode(
+                android.view.WindowManager.LayoutParams.SOFT_INPUT_ADJUST_RESIZE) }
+    }
+
+    private fun showContactDialog() {
+        val box = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding(dp(24), dp(12), dp(24), 0)
+        }
+        val nm = EditText(this).apply { hint = "联系人姓名"; setSingleLine(true) }
+        val ph = EditText(this).apply {
+            hint = "手机号，如 +5218120398050"; setSingleLine(true) }
+        box.addView(nm); box.addView(ph)
+        val dlg = android.app.AlertDialog.Builder(this)
+            .setTitle("发送联系人卡片")
+            .setView(box)
+            .setPositiveButton("发送") { _, _ ->
+                if (nm.text.isBlank() || ph.text.isBlank()) {
+                    Toast.makeText(this, "姓名和号码必填", Toast.LENGTH_SHORT).show(); return@setPositiveButton
+                }
+                sendBtn.isEnabled = false
+                engine.sendContactAsync(chatJid, nm.text.toString().trim(),
+                    ph.text.toString().trim()) { _, err ->
+                    sendBtn.isEnabled = true
+                    if (err != null) Toast.makeText(this, "发送失败：$err", Toast.LENGTH_LONG).show()
+                    else renderMessages()
+                }
+            }
+            .setNegativeButton("取消", null)
+            .show()
+            .also { it.window?.setSoftInputMode(
+                android.view.WindowManager.LayoutParams.SOFT_INPUT_ADJUST_RESIZE) }
+    }
+
+    private fun showPollDialog() {
+        val box = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding(dp(24), dp(12), dp(24), 0)
+        }
+        val q = EditText(this).apply { hint = "问题，如 选哪个交期？"; setSingleLine(true) }
+        val opts = EditText(this).apply {
+            hint = "选项，逗号分隔\n如 下周三,下周五,下周六"; setSingleLine(false); minLines = 2 }
+        box.addView(q); box.addView(opts)
+        val dlg = android.app.AlertDialog.Builder(this)
+            .setTitle("发起投票")
+            .setView(box)
+            .setPositiveButton("发送") { _, _ ->
+                if (q.text.isBlank() || opts.text.isBlank()) {
+                    Toast.makeText(this, "问题和选项必填", Toast.LENGTH_SHORT).show(); return@setPositiveButton
+                }
+                sendBtn.isEnabled = false
+                engine.sendPollAsync(chatJid, q.text.toString().trim(),
+                    opts.text.toString()) { _, err ->
+                    sendBtn.isEnabled = true
+                    if (err != null) Toast.makeText(this, "发送失败：$err", Toast.LENGTH_LONG).show()
+                    else renderMessages()
+                }
+            }
+            .setNegativeButton("取消", null)
+            .show()
+            .also { it.window?.setSoftInputMode(
+                android.view.WindowManager.LayoutParams.SOFT_INPUT_ADJUST_RESIZE) }
     }
 
     private fun pickImage() {

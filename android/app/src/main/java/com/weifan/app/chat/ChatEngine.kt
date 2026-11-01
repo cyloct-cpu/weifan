@@ -582,6 +582,71 @@ class ChatEngine private constructor(context: Context) :
         }.start()
     }
 
+    /** 发送位置（经纬度 + 可选名称/地址） */
+    fun sendLocationAsync(chatJid: String, lat: Double, lng: Double, name: String, address: String,
+                          onResult: (String?, String?) -> Unit) {
+        Thread {
+            try {
+                val msgId = client.sendLocation(chatJid, lat, lng, name, address)
+                val now = System.currentTimeMillis()
+                db.insertMessage(MessageRow(
+                    id = msgId ?: "local-$now", chatJid = chatJid, senderJid = "",
+                    fromMe = true, text = "📍 " + name.ifBlank { "位置" }, original = "",
+                    translated = "", translatedLang = "", ts = now,
+                    mediaKind = "location", mediaMime = "", mediaName = name))
+                db.upsertChat(chatJid, "", "📍 " + name.ifBlank { "位置" }, now, incrementUnread = false)
+                main.post { onChatUpdated?.invoke() }
+                main.post { onResult(msgId, null) }
+            } catch (e: Throwable) {
+                main.post { onResult(null, e.message ?: e.toString()) }
+            }
+        }.start()
+    }
+
+    /** 发送联系人卡片 */
+    fun sendContactAsync(chatJid: String, displayName: String, phone: String,
+                         onResult: (String?, String?) -> Unit) {
+        Thread {
+            try {
+                val digits = phone.replace("+", "").filter { it.isDigit() }
+                val vcard = "BEGIN:VCARD\nVERSION:3.0\nFN:$displayName\nTEL;TYPE=CELL:+$digits\nEND:VCARD"
+                val msgId = client.sendContactCard(chatJid, displayName, vcard)
+                val now = System.currentTimeMillis()
+                db.insertMessage(MessageRow(
+                    id = msgId ?: "local-$now", chatJid = chatJid, senderJid = "",
+                    fromMe = true, text = "👤 " + displayName, original = "",
+                    translated = "", translatedLang = "", ts = now,
+                    mediaKind = "contact", mediaMime = "", mediaName = displayName))
+                db.upsertChat(chatJid, "", "👤 $displayName", now, incrementUnread = false)
+                main.post { onChatUpdated?.invoke() }
+                main.post { onResult(msgId, null) }
+            } catch (e: Throwable) {
+                main.post { onResult(null, e.message ?: e.toString()) }
+            }
+        }.start()
+    }
+
+    /** 发起投票 */
+    fun sendPollAsync(chatJid: String, question: String, optionsCsv: String,
+                      onResult: (String?, String?) -> Unit) {
+        Thread {
+            try {
+                val msgId = client.sendPoll(chatJid, question, optionsCsv)
+                val now = System.currentTimeMillis()
+                db.insertMessage(MessageRow(
+                    id = msgId ?: "local-$now", chatJid = chatJid, senderJid = "",
+                    fromMe = true, text = "📊 " + question, original = "",
+                    translated = "", translatedLang = "", ts = now,
+                    mediaKind = "poll", mediaMime = "", mediaName = optionsCsv))
+                db.upsertChat(chatJid, "", "📊 " + question, now, incrementUnread = false)
+                main.post { onChatUpdated?.invoke() }
+                main.post { onResult(msgId, null) }
+            } catch (e: Throwable) {
+                main.post { onResult(null, e.message ?: e.toString()) }
+            }
+        }.start()
+    }
+
     /** 发送录音（AAC 音频消息；ptt 标记语音条样式） */
     fun sendAudioAsync(chatJid: String, path: String, seconds: Int,
                        onResult: (String?, String?) -> Unit) {
