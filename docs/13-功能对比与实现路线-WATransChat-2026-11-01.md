@@ -42,7 +42,9 @@
 | 18 | 位置 / 联系人卡片 / 投票发送 ✅ v2.6.0；三类**接收真渲染** ✅ v2.8.0；**投票点选+票数回流** ✅ v2.9.0（VotePoll + poll_votes 落库 + 气泡票数徽章，改票=重投） | — | SendLocation/SendContactCard/SendPoll(BuildPollCreation) 已通，投票实测送达 |
 | 19 | 联系人补充来源（手机通讯录）✅ v2.8.0：READ_CONTACTS + deviceContacts() 与 WhatsApp LID 去重合并入选择器 | — | 纯设备端合并，不上传 |
 | 20 | 客户备注（本地 CRM）✅ v2.8.0：DB v7 chats.note + 联络人资料页多行备注 | — | 本地存储，不动官方 appstate（官方备注同步留作后续） |
-| 21 | 稳定性 ✅ v2.8.0：ANR（主线程解码）+ lmkd 内存击杀（1.4GB→300MB：inSampleSize 降采样+LRU 缓存+渲染去抖）双修复 | — | 后台解码铁律：必须降采样，只移后台不解内存 |
+| 21 | 稳定性 ✅ v2.8.0：ANR（主线程解码）+ lmkd 内存击杀（1.4GB→300MB：inSampleSize 降采样+LRU 缓存+渲染去抖）双修复 |
+| 22 | 投票点选/改票+票数回流 ✅ v2.9.0（VotePoll+poll_votes DB v8+气泡徽章，实测改票生效）；群管理员升降级 ✅；官方端拉黑 ✅ |
+| 23 | APK 减重 ✅ v2.9.1：splits.abi 三包（arm64-v8a/armeabi-v7a/x86_64）149MB→37–40MB；附件面板窗口泄漏治理 ✅ | — | 后台解码铁律：必须降采样，只移后台不解内存 |
 
 ### P3 —— 建议放弃或远期
 
