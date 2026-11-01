@@ -39,7 +39,7 @@
 | 15 | **标签系统**（它用 Label 管理客户） | createLabel/updateLabel/deleteLabel、syncLabels、assignChatsToLabel、getLabelsJSON、getRecommendedLabelsJSON、getChatLabelsJSON、LabelListener | 第一版本地标签（微翻 chips 已有雏形）；接 WhatsApp 原生 label 需读 appstate `LabelAssociation`，whatsmeow 已暴露 appstate keys |
 | 16 | 语音条播放（opus→PCM）与发送 | decodeVoiceOgg、decodeVoiceForPlayback、VoicePlaybackAudio、sendAudio | 接收：Android MediaPlayer 直接播 ogg/opus（whatsmeow Download 后即可）；发送：MediaRecorder→ogg 上传 |
 | 17 | 群管理（写侧）部分完成 ✅ v2.6.0（改群名/移除成员）；建群/增员/管理员升降级待做 | — | SetGroupName/RemoveGroupParticipants 已通 |
-| 18 | 位置 / 联系人卡片 / 投票发送 ✅ v2.6.0；三类**接收真渲染** ✅ v2.8.0（投票选项圆点行/位置名/联系人名片气泡）；投票结果读取待做 | — | SendLocation/SendContactCard/SendPoll(BuildPollCreation) 已通，投票实测送达 |
+| 18 | 位置 / 联系人卡片 / 投票发送 ✅ v2.6.0；三类**接收真渲染** ✅ v2.8.0；**投票点选+票数回流** ✅ v2.9.0（VotePoll + poll_votes 落库 + 气泡票数徽章，改票=重投） | — | SendLocation/SendContactCard/SendPoll(BuildPollCreation) 已通，投票实测送达 |
 | 19 | 联系人补充来源（手机通讯录）✅ v2.8.0：READ_CONTACTS + deviceContacts() 与 WhatsApp LID 去重合并入选择器 | — | 纯设备端合并，不上传 |
 | 20 | 客户备注（本地 CRM）✅ v2.8.0：DB v7 chats.note + 联络人资料页多行备注 | — | 本地存储，不动官方 appstate（官方备注同步留作后续） |
 | 21 | 稳定性 ✅ v2.8.0：ANR（主线程解码）+ lmkd 内存击杀（1.4GB→300MB：inSampleSize 降采样+LRU 缓存+渲染去抖）双修复 | — | 后台解码铁律：必须降采样，只移后台不解内存 |
