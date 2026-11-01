@@ -458,4 +458,3 @@ class ChatEngine private constructor(context: Context) : MessageListener, Connec
         }.start()
     }
 }
-}
