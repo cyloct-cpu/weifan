@@ -9,7 +9,7 @@ import android.database.sqlite.SQLiteOpenHelper
  * 会话与消息存储。零依赖：直接 SQLiteOpenHelper，不引 Room。
  * 表结构对齐 Go 层 whatsmeow store（它自己存协议状态；这里只存 UI 需要的会话/消息/译文）。
  */
-class ChatDb(context: Context) : SQLiteOpenHelper(context, "chats.db", null, 4) {
+class ChatDb(context: Context) : SQLiteOpenHelper(context, "chats.db", null, 5) {
 
     override fun onCreate(db: SQLiteDatabase) {
         db.execSQL("""
@@ -53,6 +53,12 @@ class ChatDb(context: Context) : SQLiteOpenHelper(context, "chats.db", null, 4) 
         if (oldVersion < 2) {
             db.execSQL("ALTER TABLE messages ADD COLUMN original TEXT NOT NULL DEFAULT ''")
         }
+        // v5: 本地标签系统（客户分组）
+        db.execSQL("CREATE TABLE IF NOT EXISTS labels(" +
+            "id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT NOT NULL UNIQUE, color TEXT NOT NULL)")
+        db.execSQL("CREATE TABLE IF NOT EXISTS chat_labels(" +
+            "chat_jid TEXT NOT NULL, label_id INTEGER NOT NULL, " +
+            "PRIMARY KEY(chat_jid, label_id))")
         // v4: 会话本地管理（置顶/归档/静音）
         if (oldVersion < 4) {
             db.execSQL("ALTER TABLE chats ADD COLUMN pinned INTEGER NOT NULL DEFAULT 0")
@@ -152,6 +158,56 @@ class ChatDb(context: Context) : SQLiteOpenHelper(context, "chats.db", null, 4) 
         writableDatabase.execSQL(
             "UPDATE messages SET translated=?, translated_lang=? WHERE chat_jid=? AND id=?",
             arrayOf(translated, lang, chatJid, id))
+    }
+
+    // MARK: - 标签系统（P2 本地客户分组）
+
+    fun labels(): List<Pair<Long, String>> = readableDatabase.rawQuery(
+        "SELECT id, name FROM labels ORDER BY id", null).use { c ->
+        val out = mutableListOf<Pair<Long, String>>()
+        while (c.moveToNext()) out += c.getLong(0) to c.getString(1)
+        out
+    }
+
+    fun createLabel(name: String): Long {
+        val cv = ContentValues().apply { put("name", name); put("color", "#128C7E") }
+        return writableDatabase.insertWithOnConflict(
+            "labels", null, cv, SQLiteDatabase.CONFLICT_IGNORE)
+    }
+
+    fun deleteLabel(id: Long) {
+        writableDatabase.execSQL("DELETE FROM labels WHERE id=?", arrayOf(id))
+        writableDatabase.execSQL("DELETE FROM chat_labels WHERE label_id=?", arrayOf(id))
+    }
+
+    /** 给会话设置标签（全量替换） */
+    fun setChatLabels(chatJid: String, labelIds: List<Long>) {
+        writableDatabase.execSQL("DELETE FROM chat_labels WHERE chat_jid=?", arrayOf(chatJid))
+        for (id in labelIds) {
+            val cv = ContentValues().apply {
+                put("chat_jid", chatJid); put("label_id", id)
+            }
+            writableDatabase.insertWithOnConflict(
+                "chat_labels", null, cv, SQLiteDatabase.CONFLICT_IGNORE)
+        }
+    }
+
+    /** 会话的标签名列表 */
+    fun chatLabelNames(chatJid: String): List<String> = readableDatabase.rawQuery(
+        "SELECT l.name FROM labels l JOIN chat_labels cl ON cl.label_id=l.id " +
+        "WHERE cl.chat_jid=? ORDER BY l.id", arrayOf(chatJid)).use { c ->
+        val out = mutableListOf<String>()
+        while (c.moveToNext()) out += c.getString(0)
+        out
+    }
+
+    /** 某标签下的会话 jid 集合（列表过滤用） */
+    fun chatJidsOfLabel(name: String): Set<String> = readableDatabase.rawQuery(
+        "SELECT cl.chat_jid FROM chat_labels cl JOIN labels l ON l.id=cl.label_id " +
+        "WHERE l.name=?", arrayOf(name)).use { c ->
+        val out = mutableSetOf<String>()
+        while (c.moveToNext()) out += c.getString(0)
+        out
     }
 
     /** 设置会话本地标记（P1-3 置顶/归档/静音） */

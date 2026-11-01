@@ -149,10 +149,11 @@ class ChatListActivity : BaseActivity() {
 
     private fun openSettings() = startActivity(Intent(this, SettingsActivity::class.java))
 
-    /** chips：选中态 #EBEBEF + 描边 #D1D1D6；未选白底 + #E0E0E4 描边；末尾 ＋ 按钮 32dp */
+    /** chips：固定五项 + 用户标签（本地标签系统）；＋ 新建标签 */
     private fun renderChips() {
         chipRow.removeAllViews()
-        for (name in chips) {
+        val userLabels = engine.db.labels().map { it.second }
+        for (name in chips + userLabels) {
             val selected = name == filter
             chipRow.addView(Ui.chip(this, name, selected, night) {
                 filter = name
@@ -171,10 +172,55 @@ class ChatListActivity : BaseActivity() {
             background = Ui.roundBg(this@ChatListActivity, WaSpec.chipFill(false, night), 16, 1,
                 WaSpec.chipStroke(false, night))
             setPadding(dp(WaSpec.CHIP_ADD_PADDING_DP), 0, dp(WaSpec.CHIP_ADD_PADDING_DP), 0)
+            isClickable = true
+            setOnClickListener { showNewLabelDialog() }
         }, LinearLayout.LayoutParams(
             dp(WaSpec.CHIP_ADD_BUTTON_DP), dp(WaSpec.CHIP_ADD_BUTTON_DP)).apply {
             marginStart = dp(WaSpec.CHIP_GAP_DP)
         })
+    }
+
+    /** 给会话打标签（复选对话框；可顺手新建） */
+    private fun showLabelPicker(chat: ChatRow) {
+        val all = engine.db.labels()
+        if (all.isEmpty()) {
+            Toast.makeText(this, "还没有标签，点列表顶部「＋」先建一个", Toast.LENGTH_LONG).show()
+            return
+        }
+        val names = all.map { it.second }.toTypedArray()
+        val checked = engine.db.chatLabelNames(chat.jid).toSet()
+        val states = names.map { it in checked }.toBooleanArray()
+        android.app.AlertDialog.Builder(this)
+            .setTitle("设置标签：${chat.title.ifBlank { chat.jid.substringBefore("@") }}")
+            .setMultiChoiceItems(names, states) { _, which, isChecked ->
+                states[which] = isChecked
+            }
+            .setPositiveButton("保存") { _, _ ->
+                val ids = all.filterIndexed { i, _ -> states[i] }.map { it.first }
+                engine.db.setChatLabels(chat.jid, ids)
+                renderChats()
+            }
+            .setNegativeButton("取消", null)
+            .show()
+    }
+
+    /** 新建标签（chips ＋） */
+    private fun showNewLabelDialog() {
+        val input = EditText(this).apply { hint = "标签名，如 高意向客户" }
+        android.app.AlertDialog.Builder(this)
+            .setTitle("新建标签")
+            .setView(input)
+            .setPositiveButton("创建") { _, _ ->
+                val n = input.text.toString().trim()
+                if (n.isNotBlank()) {
+                    engine.db.createLabel(n)
+                    filter = n
+                    renderChips()
+                    renderChats()
+                }
+            }
+            .setNegativeButton("取消", null)
+            .show()
     }
 
     override fun onResume() {
@@ -221,7 +267,10 @@ class ChatListActivity : BaseActivity() {
                 "群组" -> c.jid.contains("@g.us") && !c.archived
                 "特别关注" -> c.pinned && !c.archived
                 "已归档" -> c.archived
-                else -> !c.archived
+                else -> if (filter in engine.db.labels().map { it.second }) {
+                    // 用户标签：只显示打该标签的会话
+                    engine.db.chatJidsOfLabel(filter).contains(c.jid)
+                } else !c.archived
             }
             val matchQuery = query.isBlank() || c.title.contains(query, true) ||
                 c.lastMessage.contains(query, true) || c.jid.contains(query)
@@ -262,6 +311,7 @@ class ChatListActivity : BaseActivity() {
             setOnClickListener { action() }
         }
         box.addView(item("新建群聊") { dlg.dismiss(); showNewGroupDialog() })
+        box.addView(item("设置标签") { dlg.dismiss(); showLabelPicker(chat) })
         box.addView(item(if (chat.pinned) "取消置顶" else "置顶聊天") {
             dlg.dismiss()
             engine.db.setChatFlags(chat.jid, pinned = !chat.pinned)
