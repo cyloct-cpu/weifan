@@ -499,8 +499,30 @@ class PairingActivity : BaseActivity(), PairListener {
         progress.visibility = View.VISIBLE
         nextBtn.isEnabled = false
         statusText.setTextColor(textStatus)
-        statusText.text = "正在连接 WhatsApp 服务器…"
+        statusText.text = "正在检查号码…"
         Thread {
+            // 先校验该号码是否注册过 WhatsApp（P1-1）
+            var notOnWhatsApp = false
+            var bizName = ""
+            try {
+                val arr = org.json.JSONArray(client.isOnWhatsApp("[\"$normalized\"]"))
+                if (arr.length() > 0) {
+                    val o = arr.getJSONObject(0)
+                    notOnWhatsApp = !o.optBoolean("onWhatsApp")
+                    bizName = o.optString("businessName")
+                }
+            } catch (_: Throwable) { }
+            if (notOnWhatsApp) {
+                main.post {
+                    progress.visibility = View.GONE
+                    nextBtn.isEnabled = true
+                    statusText.text = "该号码未注册 WhatsApp，请确认后重试"
+                    statusText.setTextColor(WaSpec.LOGOUT_BANNER_TEXT)
+                }
+                return@Thread
+            }
+            val bizHint = if (bizName.isNotBlank()) "（认证企业：$bizName）" else ""
+            main.post { statusText.text = "正在连接 WhatsApp 服务器…$bizHint" }
             val err = try {
                 client.pairWithPhone(normalized)
                 null

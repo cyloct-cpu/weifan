@@ -9,7 +9,7 @@ import android.database.sqlite.SQLiteOpenHelper
  * 会话与消息存储。零依赖：直接 SQLiteOpenHelper，不引 Room。
  * 表结构对齐 Go 层 whatsmeow store（它自己存协议状态；这里只存 UI 需要的会话/消息/译文）。
  */
-class ChatDb(context: Context) : SQLiteOpenHelper(context, "chats.db", null, 3) {
+class ChatDb(context: Context) : SQLiteOpenHelper(context, "chats.db", null, 4) {
 
     override fun onCreate(db: SQLiteDatabase) {
         db.execSQL("""
@@ -18,7 +18,10 @@ class ChatDb(context: Context) : SQLiteOpenHelper(context, "chats.db", null, 3) 
               title TEXT NOT NULL DEFAULT '',
               last_message TEXT NOT NULL DEFAULT '',
               last_ts INTEGER NOT NULL DEFAULT 0,
-              unread INTEGER NOT NULL DEFAULT 0
+              unread INTEGER NOT NULL DEFAULT 0,
+              pinned INTEGER NOT NULL DEFAULT 0,
+              archived INTEGER NOT NULL DEFAULT 0,
+              muted INTEGER NOT NULL DEFAULT 0
             )
         """)
         db.execSQL("""
@@ -50,6 +53,12 @@ class ChatDb(context: Context) : SQLiteOpenHelper(context, "chats.db", null, 3) 
         if (oldVersion < 2) {
             db.execSQL("ALTER TABLE messages ADD COLUMN original TEXT NOT NULL DEFAULT ''")
         }
+        // v4: 会话本地管理（置顶/归档/静音）
+        if (oldVersion < 4) {
+            db.execSQL("ALTER TABLE chats ADD COLUMN pinned INTEGER NOT NULL DEFAULT 0")
+            db.execSQL("ALTER TABLE chats ADD COLUMN archived INTEGER NOT NULL DEFAULT 0")
+            db.execSQL("ALTER TABLE chats ADD COLUMN muted INTEGER NOT NULL DEFAULT 0")
+        }
         // v3: 媒体消息（kind/mime/name/size/path/thumb/下载元数据）
         if (oldVersion < 3) {
             db.execSQL("ALTER TABLE messages ADD COLUMN media_kind TEXT NOT NULL DEFAULT ''")
@@ -68,15 +77,19 @@ class ChatDb(context: Context) : SQLiteOpenHelper(context, "chats.db", null, 3) 
     fun upsertChat(jid: String, title: String, lastMessage: String, ts: Long, incrementUnread: Boolean) {
         val db = writableDatabase
         val existing = readableDatabase.rawQuery(
-            "SELECT title, unread FROM chats WHERE jid=?", arrayOf(jid)).use { c ->
-            if (c.moveToFirst()) c.getString(0) to c.getInt(1) else null
+            "SELECT title, unread, pinned, archived, muted FROM chats WHERE jid=?", arrayOf(jid)).use { c ->
+            if (c.moveToFirst()) ChatRow(jid, c.getString(0), "", 0, c.getInt(1),
+                c.getInt(2) == 1, c.getInt(3) == 1, c.getInt(4) == 1) else null
         }
         val values = ContentValues().apply {
             put("jid", jid)
-            put("title", title.ifBlank { existing?.first ?: jid })
+            put("title", title.ifBlank { existing?.title ?: jid })
+            put("pinned", if (existing?.pinned == true) 1 else 0)
+            put("archived", if (existing?.archived == true) 1 else 0)
+            put("muted", if (existing?.muted == true) 1 else 0)
             put("last_message", lastMessage)
             put("last_ts", ts)
-            put("unread", (existing?.second ?: 0) + if (incrementUnread) 1 else 0)
+            put("unread", (existing?.unread ?: 0) + if (incrementUnread) 1 else 0)
         }
         db.insertWithOnConflict("chats", null, values, SQLiteDatabase.CONFLICT_REPLACE)
     }
@@ -91,11 +104,13 @@ class ChatDb(context: Context) : SQLiteOpenHelper(context, "chats.db", null, 3) 
 
     fun chats(): List<ChatRow> {
         return readableDatabase.rawQuery(
-            "SELECT jid, title, last_message, last_ts, unread FROM chats ORDER BY last_ts DESC", null
+            "SELECT jid, title, last_message, last_ts, unread, pinned, archived, muted FROM chats " +
+            "ORDER BY pinned DESC, last_ts DESC", null
         ).use { c ->
             val out = mutableListOf<ChatRow>()
             while (c.moveToNext()) {
-                out += ChatRow(c.getString(0), c.getString(1), c.getString(2), c.getLong(3), c.getInt(4))
+                out += ChatRow(c.getString(0), c.getString(1), c.getString(2), c.getLong(3), c.getInt(4),
+                    c.getInt(5) == 1, c.getInt(6) == 1, c.getInt(7) == 1)
             }
             out
         }
@@ -137,6 +152,21 @@ class ChatDb(context: Context) : SQLiteOpenHelper(context, "chats.db", null, 3) 
         writableDatabase.execSQL(
             "UPDATE messages SET translated=?, translated_lang=? WHERE chat_jid=? AND id=?",
             arrayOf(translated, lang, chatJid, id))
+    }
+
+    /** 设置会话本地标记（P1-3 置顶/归档/静音） */
+    fun setChatFlags(jid: String, pinned: Boolean? = null, archived: Boolean? = null, muted: Boolean? = null) {
+        val cv = ContentValues().apply {
+            pinned?.let { put("pinned", if (it) 1 else 0) }
+            archived?.let { put("archived", if (it) 1 else 0) }
+            muted?.let { put("muted", if (it) 1 else 0) }
+        }
+        writableDatabase.update("chats", cv, "jid=?", arrayOf(jid))
+    }
+
+    /** 会话重命名（本地备注名） */
+    fun renameChat(jid: String, title: String) {
+        writableDatabase.execSQL("UPDATE chats SET title=? WHERE jid=?", arrayOf(title, jid))
     }
 
     /** 撤回：正文替换为占位，媒体标记也清掉（官方显示「您撤回了这条消息」） */
@@ -182,7 +212,10 @@ data class ChatRow(
     var title: String,
     var lastMessage: String,
     var lastTs: Long,
-    var unread: Int
+    var unread: Int,
+    val pinned: Boolean = false,
+    val archived: Boolean = false,
+    val muted: Boolean = false
 )
 
 data class MessageRow(

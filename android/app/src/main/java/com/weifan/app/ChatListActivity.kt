@@ -48,7 +48,7 @@ class ChatListActivity : BaseActivity() {
     private var filter = "所有"
     private var query = ""
 
-    private val chips = listOf("所有", "未读", "特别关注", "群组")
+    private val chips = listOf("所有", "未读", "特别关注", "群组", "已归档")
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -216,10 +216,11 @@ class ChatListActivity : BaseActivity() {
         val all = engine.db.chats()
         val filtered = all.filter { c ->
             val matchFilter = when (filter) {
-                "未读" -> c.unread > 0
-                "群组" -> c.jid.contains("@g.us")
-                "特别关注" -> false
-                else -> true
+                "未读" -> c.unread > 0 && !c.archived
+                "群组" -> c.jid.contains("@g.us") && !c.archived
+                "特别关注" -> c.pinned && !c.archived
+                "已归档" -> c.archived
+                else -> !c.archived
             }
             val matchQuery = query.isBlank() || c.title.contains(query, true) ||
                 c.lastMessage.contains(query, true) || c.jid.contains(query)
@@ -240,6 +241,59 @@ class ChatListActivity : BaseActivity() {
         val timeFmt = SimpleDateFormat("HH:mm", Locale.getDefault())
         val dayFmt = SimpleDateFormat("M月d日", Locale.getDefault())
         for (chat in filtered) listBox.addView(chatRow(chat, timeFmt, dayFmt))
+    }
+
+    /** 会话长按菜单：置顶/归档/静音/重命名（P1-2/3 本地实现） */
+    private fun showChatMenu(chat: ChatRow) {
+        val box = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            background = Ui.roundBg(this@ChatListActivity,
+                if (night) WaSpec.SURFACE_NIGHT else Color.WHITE, 20)
+            setPadding(dp(6), dp(6), dp(6), dp(6))
+        }
+        val dlg = android.app.AlertDialog.Builder(this).create()
+        fun item(label: String, action: () -> Unit): TextView = TextView(this).apply {
+            text = label
+            textSize = 16f
+            setTextColor(WaSpec.textPrimary(night))
+            setPadding(dp(20), dp(14), dp(20), dp(14))
+            isClickable = true
+            setOnClickListener { action() }
+        }
+        box.addView(item(if (chat.pinned) "取消置顶" else "置顶聊天") {
+            dlg.dismiss()
+            engine.db.setChatFlags(chat.jid, pinned = !chat.pinned)
+            renderChats()
+        })
+        box.addView(item(if (chat.archived) "取消归档" else "归档聊天") {
+            dlg.dismiss()
+            engine.db.setChatFlags(chat.jid, archived = !chat.archived)
+            renderChats()
+        })
+        box.addView(item(if (chat.muted) "取消静音" else "静音通知") {
+            dlg.dismiss()
+            engine.db.setChatFlags(chat.jid, muted = !chat.muted)
+            renderChats()
+        })
+        box.addView(item("重命名") {
+            dlg.dismiss()
+            val input = EditText(this).apply { setText(chat.title) }
+            android.app.AlertDialog.Builder(this@ChatListActivity)
+                .setTitle("重命名会话")
+                .setView(input)
+                .setPositiveButton("保存") { _, _ ->
+                    val t = input.text.toString().trim()
+                    if (t.isNotBlank()) {
+                        engine.db.renameChat(chat.jid, t)
+                        renderChats()
+                    }
+                }
+                .setNegativeButton("取消", null)
+                .show()
+        })
+        dlg.setView(box)
+        dlg.show()
+        dlg.window?.setLayout(dp(300), ViewGroup.LayoutParams.WRAP_CONTENT)
     }
 
     /** 空态：标题 15sp / 统计 14sp / 提示 13sp，间距 12dp、8dp、8dp（对齐 emptyView 一组）*/
@@ -314,16 +368,18 @@ class ChatListActivity : BaseActivity() {
             gravity = Gravity.CENTER_VERTICAL
             setPadding(dp(14), dp(12), dp(14), dp(12))
             isClickable = true
+            isLongClickable = true
             setOnClickListener {
                 startActivity(Intent(this@ChatListActivity, ChatActivity::class.java)
                     .putExtra("jid", chat.jid).putExtra("title", chat.title))
             }
+            setOnLongClickListener { showChatMenu(chat); true }
         }
         row.addView(avatar(chat.jid, chat.title))
 
         val mid = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
         mid.addView(TextView(this).apply {
-            text = chat.title.ifBlank { chat.jid.substringBefore("@") }
+            text = (if (chat.pinned) "📌 " else "") + chat.title.ifBlank { chat.jid.substringBefore("@") }
             textSize = 15.5f
             setTextColor(WaSpec.textPrimary(night))
             typeface = Typeface.create("sans-serif-medium", Typeface.NORMAL)
@@ -356,7 +412,8 @@ class ChatListActivity : BaseActivity() {
                 setTextColor(Color.WHITE)
                 typeface = Typeface.create("sans-serif-medium", Typeface.NORMAL)
                 gravity = Gravity.CENTER
-                background = Ui.roundBg(this@ChatListActivity, WaSpec.GREEN_LIGHT, 11)
+                background = Ui.roundBg(this@ChatListActivity,
+                    if (chat.muted) WaSpec.textSecondary(night) else WaSpec.GREEN_LIGHT, 11)
                 setPadding(dp(7), dp(1), dp(7), dp(1))
             }, LinearLayout.LayoutParams(
                 ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply {
