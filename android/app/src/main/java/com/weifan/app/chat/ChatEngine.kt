@@ -133,6 +133,9 @@ class ChatEngine private constructor(context: Context) :
                     "video" -> "[视频]"
                     "audio" -> "[语音]"
                     "document" -> "[文件] " + mediaName
+                    "poll" -> "📊 " + mediaName
+                    "location" -> "📍 " + mediaName.ifBlank { "位置" }
+                    "contact" -> "👤 " + mediaName
                     else -> "[消息]"
                 }
             }

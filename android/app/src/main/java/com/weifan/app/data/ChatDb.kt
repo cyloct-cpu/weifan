@@ -9,7 +9,7 @@ import android.database.sqlite.SQLiteOpenHelper
  * 会话与消息存储。零依赖：直接 SQLiteOpenHelper，不引 Room。
  * 表结构对齐 Go 层 whatsmeow store（它自己存协议状态；这里只存 UI 需要的会话/消息/译文）。
  */
-class ChatDb(context: Context) : SQLiteOpenHelper(context, "chats.db", null, 6) {
+class ChatDb(context: Context) : SQLiteOpenHelper(context, "chats.db", null, 7) {
 
     override fun onCreate(db: SQLiteDatabase) {
         db.execSQL("""
@@ -22,7 +22,8 @@ class ChatDb(context: Context) : SQLiteOpenHelper(context, "chats.db", null, 6) 
               pinned INTEGER NOT NULL DEFAULT 0,
               archived INTEGER NOT NULL DEFAULT 0,
               muted INTEGER NOT NULL DEFAULT 0,
-              blocked INTEGER NOT NULL DEFAULT 0
+              blocked INTEGER NOT NULL DEFAULT 0,
+              note TEXT NOT NULL DEFAULT ''
             )
         """)
         db.execSQL("""
@@ -50,6 +51,10 @@ class ChatDb(context: Context) : SQLiteOpenHelper(context, "chats.db", null, 6) 
     }
 
     override fun onUpgrade(db: SQLiteDatabase, oldVersion: Int, newVersion: Int) {
+        // v7: 客户备注（本地 CRM；对每会话自由文本，跟设备不跟服务器）
+        if (oldVersion < 7) {
+            db.execSQL("ALTER TABLE chats ADD COLUMN note TEXT NOT NULL DEFAULT ''")
+        }
         // v6: 应用内拉黑（来信不入库、会话从列表隐藏；官方端拉黑独立不受影响）
         if (oldVersion < 6) {
             db.execSQL("ALTER TABLE chats ADD COLUMN blocked INTEGER NOT NULL DEFAULT 0")
@@ -111,6 +116,16 @@ class ChatDb(context: Context) : SQLiteOpenHelper(context, "chats.db", null, 6) 
 
     fun setChatTitle(jid: String, title: String) {
         writableDatabase.execSQL("UPDATE chats SET title=? WHERE jid=?", arrayOf(title, jid))
+    }
+
+    /** 客户备注（本地 CRM）：空串清除 */
+    fun setChatNote(jid: String, note: String) {
+        writableDatabase.execSQL("UPDATE chats SET note=? WHERE jid=?", arrayOf(note.trim(), jid))
+    }
+
+    fun chatNote(jid: String): String = readableDatabase.rawQuery(
+        "SELECT note FROM chats WHERE jid=?", arrayOf(jid)).use { c ->
+        if (c.moveToFirst()) c.getString(0) ?: "" else ""
     }
 
     fun chats(): List<ChatRow> {

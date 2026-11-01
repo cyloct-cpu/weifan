@@ -76,11 +76,23 @@ class ChatInfoActivity : BaseActivity() {
         box.addView(avatar, LinearLayout.LayoutParams(dp(96), dp(96)))
         engine().fetchAvatarAsync(chatJid) { av ->
             if (av == null || isDestroyed) return@fetchAvatarAsync
-            try {
-                val bmp = BitmapFactory.decodeFile(av.absolutePath) ?: return@fetchAvatarAsync
-                avatar.text = ""
-                avatar.background = android.graphics.drawable.BitmapDrawable(resources, bmp)
-            } catch (_: Throwable) { }
+            // ANR 修复：解码移到后台线程
+            Thread {
+                try {
+                    // 大头像显示 96dp：降采样后解码
+                    val opt = BitmapFactory.Options().apply { inJustDecodeBounds = true }
+                    BitmapFactory.decodeFile(av.absolutePath, opt)
+                    var sm = 1
+                    while (opt.outWidth / (sm * 2) >= dp(192) || opt.outHeight / (sm * 2) >= dp(192)) sm *= 2
+                    val bmp = BitmapFactory.decodeFile(av.absolutePath,
+                        BitmapFactory.Options().apply { inSampleSize = sm }) ?: return@Thread
+                    main.post {
+                        if (isDestroyed || isFinishing) return@post
+                        avatar.text = ""
+                        avatar.background = android.graphics.drawable.BitmapDrawable(resources, bmp)
+                    }
+                } catch (_: Throwable) { }
+            }.start()
         }
 
         // ── 名称 + 副行
@@ -127,6 +139,29 @@ class ChatInfoActivity : BaseActivity() {
                     engine().db.renameChat(chatJid, t)
                     Toast.makeText(this, "已保存", Toast.LENGTH_SHORT).show()
                 }
+            }, LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, dp(46)).apply { topMargin = dp(10) })
+
+            // ── 客户备注（本地 CRM）：多行自由文本，存 chats.note
+            box.addView(sectionLabel("客户备注（仅保存在本机）"))
+            box.addView(EditText(this).apply {
+                setText(engine().db.chatNote(chatJid))
+                hint = "成交意向、商品偏好、跟进计划…"
+                textSize = 15f
+                setTextColor(WaSpec.textPrimary(night))
+                background = Ui.roundBg(this@ChatInfoActivity,
+                    if (night) WaSpec.SEARCH_BG_NIGHT else WaSpec.GRAY6, 12)
+                setPadding(dp(14), dp(12), dp(14), dp(12))
+                minLines = 3
+                gravity = Gravity.TOP
+                id = 2002
+            }, LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply {
+                topMargin = dp(8)
+            })
+            box.addView(Ui.solidButton(this, "保存客户备注", WaSpec.primary(night), Color.WHITE) {
+                engine().db.setChatNote(chatJid, (findViewById<EditText>(2002)).text.toString())
+                Toast.makeText(this, "已保存", Toast.LENGTH_SHORT).show()
             }, LinearLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT, dp(46)).apply { topMargin = dp(10) })
         } else {
@@ -420,11 +455,27 @@ class ChatInfoActivity : BaseActivity() {
                     }
                     val img = ImageView(this).apply {
                         scaleType = ImageView.ScaleType.CENTER_CROP
+                        // ANR 修复：文件解码移到后台线程，主线程只设占位/贴图
                         val f = if (m.mediaPath.isNotBlank()) java.io.File(m.mediaPath) else null
                         if (f != null && f.exists()) {
-                            setImageBitmap(BitmapFactory.decodeFile(f.absolutePath))
+                            setImageResource(android.R.drawable.ic_menu_gallery)
+                            Thread {
+                                try {
+                                    // 九宫格格子约 100dp：降采样后解码
+                                    val opt = BitmapFactory.Options().apply { inJustDecodeBounds = true }
+                                    BitmapFactory.decodeFile(f.absolutePath, opt)
+                                    var sm = 1
+                                    while (opt.outWidth / (sm * 2) >= dp(200) || opt.outHeight / (sm * 2) >= dp(200)) sm *= 2
+                                    val bmp = BitmapFactory.decodeFile(f.absolutePath,
+                                        BitmapFactory.Options().apply { inSampleSize = sm }) ?: return@Thread
+                                    main.post {
+                                        if (isDestroyed || isFinishing) return@post
+                                        setImageBitmap(bmp)
+                                    }
+                                } catch (_: Throwable) { }
+                            }.start()
                         } else {
-                            // 尚未下载：用消息自带缩略图
+                            // 尚未下载：用消息自带缩略图（base64 小图，解码开销可忽略）
                             try {
                                 val tb = android.util.Base64.decode(m.mediaThumb,
                                     android.util.Base64.DEFAULT)

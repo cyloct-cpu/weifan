@@ -39,6 +39,14 @@ class ChatActivity : BaseActivity() {
     private lateinit var engine: ChatEngine
     private val main = Handler(Looper.getMainLooper())
 
+    // 位图缓存：key = mediaPath|thumbHash → 降采样后位图；重渲染不重复解码。
+    // LRU 上限 24 张（每张约 0.5–2MB），超出自动淘汰最久未用项。
+    private val bmpCache = object : java.util.LinkedHashMap<String, android.graphics.Bitmap>(
+        24, 0.75f, true) {
+        override fun removeEldestEntry(eldest: MutableMap.MutableEntry<String, android.graphics.Bitmap>): Boolean {
+            return size > 24
+        }
+    }
     private var chatJid: String = ""
     private var chatTitle: String = ""
     private var chatLangLabel: String = ""
@@ -149,7 +157,7 @@ class ChatActivity : BaseActivity() {
             val lb = com.weifan.app.core.CountryDetect.label(pn.ifBlank { chatJid })
             if (lb.isNotBlank()) {
                 chatLangLabel = lb
-                subtitle.text = "最近上线 · $chatLangLabel"
+                if (::subtitle.isInitialized) subtitle.text = "最近上线 · $chatLangLabel"
             }
         }
         subtitle = TextView(this).apply {
@@ -367,18 +375,31 @@ class ChatActivity : BaseActivity() {
             val view = this
             engine.fetchAvatarAsync(chatJid) { f ->
                 if (isDestroyed || isFinishing || f == null) return@fetchAvatarAsync
-                try {
-                    val bmp = android.graphics.BitmapFactory.decodeFile(f.absolutePath) ?: return@fetchAvatarAsync
-                    val s = minOf(bmp.width, bmp.height)
-                    val out = android.graphics.Bitmap.createBitmap(s, s, android.graphics.Bitmap.Config.ARGB_8888)
-                    val cv = android.graphics.Canvas(out)
-                    val paint = android.graphics.Paint(android.graphics.Paint.ANTI_ALIAS_FLAG)
-                    paint.shader = android.graphics.BitmapShader(bmp, android.graphics.Shader.TileMode.CLAMP,
-                        android.graphics.Shader.TileMode.CLAMP)
-                    cv.drawCircle(s / 2f, s / 2f, s / 2f, paint)
-                    view.text = ""
-                    view.background = android.graphics.drawable.BitmapDrawable(resources, out)
-                } catch (_: Throwable) { }
+                // ANR 修复：头像解码+圆裁也移到后台线程（回调在主线程）
+                Thread {
+                    try {
+                        // 头像显示 ≤52dp：降采样后解码，避免大图全量入内存
+                        val opt = android.graphics.BitmapFactory.Options().apply { inJustDecodeBounds = true }
+                        android.graphics.BitmapFactory.decodeFile(f.absolutePath, opt)
+                        var s = 1
+                        while (opt.outWidth / (s * 2) >= dp(104) || opt.outHeight / (s * 2) >= dp(104)) s *= 2
+                        val bmp = android.graphics.BitmapFactory.decodeFile(f.absolutePath,
+                            android.graphics.BitmapFactory.Options().apply { inSampleSize = s })
+                            ?: return@Thread
+                        val side = minOf(bmp.width, bmp.height)
+                        val out = android.graphics.Bitmap.createBitmap(side, side, android.graphics.Bitmap.Config.ARGB_8888)
+                        val cv = android.graphics.Canvas(out)
+                        val paint = android.graphics.Paint(android.graphics.Paint.ANTI_ALIAS_FLAG)
+                        paint.shader = android.graphics.BitmapShader(bmp, android.graphics.Shader.TileMode.CLAMP,
+                            android.graphics.Shader.TileMode.CLAMP)
+                        cv.drawCircle(side / 2f, side / 2f, side / 2f, paint)
+                        main.post {
+                            if (isDestroyed || isFinishing) return@post
+                            view.text = ""
+                            view.background = android.graphics.drawable.BitmapDrawable(resources, out)
+                        }
+                    } catch (_: Throwable) { }
+                }.start()
             }
         }
     }
@@ -391,7 +412,7 @@ class ChatActivity : BaseActivity() {
         engine.onConnectionChanged = { c ->
             main.post {
                 if (c) engine.announceOnlineAsync()
-                subtitle.text = subtitleText(c)
+                if (::subtitle.isInitialized) subtitle.text = subtitleText(c)
             }
         }
         engine.onReceiptChanged = { jid, _, _ ->
@@ -400,7 +421,7 @@ class ChatActivity : BaseActivity() {
         engine.onTypingChanged = { jid, typing ->
             main.post {
                 if (jid == chatJid) {
-                    subtitle.text = if (typing) "正在输入…"
+                    if (::subtitle.isInitialized) subtitle.text = if (typing) "正在输入…"
                         else subtitleText(engine.isConnected())
                 }
             }
@@ -429,6 +450,19 @@ class ChatActivity : BaseActivity() {
         engine.onTypingChanged = null
     }
 
+    // 渲染去抖：下载/回执等回调密集触发时 300ms 内只重渲染一次；
+    // 另用 pendingRender 标记避免清空后重入（防 7 张图 × 7 轮重复解码）
+    private val renderPending = java.util.concurrent.atomic.AtomicBoolean(false)
+    private val renderDebounce = Runnable {
+        renderPending.set(false)
+        try { renderMessages() } catch (_: Throwable) { }
+    }
+    private fun renderMessagesSoon() {
+        if (renderPending.compareAndSet(false, true)) {
+            main.postDelayed(renderDebounce, 300)
+        }
+    }
+
     private fun renderMessages(stickToBottom: Boolean = true) {
         val prevHeight = listBox.height
         // 只在用户本来就贴近底部时才自动粘底；在上方阅读旧消息时不打扰
@@ -449,7 +483,7 @@ class ChatActivity : BaseActivity() {
         // 图片/贴纸/语音/文档自动下载（视频仍手动点）；下载完重渲染一次
         for (m in msgs.filter { it.mediaKind.isNotBlank() && it.mediaKind != "video" &&
             it.mediaPath.isBlank() }) {
-            engine.fetchMediaAsync(m.chatJid, m.id) { _ -> main.post { renderMessages() } }
+            engine.fetchMediaAsync(m.chatJid, m.id) { _ -> main.post { renderMessagesSoon() } }
         }
         for (m in msgs.filter { !it.fromMe && it.translated.isBlank() && it.text.isNotBlank() }) {
             engine.translateIncomingAsync(m.chatJid, m.id, m.text)
@@ -480,6 +514,7 @@ class ChatActivity : BaseActivity() {
         } catch (_: Throwable) { null }
 
         fun roundBmp(bmp: android.graphics.Bitmap): android.graphics.Bitmap {
+            // 输入已经 inSampleSize 降采样（≤约480dp），拷贝一份做圆角遮罩，内存可控
             val out = android.graphics.Bitmap.createBitmap(bmp.width, bmp.height,
                 android.graphics.Bitmap.Config.ARGB_8888)
             val cv = android.graphics.Canvas(out)
@@ -518,22 +553,164 @@ class ChatActivity : BaseActivity() {
             maxWidth = dp(240)
         }
         fun showImage(f: java.io.File?) {
-            val bmp = f?.let { android.graphics.BitmapFactory.decodeFile(it.absolutePath) }
-                ?: decodeThumb(m.mediaThumb)
-            if (bmp != null) {
-                imageView.setImageBitmap(roundBmp(bmp))
-            } else {
-                // 无缩略图且未下载：可见占位框
-                imageView.setImageDrawable(null)
-                imageView.background = Ui.roundBg(this@ChatActivity,
-                    if (night) WaSpec.SURFACE_NIGHT else WaSpec.GRAY6, 8, 1, WaSpec.divider(night))
-                imageView.minimumHeight = dp(120)
-                imageView.minimumWidth = dp(180)
+            // ANR 修复：解码（含圆角处理）移到后台线程，主线程只 setImageBitmap。
+            // 大图（600KB+ JPEG）主线程同步 decodeFile 曾卡 UI 77 秒并触发 ANR。
+            fun apply(bmp: android.graphics.Bitmap?) {
+                if (bmp != null) {
+                    imageView.setImageBitmap(roundBmp(bmp))
+                    imageView.background = null
+                    imageView.minimumHeight = 0
+                    imageView.minimumWidth = 0
+                } else {
+                    // 无缩略图且未下载：可见占位框
+                    imageView.setImageDrawable(null)
+                    imageView.background = Ui.roundBg(this@ChatActivity,
+                        if (night) WaSpec.SURFACE_NIGHT else WaSpec.GRAY6, 8, 1, WaSpec.divider(night))
+                    imageView.minimumHeight = dp(120)
+                    imageView.minimumWidth = dp(180)
+                }
             }
+            // 先查缓存（主线程读取，LinkedHashMap 非线程安全 → 只在此处访问）
+            val cacheKey = (f?.absolutePath ?: "thumb:") + "|" + (m.id)
+            val cached = synchronized(bmpCache) { bmpCache[cacheKey] }
+            if (cached != null) { apply(cached); return }
+            if (f == null) {
+                val tb = decodeThumb(m.mediaThumb)
+                if (tb != null) synchronized(bmpCache) { bmpCache[cacheKey] = tb }
+                apply(tb); return
+            }
+            Thread {
+                // 内存修复：气泡显示宽 ≤240dp，inSampleSize 降采样，禁止全尺寸解码
+                // （曾把 RSS 从 148MB 推到 1.4GB 被 lmkd 杀）
+                fun sampleFile(): android.graphics.Bitmap? = try {
+                    val opt = android.graphics.BitmapFactory.Options().apply { inJustDecodeBounds = true }
+                    android.graphics.BitmapFactory.decodeFile(f.absolutePath, opt)
+                    var s = 1
+                    while (opt.outWidth / (s * 2) >= dp(240) * 2 || opt.outHeight / (s * 2) >= dp(240) * 2) s *= 2
+                    android.graphics.BitmapFactory.decodeFile(f.absolutePath,
+                        android.graphics.BitmapFactory.Options().apply { inSampleSize = s })
+                } catch (_: Throwable) { null }
+                val bmp = sampleFile()
+                if (bmp != null) synchronized(bmpCache) { bmpCache[cacheKey] = bmp }
+                main.post {
+                    if (isDestroyed || isFinishing) return@post
+                    val again = synchronized(bmpCache) { bmpCache[cacheKey] }
+                    apply(again ?: bmp ?: decodeThumb(m.mediaThumb))
+                }
+            }.start()
         }
 
 
         return when (m.mediaKind) {
+            "poll" -> {
+                // 真投票渲染：📊 问题 + 选项圆点行 + "投票 · 点按查看" 提示（对齐 WhatsApp）
+                val meta = try { JSONObject(m.mediaMeta) } catch (_: Throwable) { JSONObject() }
+                val opts = meta.optString("waveform").split("\n").filter { it.isNotBlank() }
+                val col = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
+                col.addView(TextView(this).apply {
+                    text = "📊  " + m.mediaName.ifBlank { "投票" }
+                    textSize = 14.5f
+                    setTextColor(WaSpec.textPrimary(night))
+                })
+                for (opt in opts.take(8)) {
+                    val row = LinearLayout(this).apply {
+                        orientation = LinearLayout.HORIZONTAL
+                        gravity = Gravity.CENTER_VERTICAL
+                        setPadding(0, dp(5), 0, 0)
+                    }
+                    row.addView(View(this).apply {
+                        background = Ui.roundBg(this@ChatActivity,
+                            if (night) 0xFF8696A0.toInt() else 0xFF8696A0.toInt(), dp(11))
+                    }, LinearLayout.LayoutParams(dp(22), dp(22)))
+                    row.addView(TextView(this).apply {
+                        text = opt
+                        textSize = 13.5f
+                        setTextColor(WaSpec.textPrimary(night))
+                    }, LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT,
+                        ViewGroup.LayoutParams.WRAP_CONTENT).apply { marginStart = dp(9) })
+                    col.addView(row)
+                }
+                col.addView(TextView(this).apply {
+                    text = "投票 · 长按可转发"
+                    textSize = 11.5f
+                    setTextColor(WaSpec.textSecondary(night))
+                    setPadding(0, dp(7), 0, 0)
+                })
+                col
+            }
+            "location" -> {
+                // 位置卡片：🌍 地图占位图 + 地名/经纬度
+                val meta = try { JSONObject(m.mediaMeta) } catch (_: Throwable) { JSONObject() }
+                val latlng = meta.optString("waveform") // "lat|lng|address"
+                val parts = latlng.split("|")
+                val col = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
+                val map = TextView(this).apply {
+                    text = "🌍"
+                    textSize = 44f
+                    gravity = Gravity.CENTER
+                    minHeight = dp(110)
+                    background = Ui.roundBg(this@ChatActivity,
+                        if (night) 0xFF2A3942.toInt() else 0xFFE7EDEA.toInt(), dp(10))
+                }
+                col.addView(map, LinearLayout.LayoutParams(
+                    ViewGroup.LayoutParams.MATCH_PARENT, dp(110)))
+                col.addView(TextView(this).apply {
+                    text = m.mediaName.ifBlank { "位置" }
+                    textSize = 14f
+                    setTextColor(WaSpec.textPrimary(night))
+                    setPadding(0, dp(6), 0, 0)
+                    maxLines = 1
+                })
+                if (parts.size >= 2) col.addView(TextView(this).apply {
+                    text = parts[0] + ", " + parts[1]
+                    textSize = 11.5f
+                    setTextColor(WaSpec.textSecondary(night))
+                })
+                col
+            }
+            "contact" -> {
+                // 联系人卡片：👤 + 姓名 + vCard 摘要（点击可看完整 vCard）
+                val meta = try { JSONObject(m.mediaMeta) } catch (_: Throwable) { JSONObject() }
+                val vcard = meta.optString("thumbnail")
+                val row = LinearLayout(this).apply {
+                    orientation = LinearLayout.HORIZONTAL
+                    gravity = Gravity.CENTER_VERTICAL
+                }
+                row.addView(TextView(this).apply {
+                    text = "👤"
+                    textSize = 26f
+                    gravity = Gravity.CENTER
+                    background = Ui.roundBg(this@ChatActivity,
+                        if (night) 0xFF2A3942.toInt() else 0xFFDFE9E4.toInt(), dp(24))
+                }, LinearLayout.LayoutParams(dp(46), dp(46)))
+                val col = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
+                col.addView(TextView(this).apply {
+                    text = m.mediaName.ifBlank { "联系人" }
+                    textSize = 14.5f
+                    setTextColor(WaSpec.textPrimary(night))
+                    maxLines = 1
+                    ellipsize = android.text.TextUtils.TruncateAt.END
+                })
+                val tel = vcard.lineSequence().firstOrNull { it.startsWith("TEL") }
+                    ?.substringAfter(':')?.trim().orEmpty()
+                if (tel.isNotBlank()) col.addView(TextView(this).apply {
+                    text = tel
+                    textSize = 11.5f
+                    setTextColor(WaSpec.textSecondary(night))
+                    maxLines = 1
+                })
+                row.addView(col, LinearLayout.LayoutParams(0,
+                    ViewGroup.LayoutParams.WRAP_CONTENT, 1f).apply { marginStart = dp(10) })
+                row.isClickable = true
+                row.setOnClickListener {
+                    android.app.AlertDialog.Builder(this)
+                        .setTitle(m.mediaName.ifBlank { "联系人" })
+                        .setMessage(vcard.ifBlank { "（无 vCard 内容）" })
+                        .setPositiveButton("关闭", null)
+                        .show()
+                }
+                row
+            }
             "image", "sticker", "video" -> {
                 showImage(localFile())
                 if (m.mediaKind == "video") {
@@ -1142,28 +1319,35 @@ class ChatActivity : BaseActivity() {
     }
 
     private fun showContactDialog() {
+        if (checkSelfPermission(android.Manifest.permission.READ_CONTACTS) !=
+            android.content.pm.PackageManager.PERMISSION_GRANTED) {
+            requestPermissions(arrayOf(android.Manifest.permission.READ_CONTACTS), 4101)
+            return
+        }
         Thread {
-            val raw = try { engine.client.getAllContactsJSON() } catch (_: Throwable) { null }
-            val items = mutableListOf<Pair<String, String>>() // name to phone
-            if (raw != null) {
-                try {
-                    val arr = org.json.JSONArray(raw)
-                    for (i in 0 until arr.length()) {
-                        val o = arr.getJSONObject(i)
-                        items.add(o.getString("name") to o.getString("phone"))
-                    }
-                } catch (_: Throwable) {}
-            }
+            val wa = mutableListOf<Pair<String, String>>() // name to phone
+            try {
+                val arr = org.json.JSONArray(engine.client.getAllContactsJSON())
+                for (i in 0 until arr.length()) {
+                    val o = arr.getJSONObject(i)
+                    wa.add("📱 " + o.getString("name") to o.getString("phone"))
+                }
+            } catch (_: Throwable) {}
+            val phone = deviceContacts()
+            val merged = mutableListOf<Pair<String, String>>()
+            val seen = mutableSetOf<String>()
+            for ((n, p) in wa) { val k = p; if (seen.add(k)) merged.add(n to p) }
+            for ((n, p) in phone) if (seen.add(p)) merged.add("📇 $n" to p)
             main.post {
                 if (isDestroyed || isFinishing) return@post
-                if (items.isEmpty()) { showContactInputDialog(); return@post }
-                val names = items.map { it.first }.toTypedArray()
+                if (merged.isEmpty()) { showContactInputDialog(); return@post }
+                val names = merged.map { it.first }.toTypedArray()
                 android.app.AlertDialog.Builder(this)
-                    .setTitle("选择联系人（${items.size}）")
+                    .setTitle("选择联系人（${merged.size}）")
                     .setItems(names) { _, i ->
-                        val (nm2, ph2) = items[i]
+                        val (nm2, ph2) = merged[i]
                         sendBtn.isEnabled = false
-                        engine.sendContactAsync(chatJid, nm2, ph2) { _, e2 ->
+                        engine.sendContactAsync(chatJid, nm2.substringAfter(" "), ph2) { _, e2 ->
                             sendBtn.isEnabled = true
                             if (e2 != null) Toast.makeText(this, "发送失败：$e2", Toast.LENGTH_LONG).show()
                             else renderMessages()
@@ -1174,6 +1358,38 @@ class ChatActivity : BaseActivity() {
                     .show()
             }
         }.start()
+    }
+
+    /** 手机通讯录（需 READ_CONTACTS 已授权），在后台线程调用 */
+    private fun deviceContacts(): List<Pair<String, String>> {
+        val out = mutableListOf<Pair<String, String>>()
+        try {
+            contentResolver.query(
+                android.provider.ContactsContract.CommonDataKinds.Phone.CONTENT_URI,
+                arrayOf(android.provider.ContactsContract.CommonDataKinds.Phone.DISPLAY_NAME,
+                    android.provider.ContactsContract.CommonDataKinds.Phone.NUMBER),
+                null, null,
+                android.provider.ContactsContract.CommonDataKinds.Phone.DISPLAY_NAME + " ASC")?.use { c ->
+                while (c.moveToNext() && out.size < 300) {
+                    val n = c.getString(0)?.trim().orEmpty()
+                    val p = c.getString(1)?.trim().orEmpty()
+                    if (n.isNotBlank() && p.isNotBlank()) out.add(n to p)
+                }
+            }
+        } catch (_: Throwable) {}
+        return out
+    }
+
+    override fun onRequestPermissionsResult(requestCode: Int, permissions: Array<out String>, grantResults: IntArray) {
+        super.onRequestPermissionsResult(requestCode, permissions, grantResults)
+        if (requestCode == 4101) {
+            if (grantResults.firstOrNull() == android.content.pm.PackageManager.PERMISSION_GRANTED) {
+                showContactDialog()
+            } else {
+                Toast.makeText(this, "未授权通讯录，可用「手动输入」", Toast.LENGTH_SHORT).show()
+                showContactInputDialog()
+            }
+        }
     }
 
     /** 手动输入姓名+手机号发送卡片 */

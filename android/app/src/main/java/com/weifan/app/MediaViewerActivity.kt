@@ -148,13 +148,35 @@ class MediaViewerActivity : BaseActivity() {
     }
 
     private fun showImage(m: com.weifan.app.data.MessageRow) {
+        // ANR 修复：整段解码移到后台线程，主线程只贴图/提示
+        fun applyBmp(bmp: android.graphics.Bitmap?) {
+            if (bmp != null) {
+                imageView.setImageBitmap(bmp)
+                hintText.text = "左右滑动切换 · 点击图片返回"
+            }
+        }
         val f = if (m.mediaPath.isNotBlank()) java.io.File(m.mediaPath) else null
-        val bmp = f?.takeIf { it.exists() }?.let { BitmapFactory.decodeFile(it.absolutePath) }
-        if (bmp != null) {
-            imageView.setImageBitmap(bmp)
-            hintText.text = "左右滑动切换 · 点击图片返回"
+        // 全屏查看：降采样到屏幕宽度即可（原图常为 4000px 级，全量解码曾撑到 1.4GB RSS）
+        val target = resources.displayMetrics.widthPixels
+        fun sampleFile(p: String): android.graphics.Bitmap? = try {
+            val opt = BitmapFactory.Options().apply { inJustDecodeBounds = true }
+            BitmapFactory.decodeFile(p, opt)
+            var sm = 1
+            while (opt.outWidth / (sm * 2) >= target && opt.outHeight / (sm * 2) >= target / 2) sm *= 2
+            BitmapFactory.decodeFile(p, BitmapFactory.Options().apply { inSampleSize = sm })
+        } catch (_: Throwable) { null }
+        if (f != null && f.exists()) {
+            Thread {
+                try {
+                    val bmp = sampleFile(f.absolutePath)
+                    main.post {
+                        if (isDestroyed || isFinishing) return@post
+                        applyBmp(bmp)
+                    }
+                } catch (_: Throwable) { }
+            }.start()
         } else {
-            // 未下载：先用自带缩略图占位，后台下载原图替换
+            // 未下载：先用自带缩略图占位（base64 小图），后台下载原图替换
             try {
                 val tb = android.util.Base64.decode(m.mediaThumb, android.util.Base64.DEFAULT)
                 BitmapFactory.decodeByteArray(tb, 0, tb.size)?.let { imageView.setImageBitmap(it) }
@@ -167,9 +189,15 @@ class MediaViewerActivity : BaseActivity() {
                         hintText.text = "下载失败，点按图片重试"
                         return@post
                     }
-                    val nb = BitmapFactory.decodeFile(done.absolutePath)
-                    if (nb != null) imageView.setImageBitmap(nb)
-                    hintText.text = "左右滑动切换 · 点击图片返回"
+                    Thread {
+                        try {
+                            val nb = sampleFile(done.absolutePath)
+                            main.post {
+                                if (isDestroyed || isFinishing) return@post
+                                applyBmp(nb)
+                            }
+                        } catch (_: Throwable) { }
+                    }.start()
                 }
             }
         }

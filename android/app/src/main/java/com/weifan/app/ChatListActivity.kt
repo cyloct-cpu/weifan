@@ -454,19 +454,32 @@ class ChatListActivity : BaseActivity() {
             val view = this
             engine.fetchAvatarAsync(jid) { f ->
                 if (isDestroyed || isFinishing || f == null) return@fetchAvatarAsync
-                try {
-                    val bmp = android.graphics.BitmapFactory.decodeFile(f.absolutePath) ?: return@fetchAvatarAsync
-                    // 裁成正圆
-                    val s = minOf(bmp.width, bmp.height)
-                    val out = android.graphics.Bitmap.createBitmap(s, s, android.graphics.Bitmap.Config.ARGB_8888)
-                    val cv = android.graphics.Canvas(out)
-                    val paint = android.graphics.Paint(android.graphics.Paint.ANTI_ALIAS_FLAG)
-                    paint.shader = android.graphics.BitmapShader(bmp, android.graphics.Shader.TileMode.CLAMP,
-                        android.graphics.Shader.TileMode.CLAMP)
-                    cv.drawCircle(s / 2f, s / 2f, s / 2f, paint)
-                    view.text = ""
-                    view.background = android.graphics.drawable.BitmapDrawable(resources, out)
-                } catch (_: Throwable) { }
+                // ANR 修复：解码+圆裁移到后台线程
+                Thread {
+                    try {
+                        // 头像显示 ≤50dp：降采样后解码
+                        val opt = android.graphics.BitmapFactory.Options().apply { inJustDecodeBounds = true }
+                        android.graphics.BitmapFactory.decodeFile(f.absolutePath, opt)
+                        var sm = 1
+                        while (opt.outWidth / (sm * 2) >= dp(100) || opt.outHeight / (sm * 2) >= dp(100)) sm *= 2
+                        val bmp = android.graphics.BitmapFactory.decodeFile(f.absolutePath,
+                            android.graphics.BitmapFactory.Options().apply { inSampleSize = sm })
+                            ?: return@Thread
+                        // 裁成正圆
+                        val s = minOf(bmp.width, bmp.height)
+                        val out = android.graphics.Bitmap.createBitmap(s, s, android.graphics.Bitmap.Config.ARGB_8888)
+                        val cv = android.graphics.Canvas(out)
+                        val paint = android.graphics.Paint(android.graphics.Paint.ANTI_ALIAS_FLAG)
+                        paint.shader = android.graphics.BitmapShader(bmp, android.graphics.Shader.TileMode.CLAMP,
+                            android.graphics.Shader.TileMode.CLAMP)
+                        cv.drawCircle(s / 2f, s / 2f, s / 2f, paint)
+                        main.post {
+                            if (isDestroyed || isFinishing) return@post
+                            view.text = ""
+                            view.background = android.graphics.drawable.BitmapDrawable(resources, out)
+                        }
+                    } catch (_: Throwable) { }
+                }.start()
             }
         }
     }
