@@ -504,6 +504,36 @@ class ChatEngine private constructor(context: Context) :
         }.start()
     }
 
+    /** 发送方撤回（本地置占位，服务器广播 REVOKE 给对方） */
+    fun revokeAsync(chatJid: String, msgId: String, onDone: ((Boolean) -> Unit)? = null) {
+        Thread {
+            var ok = false
+            try {
+                client.revokeMessage(chatJid, msgId)
+                db.applyRevoke(chatJid, msgId)
+                ok = true
+            } catch (_: Throwable) { }
+            val res = ok
+            onDone?.let { main.post { it(res) } }
+            main.post { onChatUpdated?.invoke() }
+        }.start()
+    }
+
+    /** 发送方编辑文本（本地更新，服务器广播 EDIT；官方 15 分钟窗口） */
+    fun editAsync(chatJid: String, msgId: String, newText: String, onDone: ((Boolean) -> Unit)? = null) {
+        Thread {
+            var ok = false
+            try {
+                client.editTextMessage(chatJid, msgId, newText)
+                db.applyEdit(chatJid, msgId, newText)
+                ok = true
+            } catch (_: Throwable) { }
+            val res = ok
+            onDone?.let { main.post { it(res) } }
+            main.post { onChatUpdated?.invoke() }
+        }.start()
+    }
+
     /** 转发媒体（用 mediaMeta 重建 proto，带 IsForwarded） */
     fun forwardMediaAsync(targetJid: String, metaJson: String,
                           onResult: (String?, String?) -> Unit) {

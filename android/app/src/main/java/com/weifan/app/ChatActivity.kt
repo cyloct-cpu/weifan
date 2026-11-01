@@ -773,10 +773,16 @@ class ChatActivity : BaseActivity() {
         sendBtn.isEnabled = false
         if (translateOn) {
             engine.sendWithTranslation(chatJid, text) { _, err ->
-                sendBtn.isEnabled = true
                 if (err != null) {
-                    Toast.makeText(this, err, Toast.LENGTH_LONG).show()
+                    // 降级：翻译不可用直接发原文，不把用户卡死
+                    Toast.makeText(this, "翻译不可用，已发原文", Toast.LENGTH_SHORT).show()
+                    engine.sendText(chatJid, text, original = text) { _, err2 ->
+                        sendBtn.isEnabled = true
+                        if (err2 != null) Toast.makeText(this, err2, Toast.LENGTH_LONG).show()
+                        else { input.setText(""); renderMessages() }
+                    }
                 } else {
+                    sendBtn.isEnabled = true
                     input.setText("")
                     renderMessages()
                 }
@@ -832,6 +838,20 @@ class ChatActivity : BaseActivity() {
             cm.setPrimaryClip(android.content.ClipData.newPlainText("weifan", m.text))
             Toast.makeText(this, "已复制", Toast.LENGTH_SHORT).show()
         })
+        // 自己发的消息：撤回 / 编辑（官方规则：编辑 15 分钟窗口）
+        if (m.fromMe) {
+            box.addView(item("撤回") {
+                dlg.dismiss()
+                engine.revokeAsync(chatJid, m.id) { ok ->
+                    Toast.makeText(this, if (ok) "已撤回" else "撤回失败", Toast.LENGTH_SHORT).show()
+                    if (ok) renderMessages()
+                }
+            })
+            if (m.mediaKind.isBlank()) box.addView(item("编辑") {
+                dlg.dismiss()
+                showEditDialog(m)
+            })
+        }
         if (m.mediaKind.isNotBlank()) box.addView(item("下载") {
             dlg.dismiss()
             engine.fetchMediaAsync(m.chatJid, m.id) { f ->
@@ -842,6 +862,28 @@ class ChatActivity : BaseActivity() {
         dlg.setView(box)
         dlg.show()
         dlg.window?.setLayout(dp(300), ViewGroup.LayoutParams.WRAP_CONTENT)
+    }
+
+    /** 编辑弹窗：预填原文，确认后广播 EDIT */
+    private fun showEditDialog(m: MessageRow) {
+        val input = EditText(this).apply {
+            setText(m.text)
+            setSelection(text.length)
+        }
+        android.app.AlertDialog.Builder(this)
+            .setTitle("编辑消息")
+            .setView(input)
+            .setPositiveButton("保存") { _, _ ->
+                val t = input.text.toString().trim()
+                if (t.isNotBlank() && t != m.text) {
+                    engine.editAsync(chatJid, m.id, t) { ok ->
+                        Toast.makeText(this, if (ok) "已编辑" else "编辑失败", Toast.LENGTH_SHORT).show()
+                        if (ok) renderMessages()
+                    }
+                }
+            }
+            .setNegativeButton("取消", null)
+            .show()
     }
 
     /** 转发：会话选择器（当前会话除外） */
