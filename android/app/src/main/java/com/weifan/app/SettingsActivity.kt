@@ -115,6 +115,15 @@ class SettingsActivity : BaseActivity() {
             showDonateDialog()
         })
 
+        // ---- 客户管理（本地 CRM，批3-a）----
+        list.addView(section("客户管理"))
+        list.addView(row("跟进待办", "记要跟进的事与到期时间，纯本地不上传") {
+            startActivity(Intent(this, FollowupTodosActivity::class.java))
+        })
+        list.addView(row("新建联系人", "查号是否在 WhatsApp + 存进手机通讯录") {
+            startActivity(Intent(this, NewContactActivity::class.java))
+        })
+
         // ---- 拉黑管理 ----
         list.addView(section("隐私与屏蔽"))
         list.addView(row("已拉黑联系人", "查看与解除应用内拉黑") { showBlockedList() })

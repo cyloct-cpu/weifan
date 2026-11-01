@@ -49,6 +49,22 @@ object WaSpec {
     val SEARCH_ICON = Color.parseColor("#6F6F6F")       // chat_search_icon
     val SEARCH_ICON_NIGHT = Color.parseColor("#8696A0")
 
+    // 会话内搜索条（对齐参考 chatSearchBar：行 44dp / 胶囊 36dp / 输入 15sp）
+    const val CHAT_SEARCH_BAR_ROW_HEIGHT_DP = 44
+    const val CHAT_SEARCH_CAPSULE_HEIGHT_DP = 36
+    const val CHAT_SEARCH_INPUT_SP = 15
+
+    // ──────────────────输入区圆钮（对齐参考 input_circle_black）──────────────────
+    // 参考实值：wa_input_action_btn_bg=@color/wa_surface（白/夜#1C1C1E）
+    //           wa_input_border=#14000000（夜#33FFFFFF）1dp
+    //           wa_input_action_btn_icon=@color/wa_text_primary（#111111/夜#E9EDEF）
+    // 即：白底 + 1dp 淡描边 + 深色图标（新版 WhatsApp 风），非实心绿。
+    val INPUT_BTN_STROKE_NIGHT = 0x33FFFFFF.toInt()
+    val INPUT_BTN_STROKE = 0x14000000
+    fun inputBtnBg(night: Boolean) = if (night) SURFACE_NIGHT else SURFACE
+    fun inputBtnStroke(night: Boolean) = if (night) INPUT_BTN_STROKE_NIGHT else INPUT_BTN_STROKE
+    fun inputBtnIcon(night: Boolean) = if (night) TEXT_PRIMARY_NIGHT else TEXT_PRIMARY
+
     val CHIP_UNSELECTED = Color.WHITE                   // chat_filter_chip_unselected
     val CHIP_UNSELECTED_NIGHT = Color.parseColor("#1C1C1E")
     val CHIP_SELECTED = Color.parseColor("#EBEBEF")     // chat_filter_chip_selected

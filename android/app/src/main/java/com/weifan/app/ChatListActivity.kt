@@ -312,6 +312,10 @@ class ChatListActivity : BaseActivity() {
         }
         box.addView(item("新建群聊") { dlg.dismiss(); showNewGroupDialog() })
         box.addView(item("设置标签") { dlg.dismiss(); showLabelPicker(chat) })
+        box.addView(item("该客户的待办") {
+            dlg.dismiss()
+            startActivity(Intent(this, FollowupTodosActivity::class.java).putExtra("jid", chat.jid))
+        })
         box.addView(item(if (chat.pinned) "取消置顶" else "置顶聊天") {
             dlg.dismiss()
             engine.db.setChatFlags(chat.jid, pinned = !chat.pinned)

@@ -15,6 +15,7 @@ import org.json.JSONObject
 import android.widget.FrameLayout
 import android.widget.LinearLayout
 import android.widget.ScrollView
+import android.widget.HorizontalScrollView
 import android.widget.TextView
 import android.widget.Toast
 import com.weifan.app.chat.ChatEngine
@@ -57,6 +58,13 @@ class ChatActivity : BaseActivity() {
     private lateinit var sendBtn: View
     private lateinit var subtitle: TextView
     private lateinit var translateBtn: TextView
+    // 会话内搜索（批1-b）
+    private lateinit var chatSearchBar: LinearLayout
+    private lateinit var chatSearchInput: EditText
+    // 头部标签徽章（批1-c）
+    private lateinit var labelBadges: HorizontalScrollView
+    private lateinit var labelBadgeRow: LinearLayout
+    private var searchQuery = ""
 
     companion object {
         private const val REQ_PICK_IMAGE = 11
@@ -171,11 +179,39 @@ class ChatActivity : BaseActivity() {
             setPadding(0, dp(2), 0, 0)
         }
         titleCol.addView(subtitle)
+
+        // 头部标签徽章行（对齐参考 headerLabelRow → headerLabelBadges，marginTop 4dp）
+        // 参考把客户标签直接摊在会话页顶部，是 CRM 可见性的关键入口。
+        labelBadges = HorizontalScrollView(this).apply {
+            isHorizontalScrollBarEnabled = false
+            visibility = View.GONE
+        }
+        labelBadgeRow = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER_VERTICAL
+        }
+        labelBadges.addView(labelBadgeRow, FrameLayout.LayoutParams(
+            ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT))
+        titleCol.addView(labelBadges, LinearLayout.LayoutParams(
+            ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply {
+            topMargin = dp(4)
+        })
         top.addView(titleCol, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f).apply {
             marginStart = dp(8)
         })
 
+        // 会话内搜索（对齐参考 searchButton 40dp ic_search_messages_header）
         top.addView(TextView(this).apply {
+            text = "🔍"
+            textSize = 17f
+            gravity = Gravity.CENTER
+            setTextColor(WaSpec.textPrimary(night))
+            isClickable = true
+            setOnClickListener { toggleChatSearch() }
+        }, LinearLayout.LayoutParams(dp(WaSpec.CHAT_BACK_BTN_DP), dp(WaSpec.CHAT_BACK_BTN_DP)))
+
+        top.addView(TextView(this).apply {
+            text = "⋮"
             text = "⋮"
             textSize = 20f
             gravity = Gravity.CENTER
@@ -190,6 +226,56 @@ class ChatActivity : BaseActivity() {
         root.addView(top)
         root.addView(View(this).apply { setBackgroundColor(WaSpec.divider(night)) },
             LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, 1))
+
+        // ── 会话内搜索条（默认 gone，点 🔍 展开；对齐参考 chatSearchBar 44dp/胶囊 36dp）
+        chatSearchBar = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER_VERTICAL
+            setBackgroundColor(WaSpec.surface(night))
+            setPadding(dp(12), 0, dp(12), 0)
+            visibility = View.GONE
+        }
+        chatSearchInput = EditText(this).apply {
+            hint = "搜索消息"
+            textSize = WaSpec.CHAT_SEARCH_INPUT_SP.toFloat()
+            setTextColor(WaSpec.textPrimary(night))
+            setHintTextColor(WaSpec.textSecondary(night))
+            setBackground(null)
+            maxLines = 1
+            imeOptions = android.view.inputmethod.EditorInfo.IME_ACTION_SEARCH
+            setOnEditorActionListener { _, _, _ -> hideKeyboard(); true }
+            addTextChangedListener(object : android.text.TextWatcher {
+                override fun beforeTextChanged(s: CharSequence?, a: Int, b: Int, c: Int) {}
+                override fun onTextChanged(s: CharSequence?, a: Int, b: Int, c: Int) {}
+                override fun afterTextChanged(s: android.text.Editable?) {
+                    searchQuery = s?.toString()?.trim() ?: ""
+                    renderMessages(false)
+                }
+            })
+        }
+        chatSearchBar.addView(LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER_VERTICAL
+            background = Ui.roundBg(this@ChatActivity, WaSpec.searchBg(night), 18)
+            setPadding(dp(12), 0, dp(12), 0)
+            addView(TextView(this@ChatActivity).apply {
+                text = "🔍"; textSize = 14f
+            }, LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT,
+                ViewGroup.LayoutParams.WRAP_CONTENT).apply { marginEnd = dp(8) })
+            addView(chatSearchInput, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.MATCH_PARENT, 1f))
+            addView(TextView(this@ChatActivity).apply {
+                text = "✕"; textSize = 16f
+                setTextColor(WaSpec.textSecondary(night))
+                isClickable = true
+                setOnClickListener {
+                    chatSearchInput.setText(""); searchQuery = ""
+                    chatSearchBar.visibility = View.GONE; hideKeyboard(); renderMessages(false)
+                }
+            }, LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT,
+                ViewGroup.LayoutParams.WRAP_CONTENT))
+        }, LinearLayout.LayoutParams(0, dp(WaSpec.CHAT_SEARCH_CAPSULE_HEIGHT_DP), 1f))
+        root.addView(chatSearchBar, LinearLayout.LayoutParams(
+            ViewGroup.LayoutParams.MATCH_PARENT, dp(WaSpec.CHAT_SEARCH_BAR_ROW_HEIGHT_DP)))
 
         // ── 消息流（涂鸦壁纸）
         scroll = ScrollView(this)
@@ -282,7 +368,7 @@ class ChatActivity : BaseActivity() {
 
         // 译按钮 36dp：开/关切换（关闭时发原文）
         translateBtn = TextView(this).apply {
-            text = "译"
+            text = "开"   // 对齐参考 translateButton：开/关 两态（原为「译」）
             textSize = WaSpec.TRANSLATE_BUTTON_TEXT_SP.toFloat()
             setTextColor(Color.WHITE)
             gravity = Gravity.CENTER
@@ -292,6 +378,7 @@ class ChatActivity : BaseActivity() {
             isClickable = true
             setOnClickListener {
                 translateOn = !translateOn
+                text = if (translateOn) "开" else "关"
                 background = Ui.roundBg(this@ChatActivity,
                     if (translateOn) WaSpec.GREEN_LIGHT else WaSpec.GRAY6, 10)
                 setTextColor(if (translateOn) Color.WHITE else WaSpec.textSecondary(night))
@@ -341,9 +428,10 @@ class ChatActivity : BaseActivity() {
             text = "➤"
             textSize = 18f
             gravity = Gravity.CENTER
-            setTextColor(Color.WHITE)
-            background = Ui.roundBg(this@ChatActivity, WaSpec.INPUT_CIRCLE_GREEN,
-                WaSpec.PTT_SEND_BUTTON_SIZE_DP / 2)
+            setTextColor(WaSpec.inputBtnIcon(night))
+            // 对齐参考 input_circle_black：白底 + 1dp 淡描边 + 深色图标（夜间反转）
+            background = Ui.roundBg(this@ChatActivity, WaSpec.inputBtnBg(night),
+                WaSpec.PTT_SEND_BUTTON_SIZE_DP / 2, 1, WaSpec.inputBtnStroke(night))
             isClickable = true
             setOnClickListener { onSend() }
         }
@@ -433,6 +521,7 @@ class ChatActivity : BaseActivity() {
         }
         engine.db.markChatRead(chatJid)
         renderMessages()
+        renderHeaderLabels()
         engine.connectAsync()
         engine.markReadOnServerAsync(chatJid)
         engine.subscribePresenceAsync(chatJid)
@@ -468,15 +557,93 @@ class ChatActivity : BaseActivity() {
         }
     }
 
+    /** 头部标签徽章：读 chat_labels 渲染小胶囊；点行尾「＋标签」弹复选框 */
+    private fun renderHeaderLabels() {
+        if (!::labelBadgeRow.isInitialized) return
+        labelBadgeRow.removeAllViews()
+        val names = engine.db.chatLabelNames(chatJid)
+        labelBadges.visibility = if (names.isEmpty()) View.GONE else View.VISIBLE
+        for ((i, n) in names.withIndex()) {
+            labelBadgeRow.addView(TextView(this).apply {
+                text = n
+                textSize = 11f
+                setTextColor(WaSpec.textSecondary(night))
+                background = Ui.roundBg(this@ChatActivity, WaSpec.chipFill(false, night), 10, 1,
+                    WaSpec.chipStroke(false, night))
+                setPadding(dp(7), dp(2), dp(7), dp(2))
+            }, LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT,
+                ViewGroup.LayoutParams.WRAP_CONTENT).apply {
+                if (i > 0) marginStart = dp(6)
+            })
+        }
+        // 行尾添标签入口
+        labelBadgeRow.addView(TextView(this).apply {
+            text = "＋标签"
+            textSize = 11f
+            setTextColor(WaSpec.primary(night))
+            setPadding(dp(8), dp(2), dp(8), dp(2))
+            isClickable = true
+            setOnClickListener { showHeaderLabelPicker() }
+        }, LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT,
+            ViewGroup.LayoutParams.WRAP_CONTENT).apply { marginStart = dp(4) })
+    }
+
+    /** 会话页直接改标签（复用列表页同一套 labels 表） */
+    private fun showHeaderLabelPicker() {
+        val all = engine.db.labels()
+        if (all.isEmpty()) {
+            Toast.makeText(this, "还没有标签，先在会话列表顶部「＋」建一个", Toast.LENGTH_LONG).show()
+            return
+        }
+        val names = all.map { it.second }.toTypedArray()
+        val checked = engine.db.chatLabelNames(chatJid).toSet()
+        val states = names.map { it in checked }.toBooleanArray()
+        android.app.AlertDialog.Builder(this)
+            .setTitle("设置标签")
+            .setMultiChoiceItems(names, states) { _, which, isChecked -> states[which] = isChecked }
+            .setPositiveButton("保存") { _, _ ->
+                engine.db.setChatLabels(chatJid,
+                    all.filterIndexed { i, _ -> states[i] }.map { it.first })
+                renderHeaderLabels()
+            }
+            .setNegativeButton("取消", null)
+            .show()
+    }
+
+    /** 切换会话内搜索条（对齐参考 searchButton 行为） */
+    private fun toggleChatSearch() {
+        if (chatSearchBar.visibility == View.VISIBLE) {
+            chatSearchBar.visibility = View.GONE
+            chatSearchInput.setText(""); searchQuery = ""
+            hideKeyboard(); renderMessages(false)
+        } else {
+            chatSearchBar.visibility = View.VISIBLE
+            chatSearchInput.requestFocus()
+            val imm = getSystemService(INPUT_METHOD_SERVICE) as android.view.inputmethod.InputMethodManager
+            imm.showSoftInput(chatSearchInput, android.view.inputmethod.InputMethodManager.SHOW_IMPLICIT)
+        }
+    }
+
+    private fun hideKeyboard() {
+        val imm = getSystemService(INPUT_METHOD_SERVICE) as android.view.inputmethod.InputMethodManager
+        imm.hideSoftInputFromWindow(currentFocus?.windowToken ?: window.decorView.windowToken, 0)
+    }
+
     private fun renderMessages(stickToBottom: Boolean = true) {
         val prevHeight = listBox.height
         // 只在用户本来就贴近底部时才自动粘底；在上方阅读旧消息时不打扰
         val wasAtBottom = scroll.scrollY >= (listBox.height - scroll.height - dp(60))
         listBox.removeAllViews()
-        val msgs = engine.db.messages(chatJid)
+        val all = engine.db.messages(chatJid)
+        // 会话内搜索过滤：原文或译文包含关键词（不区分大小写）
+        val msgs = if (searchQuery.isBlank()) all else {
+            val q = searchQuery.lowercase()
+            all.filter { it.text.lowercase().contains(q) || it.translated.lowercase().contains(q) }
+        }
         if (msgs.isEmpty()) {
             listBox.addView(TextView(this).apply {
-                text = "暂无消息\n给对方发一条中文，发出的自动是对方的语言"
+                text = if (searchQuery.isBlank()) "暂无消息\n给对方发一条中文，发出的自动是对方的语言"
+                       else "没有找到包含「$searchQuery」的消息"
                 textSize = WaSpec.EMPTY_HINT_SP.toFloat()
                 setTextColor(WaSpec.textSecondary(night))
                 gravity = Gravity.CENTER
@@ -905,7 +1072,7 @@ class ChatActivity : BaseActivity() {
         if (m.text.isNotBlank() && m.mediaKind !in setOf("poll", "location", "contact")) {
         col.addView(TextView(this).apply {
             text = m.text
-            textSize = 15f
+            textSize = prefs.sourceTextSp   // 批2-d：原文字号可调
             setTextColor(WaSpec.textPrimary(night))
             })
         }
@@ -914,7 +1081,8 @@ class ChatActivity : BaseActivity() {
             col.addView(TextView(this).apply {
                 text = m.translated
                 textSize = WaSpec.TRANSLATION_TEXT_SP.toFloat()
-                setTextColor(WaSpec.TRANSLATE_TEXT)
+                // 批2-c：译文颜色可自定义（0 = 默认青蓝）
+                setTextColor(prefs.translationColor.takeIf { it != 0 } ?: WaSpec.TRANSLATE_TEXT)
                 typeface = Typeface.create("sans-serif-medium", Typeface.NORMAL)
                 setPadding(0, dp(3), 0, 0)
             })

@@ -139,6 +139,42 @@ class Prefs(context: Context) {
         set(value) = sp.edit().putString("selection", value).apply()
 
     /** 单个服务商每日字符上限，0 = 不限 */
+
+    // ── 批2：AI 提示词 / 译文颜色 / 原文字号 / 接口延时 ──
+
+    /** AI 翻译系统提示词；空串 = 用内置默认。可用 {TO} {TONE} 占位 */
+    var promptTemplate: String
+        get() = sp.getString("prompt_tpl", "") ?: ""
+        set(value) = sp.edit().putString("prompt_tpl", value).apply()
+
+    /** 译文颜色；0 = 用默认青蓝 #0A7EA4 */
+    var translationColor: Int
+        get() = (sp.getInt("trans_color", 0)).let { if (it == 0 || (it and -0x1000000) != 0) it else it or -0x1000000 }
+        set(value) = sp.edit().putInt("trans_color", value).apply()
+
+    /** 原文字号（sp）；15 = 默认 */
+    var sourceTextSp: Float
+        get() = sp.getFloat("src_sp", 15f)
+        set(value) = sp.edit().putFloat("src_sp", value).apply()
+
+    /**
+     * 接口延时探测结果：providerId → ms（-1 = 失败）。
+     * 自定义接口的 id 本身带冒号（custom:xxxx），所以用 '=' 分隔，不能用 ':'。
+     */
+    var latencyMap: Map<String, Int>
+        get() = try {
+            val raw = sp.getString("latency", "") ?: ""
+            if (raw.isBlank()) emptyMap() else raw.split(',').mapNotNull {
+                val i = it.lastIndexOf('=')          // id 可含 '=' 之前的任意字符
+                if (i <= 0) null
+                else it.substring(0, i) to (it.substring(i + 1).toIntOrNull() ?: -1)
+            }.toMap()
+        } catch (_: Throwable) { emptyMap() }
+        set(value) = sp.edit().putString(
+            "latency", value.entries.joinToString(",") { "${it.key}=${it.value}" }).apply()
+
+    /** 单个接口延时；null = 未测过 */
+    fun latencyOf(id: String): Int? = latencyMap[id]
     var dailyCharLimit: Int
         get() = sp.getInt("daily_limit", 0)
         set(value) = sp.edit().putInt("daily_limit", value).apply()

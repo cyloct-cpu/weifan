@@ -375,8 +375,10 @@ object Ui {
             text = "➤"
             textSize = 18f
             gravity = Gravity.CENTER
-            setTextColor(Color.WHITE)
-            background = roundBg(context, WaSpec.INPUT_CIRCLE_GREEN, WaSpec.PTT_SEND_BUTTON_SIZE_DP / 2)
+            setTextColor(WaSpec.inputBtnIcon(night))
+            // 对齐参考 input_circle_black：白底 + 1dp 淡描边 + 深色图标（夜间反转）
+            background = roundBg(context, WaSpec.inputBtnBg(night),
+                WaSpec.PTT_SEND_BUTTON_SIZE_DP / 2, 1, WaSpec.inputBtnStroke(night))
             isClickable = true
             setOnClickListener { onSend(input.text.toString()) }
         }

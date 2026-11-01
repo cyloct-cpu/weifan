@@ -4,6 +4,7 @@
     <uses-permission android:name="android.permission.INTERNET" />
     <uses-permission android:name="android.permission.READ_CONTACTS" />
     <uses-permission android:name="android.permission.RECORD_AUDIO" />
+    <uses-permission android:name="android.permission.WRITE_CONTACTS" />
 
     <application
         android:name=".WeiFanApplication"
@@ -67,6 +68,18 @@
             android:exported="false"
             android:theme="@android:style/Theme.Black.NoTitleBar.Fullscreen"
             android:label="查看" />
+
+        <!-- 跟进待办（本地 CRM，批3-a） -->
+        <activity
+            android:name=".FollowupTodosActivity"
+            android:exported="false"
+            android:label="跟进待办" />
+
+        <!-- 新建联系人（批3-b） -->
+        <activity
+            android:name=".NewContactActivity"
+            android:exported="false"
+            android:label="新建联系人" />
 
 
 

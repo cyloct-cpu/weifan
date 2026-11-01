@@ -9,7 +9,7 @@ import android.database.sqlite.SQLiteOpenHelper
  * 会话与消息存储。零依赖：直接 SQLiteOpenHelper，不引 Room。
  * 表结构对齐 Go 层 whatsmeow store（它自己存协议状态；这里只存 UI 需要的会话/消息/译文）。
  */
-class ChatDb(context: Context) : SQLiteOpenHelper(context, "chats.db", null, 8) {
+class ChatDb(context: Context) : SQLiteOpenHelper(context, "chats.db", null, 9) {
 
     override fun onCreate(db: SQLiteDatabase) {
         db.execSQL("""
@@ -61,9 +61,35 @@ class ChatDb(context: Context) : SQLiteOpenHelper(context, "chats.db", null, 8) 
             )
         """)
         db.execSQL("CREATE INDEX IF NOT EXISTS idx_poll_votes ON poll_votes(poll_msg_id)")
+        // v9: 跟进待办（本地 CRM；chat_jid 可空 = 不挂客户）
+        db.execSQL("""
+            CREATE TABLE IF NOT EXISTS todos(
+              id INTEGER PRIMARY KEY AUTOINCREMENT,
+              chat_jid TEXT NOT NULL DEFAULT '',
+              content TEXT NOT NULL,
+              due_ts INTEGER NOT NULL DEFAULT 0,
+              done INTEGER NOT NULL DEFAULT 0,
+              created_ts INTEGER NOT NULL
+            )
+        """)
+        db.execSQL("CREATE INDEX IF NOT EXISTS idx_todos_done ON todos(done, due_ts)")
     }
 
     override fun onUpgrade(db: SQLiteDatabase, oldVersion: Int, newVersion: Int) {
+        // v9: 跟进待办表
+        if (oldVersion < 9) {
+            db.execSQL("""
+                CREATE TABLE IF NOT EXISTS todos(
+                  id INTEGER PRIMARY KEY AUTOINCREMENT,
+                  chat_jid TEXT NOT NULL DEFAULT '',
+                  content TEXT NOT NULL,
+                  due_ts INTEGER NOT NULL DEFAULT 0,
+                  done INTEGER NOT NULL DEFAULT 0,
+                  created_ts INTEGER NOT NULL
+                )
+            """)
+            db.execSQL("CREATE INDEX IF NOT EXISTS idx_todos_done ON todos(done, due_ts)")
+        }
         // v8: 投票结果表
         if (oldVersion < 8) {
             db.execSQL("""
@@ -379,7 +405,63 @@ class ChatDb(context: Context) : SQLiteOpenHelper(context, "chats.db", null, 8) 
             mediaSize = c.getLong(12), mediaPath = c.getString(13),
             mediaThumb = c.getString(14), mediaMeta = c.getString(15))
     }
+
+    // MARK: - 跟进待办（批3-a，对齐参考 FollowupTodosActivity）
+
+    fun addTodo(chatJid: String, content: String, dueTs: Long): Long {
+        val cv = ContentValues().apply {
+            put("chat_jid", chatJid); put("content", content.trim())
+            put("due_ts", dueTs); put("done", 0); put("created_ts", System.currentTimeMillis())
+        }
+        return writableDatabase.insert("todos", null, cv)
+    }
+
+    fun setTodoDone(id: Long, done: Boolean) {
+        writableDatabase.execSQL("UPDATE todos SET done=? WHERE id=?", arrayOf(if (done) 1 else 0, id))
+    }
+
+    fun deleteTodo(id: Long) {
+        writableDatabase.execSQL("DELETE FROM todos WHERE id=?", arrayOf(id))
+    }
+
+    /** 待办列表：onlyOpen = 只看未完成；chatJid 非空 = 只看该客户 */
+    fun todos(onlyOpen: Boolean = true, chatJid: String = ""): List<TodoRow> {
+        val where = StringBuilder()
+        val args = mutableListOf<String>()
+        if (onlyOpen) where.append("done=0")
+        if (chatJid.isNotBlank()) {
+            if (where.isNotEmpty()) where.append(" AND ")
+            where.append("chat_jid=?"); args += chatJid
+        }
+        val sql = "SELECT t.id, t.chat_jid, t.content, t.due_ts, t.done, t.created_ts, " +
+            "COALESCE(c.title,'') FROM todos t LEFT JOIN chats c ON c.jid=t.chat_jid" +
+            (if (where.isEmpty()) "" else " WHERE $where") +
+            " ORDER BY t.done ASC, (t.due_ts=0) ASC, t.due_ts ASC, t.created_ts DESC"
+        val out = mutableListOf<TodoRow>()
+        readableDatabase.rawQuery(sql, args.toTypedArray()).use { c ->
+            while (c.moveToNext()) out += TodoRow(
+                c.getLong(0), c.getString(1), c.getString(2), c.getLong(3),
+                c.getInt(4) == 1, c.getLong(5), c.getString(6))
+        }
+        return out
+    }
+
+    fun openTodoCount(): Int = readableDatabase.rawQuery(
+        "SELECT COUNT(*) FROM todos WHERE done=0", null).use { c ->
+        if (c.moveToFirst()) c.getInt(0) else 0
+    }
 }
+
+/** 一条跟进待办；customerTitle 由 chats 左连得出（会话已删则空） */
+data class TodoRow(
+    val id: Long,
+    val chatJid: String,
+    val content: String,
+    val dueTs: Long,
+    val done: Boolean,
+    val createdTs: Long,
+    val customerTitle: String
+)
 
 data class ChatRow(
     val jid: String,

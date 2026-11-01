@@ -754,7 +754,7 @@ object Providers {
         val model = profile.model.ifBlank { "deepseek-chat" }
 
         val messages = JSONArray()
-            .put(JSONObject().put("role", "system").put("content", systemPrompt(target, style)))
+            .put(JSONObject().put("role", "system").put("content", effectivePrompt(target, style)))
             .put(JSONObject().put("role", "user").put("content", text))
 
         val body = JSONObject().apply {
@@ -770,6 +770,25 @@ object Providers {
             .getJSONObject("message").getString("content").trim()
         if (content.isEmpty()) throw IOException("${profile.displayName} 返回空结果")
         return Result(content, profile.displayName, null)
+    }
+
+    /**
+     * 用户自定义提示词（批2-b，对齐参考「AI 翻译提示词」）。
+     * 空串 = 回退下面的内置默认。内置默认文本保持不动，因为它与浏览器端逐字一致。
+     * 可用占位：{TO} = 目标语言名与代码，{TONE} = 语气描述。
+     */
+    var promptOverride: String = ""
+
+    /** 实际使用的提示词：用户模板优先，否则内置默认 */
+    fun effectivePrompt(target: String, style: String): String {
+        val tpl = promptOverride.trim()
+        if (tpl.isEmpty()) return systemPrompt(target, style)
+        val tone = when (style) {
+            "business" -> "正式商务语气，简洁专业，不使用缩略语和表情"
+            "literal" -> "忠实直译，保留原文结构与数字格式，不润色"
+            else -> "自然口语，像熟人聊天，可以简短"
+        }
+        return tpl.replace("{TO}", "${Lang.name(target)}（$target）").replace("{TONE}", tone)
     }
 
     /** 四端唯一必须逐字一致的文本。改这里等于三端同时生效。 */

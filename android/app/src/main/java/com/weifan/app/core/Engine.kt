@@ -36,6 +36,7 @@ object Engine {
 
     /** 设置页里「测试这一家」 */
     fun testProvider(providerId: String, prefs: Prefs): TestOutcome {
+        Providers.promptOverride = prefs.promptTemplate
         val started = System.currentTimeMillis()
         val result = Providers.testProvider(
             providerId = providerId,
@@ -62,6 +63,7 @@ object Engine {
         target: String,
         prefs: Prefs
     ): GenericOutcome {
+        Providers.promptOverride = prefs.promptTemplate   // 批2-b：自定义提示词生效
         val started = System.currentTimeMillis()
         val result = Providers.translate(
             text = text,
@@ -216,6 +218,7 @@ object Engine {
         route: String,
         prefs: Prefs
     ): Providers.Result {
+        Providers.promptOverride = prefs.promptTemplate
         val result = Providers.translate(
             text = text,
             source = source,

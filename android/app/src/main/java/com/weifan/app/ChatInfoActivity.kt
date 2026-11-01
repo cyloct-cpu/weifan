@@ -154,13 +154,15 @@ class ChatInfoActivity : BaseActivity() {
                 setPadding(dp(14), dp(12), dp(14), dp(12))
                 minLines = 3
                 gravity = Gravity.TOP
-                id = 2002
+                // 2012 而不是 2002：2002 已被下方「添加成员」输入框占用，
+                // 同 id 会让 findViewById 拿错控件（添加成员会误读备注内容）
+                id = 2012
             }, LinearLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply {
                 topMargin = dp(8)
             })
             box.addView(Ui.solidButton(this, "保存客户备注", WaSpec.primary(night), Color.WHITE) {
-                engine().db.setChatNote(chatJid, (findViewById<EditText>(2002)).text.toString())
+                engine().db.setChatNote(chatJid, findViewById<EditText>(2012).text.toString())
                 Toast.makeText(this, "已保存", Toast.LENGTH_SHORT).show()
             }, LinearLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT, dp(46)).apply { topMargin = dp(10) })

@@ -54,6 +54,12 @@ class MainActivity : BaseActivity() {
     private lateinit var targetSpinner: Spinner
     private lateinit var serviceSpinner: Spinner
     private lateinit var providerGridView: GridLayout
+    // 批2：测速 / 提示词 / 颜色 / 字号
+    private lateinit var latencyText: TextView
+    private lateinit var promptInput: EditText
+    private lateinit var colorLabel: TextView
+    private lateinit var colorSwatch: View
+    private lateinit var sizeValue: TextView
     private lateinit var resultText: TextView
     private lateinit var themeGroup: RadioGroup
     private lateinit var themeNote: TextView
@@ -128,6 +134,113 @@ class MainActivity : BaseActivity() {
             // 服务商胶囊：两列排布，点开才是配置表单（竖着排九家太长）
             providerGridView = providerGrid()
             addView(providerGridView)
+
+            // 接口测速（批2-a，对齐参考下拉里的「名称 · NNNms」）
+            addView(label("接口延时（填好密钥后可测，选最快的一家）"))
+            // ghostButton 自带 MATCH_PARENT（withMargin 所致），所以纵向摆而不是横向加权
+            latencyText = TextView(this@MainActivity).apply {
+                text = "未测试"
+                textSize = 12.5f
+                setTextColor(p.text3)
+            }
+            addView(latencyText)
+            addView(ghostButton("测速") { probeAllLatency() })
+        })
+
+        // ── 批2-b/c/d：AI 提示词 + 译文颜色 + 原文字号（对齐参考翻译设置页）
+        root.addView(groupCard(
+            "译文显示与 AI 提示词",
+            "自定义大模型的翻译风格，以及译文在聊天里的颜色与原文字号。",
+            p.mixGrad,
+            expanded = true
+        ) {
+            addView(label("AI 翻译提示词（仅影响大模型类接口）"))
+            promptInput = EditText(this@MainActivity).apply {
+                setText(Providers.promptOverride.ifBlank { Providers.systemPrompt(prefs.defaultTarget, prefs.style) })
+                hint = "留空 = 用内置默认"
+                textSize = 13f
+                setTextColor(p.text)
+                minLines = 5
+                gravity = Gravity.TOP
+                setBackground(roundBg(p.surface2, 12, 1, p.line))
+                setPadding(dp(12), dp(10), dp(12), dp(10))
+            }
+            addView(promptInput, LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply {
+                topMargin = dp(6)
+            })
+            addView(TextView(this@MainActivity).apply {
+                text = "占位：{TO} = 目标语言，{TONE} = 语气"
+                textSize = 11.5f
+                setTextColor(p.text3)
+                setPadding(0, dp(4), 0, dp(6))
+            })
+            val btnRow = LinearLayout(this@MainActivity).apply {
+                orientation = LinearLayout.HORIZONTAL
+                gravity = Gravity.CENTER_VERTICAL
+            }
+            // 三个按钮等宽（withMargin 会强制 MATCH_PARENT，这里显式覆盖）
+            val third = LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f)
+            btnRow.addView(primaryButton("保存") {
+                Providers.promptOverride = promptInput.text.toString().trim()
+                prefs.promptTemplate = promptInput.text.toString().trim()
+                Toast.makeText(this@MainActivity, "已保存提示词", Toast.LENGTH_SHORT).show()
+            }, third)
+            btnRow.addView(ghostButton("默认") {
+                Providers.promptOverride = ""
+                prefs.promptTemplate = ""
+                promptInput.setText(Providers.systemPrompt(prefs.defaultTarget, prefs.style))
+                Toast.makeText(this@MainActivity, "已恢复内置默认", Toast.LENGTH_SHORT).show()
+            }, third)
+            btnRow.addView(ghostButton("模板") { showPromptTemplates() }, third)
+            addView(btnRow)
+
+            // 译文颜色
+            addView(label("译文颜色（聊天里译文那一行的字色）"))
+            val colorRow = LinearLayout(this@MainActivity).apply {
+                orientation = LinearLayout.HORIZONTAL
+                gravity = Gravity.CENTER_VERTICAL
+                isClickable = true
+                setOnClickListener { pickTranslationColor() }
+                setPadding(0, dp(6), 0, dp(6))
+            }
+            colorSwatch = View(this@MainActivity).apply {
+                background = roundBg(prefs.translationColor.takeIf { it != 0 }
+                    ?: WaSpec.TRANSLATE_TEXT, 9, 1, p.line)
+                layoutParams = LinearLayout.LayoutParams(dp(30), dp(30)).apply { marginEnd = dp(10) }
+            }
+            colorRow.addView(colorSwatch)
+            colorLabel = TextView(this@MainActivity).apply {
+                text = colorRowSummary()
+                textSize = 13f
+                setTextColor(p.text)
+                layoutParams = LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f)
+            }
+            colorRow.addView(colorLabel)
+            colorRow.addView(TextView(this@MainActivity).apply {
+                text = "›"; textSize = 20f; setTextColor(p.text3)
+            })
+            addView(colorRow)
+
+            // 原文字号
+            addView(label("原文字号"))
+            val sizeRow = LinearLayout(this@MainActivity).apply {
+                orientation = LinearLayout.HORIZONTAL
+                gravity = Gravity.CENTER_VERTICAL
+            }
+            sizeValue = TextView(this@MainActivity).apply {
+                text = "${prefs.sourceTextSp.toInt()} sp"
+                textSize = 13f
+                setTextColor(p.text)
+                gravity = Gravity.CENTER
+                layoutParams = LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f)
+            }
+            // 两个按钮定宽，中间值占满（ghostButton 默认 MATCH_PARENT 会顶掉权重）
+            val step = LinearLayout.LayoutParams(dp(72), ViewGroup.LayoutParams.WRAP_CONTENT)
+            sizeRow.addView(ghostButton("A－") { bumpSourceTextSp(-1f) }, step)
+            sizeRow.addView(sizeValue)
+            sizeRow.addView(ghostButton("A＋") { bumpSourceTextSp(1f) }, step)
+            addView(sizeRow)
         })
 
         // 发件（暖）
@@ -246,6 +359,116 @@ class MainActivity : BaseActivity() {
         providerGridView = fresh
     }
 
+    // MARK: - 批2：接口测速 / 提示词模板 / 译文颜色 / 原文字号
+
+    /** 全量测一遍已配密钥的接口，结果存 prefs.latencyMap */
+    private fun probeAllLatency() {
+        val targets = channels().filter { it.configured }
+        if (targets.isEmpty()) {
+            Toast.makeText(this, "还没有已填密钥的接口，先点胶囊配密钥", Toast.LENGTH_LONG).show()
+            return
+        }
+        probing = true
+        latencyText.text = "测速中… 0/${targets.size}"
+        Thread {
+            val map = prefs.latencyMap.toMutableMap()
+            var done = 0
+            var best: Pair<String, Int>? = null
+            for (ch in targets) {
+                val id = ch.id
+                val ms = try {
+                    Engine.testProvider(id, prefs).latencyMs.toInt()
+                } catch (_: Throwable) { -1 }
+                map[id] = ms
+                if (ms >= 0 && (best == null || ms < best!!.second)) best = id to ms
+                done++
+                val snapshot = map.toMap(); val b = best; val d = done
+                runOnUiThread {
+                    if (!isFinishing && !isDestroyed) {
+                        prefs.latencyMap = snapshot
+                        latencyText.text = "已测 $d/${targets.size}" +
+                            (b?.let { " · 最快：${channels().firstOrNull { c -> c.id == it.first }?.label ?: it.first} ${it.second}ms" } ?: "")
+                        rebuildProviderGrid()
+                    }
+                }
+            }
+            probing = false
+        }.start()
+    }
+
+    private var probing = false
+
+    /** 胶囊标题后缀「· NNNms」（对齐参考下拉里的延时展示） */
+    private fun latencySuffix(id: String): String = when (val ms = prefs.latencyOf(id)) {
+        null -> ""
+        -1 -> " · 失败"
+        else -> " · ${ms}ms"
+    }
+
+    /** 提示词模板（对齐参考「模板」按钮） */
+    private fun showPromptTemplates() {
+        val names = arrayOf(
+            "跨境询盘回复（默认风格）",
+            "技术规格 / 参数表",
+            "口语短句（节拍聊天）",
+            "严格直译（合同报价）"
+        )
+        android.app.AlertDialog.Builder(this)
+            .setTitle("选择提示词模板")
+            .setItems(names) { _, which ->
+                promptInput.setText(when (which) {
+                    1 -> """
+                        你是技术文档翻译引擎。把输入翻译成{TO}。
+                        要求：
+                        1. 型号、参数、单位、公差、材质代码逐字保留，不翻译不换算。
+                        2. 表格与列表结构原样输出，行数与顺序不变。
+                        3. 只输出译文，不加解释。
+                    """.trimIndent()
+                    2 -> "你是外贸聊天翻译。把输入翻译成{TO}。{TONE}。短句为主，不加礼貌后缀，不补充原文没有的信息。只输出译文。"
+                    3 -> Providers.systemPrompt("en", "literal")
+                    else -> Providers.systemPrompt(prefs.defaultTarget, prefs.style)
+                })
+                Toast.makeText(this, "已填入模板，点「保存」生效", Toast.LENGTH_SHORT).show()
+            }
+            .setNegativeButton("取消", null)
+            .show()
+    }
+
+    /** 译文颜色（对齐参考「译文颜色」色块行） */
+    private fun pickTranslationColor() {
+        val names = arrayOf("青蓝（默认）", "深蓝", "紫罗兰", "品红", "橙", "绿", "黑")
+        // 必须带 0xFF alpha：写成 0xDB2777 会被当成 alpha=0 的透明色，译文直接隐形
+        val cols = intArrayOf(0xFF0A7EA4.toInt(), 0xFF1D4ED8.toInt(), 0xFF7C3AED.toInt(),
+            0xFFDB2777.toInt(), 0xFFEA580C.toInt(), 0xFF128C7E.toInt(), 0xFF111111.toInt())
+        android.app.AlertDialog.Builder(this)
+            .setTitle("译文颜色")
+            .setItems(names) { _, which ->
+                prefs.translationColor = cols[which]
+                colorSwatch.background = roundBg(cols[which], 9, 1, p.line)
+                colorLabel.text = colorRowSummary()
+                Toast.makeText(this, "已改译文颜色，下次进入会话生效", Toast.LENGTH_SHORT).show()
+            }
+            .setNeutralButton("恢复默认") { _, _ ->
+                prefs.translationColor = 0
+                colorSwatch.background = roundBg(WaSpec.TRANSLATE_TEXT, 9, 1, p.line)
+                colorLabel.text = colorRowSummary()
+            }
+            .setNegativeButton("取消", null)
+            .show()
+    }
+
+    /** 原文字号 ±1sp，限 12–22 */
+    private fun bumpSourceTextSp(delta: Float) {
+        val v = (prefs.sourceTextSp + delta).coerceIn(12f, 22f)
+        prefs.sourceTextSp = v
+        sizeValue.text = "${v.toInt()} sp"
+    }
+
+    /** 颜色行的动态说明 */
+    private fun colorRowSummary(): String =
+        if (prefs.translationColor == 0) "点该行改色 · 当前默认青蓝"
+        else "点该行改色 · 已自定义（#%06X）".format(prefs.translationColor and 0xFFFFFF)
+
     /** 一个渠道 = 一颗胶囊：免费服务商或自定义接口（D-56） */
     private data class Channel(
         val id: String,
@@ -334,7 +557,8 @@ class MainActivity : BaseActivity() {
             gravity = Gravity.CENTER_VERTICAL
         }
         top.addView(TextView(this).apply {
-            text = channel.label
+            // 批2-a：标题带实测延时（对齐参考「名称 · NNNms」）
+            text = channel.label + latencySuffix(channel.id)
             textSize = 13f
             setTextColor(p.text)
             setTypeface(typeface, Typeface.BOLD)
