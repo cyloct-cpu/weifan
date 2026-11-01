@@ -104,6 +104,10 @@ class ChatEngine private constructor(context: Context) : MessageListener, Connec
                 put("fileSha256", o.optString("fileSha256"))
                 put("fileEncSha256", o.optString("fileEncSha256"))
                 put("fileLength", mediaSize)
+                put("mime", mediaMime)
+                put("fileName", mediaName)
+                put("seconds", o.optLong("seconds"))
+                put("waveform", o.optString("waveform"))
             }.toString() else ""
             // 纯媒体无文字时用中文标签做会话摘要
             val displayText = text.ifBlank {
@@ -339,4 +343,119 @@ class ChatEngine private constructor(context: Context) : MessageListener, Connec
             }
         }.start()
     }
+
+    // MARK: - 回复 / 转发 / 发媒体（v1.6，对齐 WATransChat）
+
+    /** 引用回复：入库记录引用关系（replyQuoted 存引用文本摘要） */
+    fun sendReplyAsync(chatJid: String, quoteId: String, quoteParticipant: String,
+                       quoteText: String, body: String,
+                       onResult: (String?, String?) -> Unit) {
+        Thread {
+            try {
+                val msgId = client.sendReply(chatJid, quoteId, quoteParticipant, quoteText, body)
+                val now = System.currentTimeMillis()
+                db.insertMessage(MessageRow(
+                    id = msgId ?: "local-$now", chatJid = chatJid, senderJid = "",
+                    fromMe = true, text = body, original = "",
+                    translated = "", translatedLang = "", ts = now))
+                db.upsertChat(chatJid, "", body, now, incrementUnread = false)
+                main.post { onChatUpdated?.invoke() }
+                main.post { onResult(msgId, null) }
+            } catch (e: Throwable) {
+                main.post { onResult(null, e.message ?: e.toString()) }
+            }
+        }.start()
+    }
+
+    /** 转发文本到指定会话（不入库当前会话，只入库目标会话） */
+    fun forwardTextAsync(targetJid: String, text: String,
+                         onResult: (String?, String?) -> Unit) {
+        Thread {
+            try {
+                val msgId = client.sendForwardText(targetJid, text)
+                val now = System.currentTimeMillis()
+                db.insertMessage(MessageRow(
+                    id = msgId ?: "local-$now", chatJid = targetJid, senderJid = "",
+                    fromMe = true, text = text, original = "",
+                    translated = "", translatedLang = "", ts = now))
+                db.upsertChat(targetJid, "", text, now, incrementUnread = false)
+                main.post { onChatUpdated?.invoke() }
+                main.post { onResult(msgId, null) }
+            } catch (e: Throwable) {
+                main.post { onResult(null, e.message ?: e.toString()) }
+            }
+        }.start()
+    }
+
+    /** 转发媒体（用 mediaMeta 重建 proto，带 IsForwarded） */
+    fun forwardMediaAsync(targetJid: String, metaJson: String,
+                          onResult: (String?, String?) -> Unit) {
+        Thread {
+            try {
+                val m = JSONObject(metaJson)
+                val params = JSONObject().apply {
+                    put("Kind", m.optString("kind"))
+                    put("URL", m.optString("url"))
+                    put("DirectPath", m.optString("directPath"))
+                    put("MediaKeyB64", m.optString("mediaKey"))
+                    put("ShaB64", m.optString("fileSha256"))
+                    put("EncShaB64", m.optString("fileEncSha256"))
+                    put("Mime", m.optString("mime") ,)
+                    put("FileName", m.optString("fileName"))
+                    put("FileLength", m.optLong("fileLength"))
+                }
+                val msgId = client.sendForwardMedia(targetJid, params.toString())
+                main.post { onResult(msgId, null) }
+            } catch (e: Throwable) {
+                main.post { onResult(null, e.message ?: e.toString()) }
+            }
+        }.start()
+    }
+
+    /** 发送本地图片（经代理上传） */
+    fun sendImageAsync(chatJid: String, path: String, caption: String,
+                       onResult: (String?, String?) -> Unit) {
+        Thread {
+            try {
+                val msgId = client.sendImageFromPath(chatJid, path, caption)
+                val now = System.currentTimeMillis()
+                db.insertMessage(MessageRow(
+                    id = msgId ?: "local-$now", chatJid = chatJid, senderJid = "",
+                    fromMe = true, text = caption, original = "",
+                    translated = "", translatedLang = "", ts = now,
+                    mediaKind = "image", mediaMime = "image/*",
+                    mediaName = java.io.File(path).name, mediaSize = java.io.File(path).length(),
+                    mediaPath = path))
+                db.upsertChat(chatJid, "", caption.ifBlank { "[图片]" }, now, incrementUnread = false)
+                main.post { onChatUpdated?.invoke() }
+                main.post { onResult(msgId, null) }
+            } catch (e: Throwable) {
+                main.post { onResult(null, e.message ?: e.toString()) }
+            }
+        }.start()
+    }
+
+    /** 发送本地文档（经代理上传） */
+    fun sendDocumentAsync(chatJid: String, path: String, fileName: String,
+                          onResult: (String?, String?) -> Unit) {
+        Thread {
+            try {
+                val msgId = client.sendDocumentFromPath(chatJid, path, fileName, "")
+                val now = System.currentTimeMillis()
+                db.insertMessage(MessageRow(
+                    id = msgId ?: "local-$now", chatJid = chatJid, senderJid = "",
+                    fromMe = true, text = "", original = "",
+                    translated = "", translatedLang = "", ts = now,
+                    mediaKind = "document", mediaMime = "",
+                    mediaName = fileName, mediaSize = java.io.File(path).length(),
+                    mediaPath = path))
+                db.upsertChat(chatJid, "", "[文件] $fileName", now, incrementUnread = false)
+                main.post { onChatUpdated?.invoke() }
+                main.post { onResult(msgId, null) }
+            } catch (e: Throwable) {
+                main.post { onResult(null, e.message ?: e.toString()) }
+            }
+        }.start()
+    }
+}
 }

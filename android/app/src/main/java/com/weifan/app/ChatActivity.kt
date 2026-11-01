@@ -11,6 +11,7 @@ import android.view.Gravity
 import android.view.View
 import android.view.ViewGroup
 import android.widget.EditText
+import org.json.JSONObject
 import android.widget.FrameLayout
 import android.widget.LinearLayout
 import android.widget.ScrollView
@@ -49,15 +50,24 @@ class ChatActivity : BaseActivity() {
     private lateinit var subtitle: TextView
     private lateinit var translateBtn: TextView
 
+    companion object {
+        private const val REQ_PICK_IMAGE = 11
+        private const val REQ_PICK_DOC = 12
+    }
+
     /** 语音播放器（单例：同一时间只播一条）*/
     private var player: android.media.MediaPlayer? = null
     private var playingRow: LinearLayout? = null
     private var playingRowViewRef: Pair<LinearLayout, TextView>? = null
 
+    /** 引用回复状态（id/participant/摘要） */
+    private var pendingQuote: Triple<String, String, String>? = null
+    private lateinit var quoteBar: LinearLayout
+
     private fun stopPlayback() {
         try { player?.release() } catch (_: Throwable) { }
         player = null
-        playingRowViewRef?.second?.text = playingRowViewRef?.second?.tag?.toString() ?: "语音消息"
+        playingRowViewRef?.second?.text = "▶"
         playingRow = null
         playingRowViewRef = null
     }
@@ -206,15 +216,23 @@ class ChatActivity : BaseActivity() {
             setPadding(dp(WaSpec.INPUT_CAPSULE_PADDING_DP), 0, dp(WaSpec.INPUT_CAPSULE_PADDING_DP), 0)
             minimumHeight = dp(WaSpec.INPUT_CAPSULE_MIN_HEIGHT_DP)
         }
-        for (glyph in listOf("＋", "😊")) {
-            capsule.addView(TextView(this).apply {
-                text = glyph
-                textSize = 16f
-                gravity = Gravity.CENTER
-                setTextColor(WaSpec.textPrimary(night))
-            }, LinearLayout.LayoutParams(
-                dp(WaSpec.ATTACH_BUTTON_SIZE_DP), dp(WaSpec.ATTACH_BUTTON_SIZE_DP)))
-        }
+        // ＋：附件面板（文档/照片视频等，对齐 WATransChat）
+        capsule.addView(TextView(this).apply {
+            text = "＋"
+            textSize = 16f
+            gravity = Gravity.CENTER
+            setTextColor(WaSpec.textPrimary(night))
+            isClickable = true
+            setOnClickListener { showAttachmentPanel() }
+        }, LinearLayout.LayoutParams(
+            dp(WaSpec.ATTACH_BUTTON_SIZE_DP), dp(WaSpec.ATTACH_BUTTON_SIZE_DP)))
+        capsule.addView(TextView(this).apply {
+            text = "😊"
+            textSize = 16f
+            gravity = Gravity.CENTER
+            setTextColor(WaSpec.textPrimary(night))
+        }, LinearLayout.LayoutParams(
+            dp(WaSpec.ATTACH_BUTTON_SIZE_DP), dp(WaSpec.ATTACH_BUTTON_SIZE_DP)))
         input = EditText(this).apply {
             hint = "输入消息"
             textSize = WaSpec.MESSAGE_INPUT_SP.toFloat()
@@ -248,6 +266,39 @@ class ChatActivity : BaseActivity() {
         capsule.addView(translateBtn, LinearLayout.LayoutParams(
             ViewGroup.LayoutParams.WRAP_CONTENT, dp(WaSpec.TRANSLATE_BUTTON_HEIGHT_DP)).apply {
             marginStart = dp(6)
+            })
+
+        // 引用回复预览条（pendingQuote 非空时显示在输入胶囊上方）
+        quoteBar = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER_VERTICAL
+            background = Ui.roundBg(this@ChatActivity, WaSpec.GRAY6, 10)
+            setPadding(dp(10), dp(6), dp(10), dp(6))
+            visibility = View.GONE
+            addView(View(this@ChatActivity).apply {
+                setBackgroundColor(WaSpec.GREEN_LIGHT)
+            }, LinearLayout.LayoutParams(dp(3), ViewGroup.LayoutParams.MATCH_PARENT))
+            addView(TextView(this@ChatActivity).apply {
+                id = 1001
+                textSize = 13f
+                setTextColor(WaSpec.textSecondary(night))
+                maxLines = 2
+                ellipsize = TextUtils.TruncateAt.END
+            }, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f).apply {
+                marginStart = dp(8)
+            })
+            addView(TextView(this@ChatActivity).apply {
+                text = "✕"
+                textSize = 14f
+                setTextColor(WaSpec.textSecondary(night))
+                setPadding(dp(10), dp(4), dp(4), dp(4))
+                isClickable = true
+                setOnClickListener { clearQuote() }
+            })
+        }
+        bottomWrap.addView(quoteBar, LinearLayout.LayoutParams(
+            ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply {
+            bottomMargin = dp(6)
         })
         row.addView(capsule, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
 
@@ -452,76 +503,123 @@ class ChatActivity : BaseActivity() {
                 }
             }
             else -> {
-                // audio / document 文件行
-                val row = LinearLayout(this).apply {
-                    orientation = LinearLayout.HORIZONTAL
-                    gravity = Gravity.CENTER_VERTICAL
-                    isClickable = true
-                }
-                row.addView(TextView(this).apply {
-                    text = if (m.mediaKind == "audio") "🎧" else "📄"
-                    textSize = 18f
-                })
-                val colX = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
-                val status = TextView(this).apply {
-                    text = (m.mediaName.ifBlank {
-                        if (m.mediaKind == "audio") "语音消息" else "文件"
+                if (m.mediaKind == "audio") {
+                    // 1:1 语音条：绿色播放圆钮 + 波形 + 时长（对齐 WATransChat）
+                    val meta = try { JSONObject(m.mediaMeta) } catch (_: Throwable) { JSONObject() }
+                    val seconds = meta.optInt("seconds")
+                    val duration = if (seconds > 0) "%d:%02d".format(seconds / 60, seconds % 60) else ""
+                    val waveData = try {
+                        val w = meta.optString("waveform")
+                        if (w.isNotBlank()) android.util.Base64.decode(w, android.util.Base64.DEFAULT) else null
+                    } catch (_: Throwable) { null }
+
+                    val playBtn = TextView(this).apply {
+                        text = "▶"
+                        textSize = 16f
+                        setTextColor(Color.WHITE)
+                        gravity = Gravity.CENTER
+                        background = Ui.roundBg(this@ChatActivity, WaSpec.GREEN_LIGHT,
+                            WaSpec.PTT_SEND_BUTTON_SIZE_DP / 2)
+                    }
+                    val wave = WaveformView(this, night).apply {
+                        setData(waveData, m.id)
+                    }
+                    val dur = TextView(this).apply {
+                        text = duration
+                        textSize = 12f
+                        setTextColor(WaSpec.textSecondary(night))
+                    }
+                    val row = LinearLayout(this).apply {
+                        orientation = LinearLayout.HORIZONTAL
+                        gravity = Gravity.CENTER_VERTICAL
+                        isClickable = true
+                        setPadding(dp(2), dp(2), dp(2), dp(2))
+                    }
+                    row.addView(playBtn, LinearLayout.LayoutParams(
+                        dp(44), dp(44)))
+                    row.addView(wave, LinearLayout.LayoutParams(0, dp(28), 1f).apply {
+                        marginStart = dp(8); marginEnd = dp(8)
                     })
-                    textSize = 14f
-                    setTextColor(WaSpec.textPrimary(night))
-                    maxLines = 1
-                    ellipsize = android.text.TextUtils.TruncateAt.MIDDLE
-                }
-                colX.addView(status)
-                colX.addView(TextView(this).apply {
-                    text = fileSizeLabel()
-                    textSize = 11.5f
-                    setTextColor(WaSpec.textSecondary(night))
-                })
-                row.addView(colX, LinearLayout.LayoutParams(0,
-                    ViewGroup.LayoutParams.WRAP_CONTENT, 1f).apply { marginStart = dp(8) })
-                row.setOnClickListener {
-                    // 正在播就停掉
-                    if (m.mediaKind == "audio" && playingRow === row) { stopPlayback(); return@setOnClickListener }
-                    engine.fetchMediaAsync(m.chatJid, m.id) { f ->
-                        if (f == null) {
-                            android.widget.Toast.makeText(this@ChatActivity,
-                                "下载失败，请点重试", android.widget.Toast.LENGTH_SHORT).show()
-                            return@fetchMediaAsync
-                        }
-                        if (m.mediaKind == "audio") {
+                    if (duration.isNotBlank()) row.addView(dur)
+
+                    fun setPlayingUI(playing: Boolean) {
+                        playBtn.text = if (playing) "⏸" else "▶"
+                        wave.animateProgress(playing)
+                    }
+                    row.setOnClickListener {
+                        if (playingRow === row) { stopPlayback(); setPlayingUI(false); return@setOnClickListener }
+                        engine.fetchMediaAsync(m.chatJid, m.id) { f ->
+                            if (f == null) {
+                                Toast.makeText(this@ChatActivity, "下载失败，请点重试",
+                                    Toast.LENGTH_SHORT).show()
+                                return@fetchMediaAsync
+                            }
                             stopPlayback()
                             try {
                                 val mp = android.media.MediaPlayer()
                                 mp.setDataSource(f.absolutePath)
                                 mp.setOnCompletionListener {
-                                    status.text = m.mediaName.ifBlank { "语音消息" }
+                                    setPlayingUI(false)
                                     playingRow = null
                                     it.release()
                                     if (player === it) player = null
                                 }
                                 mp.setOnErrorListener { p, _, _ ->
-                                    status.text = m.mediaName.ifBlank { "语音消息" }
+                                    setPlayingUI(false)
                                     playingRow = null
                                     p.release(); if (player === p) player = null
-                                    android.widget.Toast.makeText(this@ChatActivity,
-                                        "该语音格式不支持播放", android.widget.Toast.LENGTH_SHORT).show()
+                                    Toast.makeText(this@ChatActivity, "该语音格式不支持播放",
+                                        Toast.LENGTH_SHORT).show()
                                     true
                                 }
                                 mp.prepare()
                                 mp.start()
                                 player = mp
                                 playingRow = row
-                                status.text = "播放中… 点击停止"
+                                setPlayingUI(true)
                             } catch (e: Throwable) {
-                                android.widget.Toast.makeText(this@ChatActivity,
-                                    "播放失败：${e.message ?: "未知"}", android.widget.Toast.LENGTH_SHORT).show()
+                                Toast.makeText(this@ChatActivity,
+                                    "播放失败：${e.message ?: "未知"}", Toast.LENGTH_SHORT).show()
                             }
                         }
                     }
+                    playingRowViewRef = row to playBtn
+                    row
+                } else {
+                    // document 文件行
+                    val row = LinearLayout(this).apply {
+                        orientation = LinearLayout.HORIZONTAL
+                        gravity = Gravity.CENTER_VERTICAL
+                        isClickable = true
+                    }
+                    row.addView(TextView(this).apply {
+                        text = "📄"
+                        textSize = 18f
+                    })
+                    val colX = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
+                    colX.addView(TextView(this).apply {
+                        text = m.mediaName.ifBlank { "文件" }
+                        textSize = 14f
+                        setTextColor(WaSpec.textPrimary(night))
+                        maxLines = 1
+                        ellipsize = android.text.TextUtils.TruncateAt.MIDDLE
+                    })
+                    colX.addView(TextView(this).apply {
+                        text = fileSizeLabel()
+                        textSize = 11.5f
+                        setTextColor(WaSpec.textSecondary(night))
+                    })
+                    row.addView(colX, LinearLayout.LayoutParams(0,
+                        ViewGroup.LayoutParams.WRAP_CONTENT, 1f).apply { marginStart = dp(8) })
+                    row.setOnClickListener {
+                        engine.fetchMediaAsync(m.chatJid, m.id) { f ->
+                            Toast.makeText(this@ChatActivity,
+                                if (f != null) "已保存：${f.name}" else "下载失败",
+                                Toast.LENGTH_SHORT).show()
+                        }
+                    }
+                    row
                 }
-                if (m.mediaKind == "audio") playingRowViewRef = row to status
-                row
             }
         }
     }
@@ -531,7 +629,11 @@ class ChatActivity : BaseActivity() {
         val col = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
         // ---- 媒体区（在文字上方）----
         if (m.mediaKind.isNotBlank()) {
-            col.addView(mediaView(m))
+            val mv = mediaView(m)
+            // 媒体行自身可点击（播放/下载），长按也必须弹菜单
+            mv.isLongClickable = true
+            mv.setOnLongClickListener { showActionMenu(m); true }
+            col.addView(mv)
         }
         // 文本行（有文字或有 caption 才显示）
         if (m.text.isNotBlank()) {
@@ -578,6 +680,8 @@ class ChatActivity : BaseActivity() {
         }, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT))
 
         val holder = FrameLayout(this)
+        col.isLongClickable = true
+        col.setOnLongClickListener { showActionMenu(m); true }
         holder.addView(col.apply {
             background = Ui.roundBg(this@ChatActivity,
                 WaSpec.bubbleSent(night).let { if (m.fromMe) it else WaSpec.bubbleReceived(night) },
@@ -599,6 +703,25 @@ class ChatActivity : BaseActivity() {
     private fun onSend() {
         val text = input.text.toString().trim()
         if (text.isBlank()) return
+        val q = pendingQuote
+        if (q != null) {
+            sendBtn.isEnabled = false
+            val done: (String?, String?) -> Unit = { _, err ->
+                sendBtn.isEnabled = true
+                if (err != null) Toast.makeText(this, err, Toast.LENGTH_LONG).show()
+                else { input.setText(""); clearQuote(); renderMessages() }
+            }
+            if (translateOn) {
+                engine.translateOutgoingAsync(chatJid, text) { t, _, err ->
+                    if (err != null || t.isBlank()) {
+                        // 降级：翻译不可用时发原文，避免把用户卡死
+                        Toast.makeText(this@ChatActivity, "翻译不可用，已发原文", Toast.LENGTH_SHORT).show()
+                        engine.sendReplyAsync(chatJid, q.first, q.second, q.third, text, done)
+                    } else engine.sendReplyAsync(chatJid, q.first, q.second, q.third, t, done)
+                }
+            } else engine.sendReplyAsync(chatJid, q.first, q.second, q.third, text, done)
+            return
+        }
         sendBtn.isEnabled = false
         if (translateOn) {
             engine.sendWithTranslation(chatJid, text) { _, err ->
@@ -620,6 +743,258 @@ class ChatActivity : BaseActivity() {
                     renderMessages()
                 }
             }
+        }
+    }
+
+    private fun clearQuote() {
+        pendingQuote = null
+        quoteBar.visibility = View.GONE
+    }
+
+    private fun setQuote(q: Triple<String, String, String>) {
+        pendingQuote = q
+        quoteBar.findViewById<TextView>(1001).text = q.third
+        quoteBar.visibility = View.VISIBLE
+        input.requestFocus()
+    }
+
+    // MARK: - 长按菜单（回复/转发/复制/下载，对齐 WATransChat）
+
+    private fun showActionMenu(m: MessageRow) {
+        val box = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            background = Ui.roundBg(this@ChatActivity,
+                if (night) WaSpec.SURFACE_NIGHT else Color.WHITE, 20)
+            setPadding(dp(6), dp(6), dp(6), dp(6))
+        }
+        val dlg = android.app.AlertDialog.Builder(this).create()
+        fun item(label: String, action: () -> Unit): TextView = TextView(this).apply {
+            text = label
+            textSize = 16f
+            setTextColor(WaSpec.textPrimary(night))
+            setPadding(dp(20), dp(14), dp(20), dp(14))
+            isClickable = true
+            setOnClickListener { action() }
+        }
+        box.addView(item("回复") { dlg.dismiss(); setQuote(Triple(m.id, m.senderJid, m.text.ifBlank { "[媒体]" })) })
+        box.addView(item("转发") { dlg.dismiss(); showForwardPicker(m) })
+        if (m.text.isNotBlank()) box.addView(item("复制") {
+            dlg.dismiss()
+            val cm = getSystemService(CLIPBOARD_SERVICE) as android.content.ClipboardManager
+            cm.setPrimaryClip(android.content.ClipData.newPlainText("weifan", m.text))
+            Toast.makeText(this, "已复制", Toast.LENGTH_SHORT).show()
+        })
+        if (m.mediaKind.isNotBlank()) box.addView(item("下载") {
+            dlg.dismiss()
+            engine.fetchMediaAsync(m.chatJid, m.id) { f ->
+                Toast.makeText(this,
+                    if (f != null) "已保存：${f.name}" else "下载失败", Toast.LENGTH_SHORT).show()
+            }
+        })
+        dlg.setView(box)
+        dlg.show()
+        dlg.window?.setLayout(dp(300), ViewGroup.LayoutParams.WRAP_CONTENT)
+    }
+
+    /** 转发：会话选择器（当前会话除外） */
+    private fun showForwardPicker(m: MessageRow) {
+        val chats = engine.db.chats().filter { it.jid != chatJid }
+        if (chats.isEmpty()) {
+            Toast.makeText(this, "暂无其他会话可转发", Toast.LENGTH_SHORT).show()
+            return
+        }
+        val names = chats.map { it.title.ifBlank { it.jid.substringBefore("@") } }.toTypedArray()
+        android.app.AlertDialog.Builder(this)
+            .setTitle("转发到")
+            .setItems(names) { _, i ->
+                val target = chats[i].jid
+                if (m.mediaKind.isNotBlank() && m.mediaMeta.isNotBlank()) {
+                    engine.forwardMediaAsync(target, m.mediaMeta) { _, err ->
+                        Toast.makeText(this, if (err != null) "转发失败：$err" else "已转发",
+                            Toast.LENGTH_SHORT).show()
+                    }
+                } else {
+                    engine.forwardTextAsync(target, m.text) { _, err ->
+                        Toast.makeText(this, if (err != null) "转发失败：$err" else "已转发",
+                            Toast.LENGTH_SHORT).show()
+                    }
+                }
+            }
+            .setNegativeButton("取消", null)
+            .show()
+    }
+
+    // MARK: - 附件面板（对齐 WATransChat 附加菜单）
+
+    private fun showAttachmentPanel() {
+        val items = listOf(
+            "📄  文档" to "doc",
+            "🖼️  照片和视频" to "media",
+            "📷  相机" to "camera",
+            "🎤  音频" to "audio",
+            "👤  联系人" to "contact",
+            "📍  位置" to "location",
+            "📊  投票" to "poll",
+            "📅  活动" to "event",
+            "😀  新建贴图" to "sticker",
+            "🏪  目录" to "catalog",
+            "⚡  快速回复" to "quick",
+            "✅  添加待办" to "todo",
+            "💱  汇率转换" to "fx"
+        )
+        val box = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            background = Ui.roundBg(this@ChatActivity,
+                if (night) WaSpec.SURFACE_NIGHT else Color.WHITE, 20)
+            setPadding(dp(6), dp(6), dp(6), dp(6))
+        }
+        val dlg = android.app.AlertDialog.Builder(this).create()
+        for ((label, key) in items) {
+            box.addView(TextView(this).apply {
+                text = label
+                textSize = 16f
+                setTextColor(WaSpec.textPrimary(night))
+                setPadding(dp(20), dp(13), dp(20), dp(13))
+                isClickable = true
+                setOnClickListener {
+                    dlg.dismiss()
+                    when (key) {
+                        "doc" -> pickDocument()
+                        "media" -> pickImage()
+                        else -> Toast.makeText(this@ChatActivity, "该附件类型即将上线",
+                            Toast.LENGTH_SHORT).show()
+                    }
+                }
+            })
+        }
+        dlg.setView(box)
+        dlg.show()
+        dlg.window?.setLayout(dp(320), ViewGroup.LayoutParams.WRAP_CONTENT)
+    }
+
+    private fun pickImage() {
+        val i = android.content.Intent(android.content.Intent.ACTION_PICK,
+            android.provider.MediaStore.Images.Media.EXTERNAL_CONTENT_URI)
+        startActivityForResult(i, REQ_PICK_IMAGE)
+    }
+
+    private fun pickDocument() {
+        val i = android.content.Intent(android.content.Intent.ACTION_OPEN_DOCUMENT).apply {
+            addCategory(android.content.Intent.CATEGORY_OPENABLE)
+            type = "*/*"
+        }
+        startActivityForResult(i, REQ_PICK_DOC)
+    }
+
+    override fun onActivityResult(requestCode: Int, resultCode: Int, data: android.content.Intent?) {
+        super.onActivityResult(requestCode, resultCode, data)
+        if (resultCode != RESULT_OK || data?.data == null) return
+        val uri = data.data!!
+        val path = copyUriToCache(uri, requestCode) ?: run {
+            Toast.makeText(this, "读取文件失败", Toast.LENGTH_SHORT).show(); return
+        }
+        sendBtn.isEnabled = false
+        if (requestCode == REQ_PICK_IMAGE) {
+            engine.sendImageAsync(chatJid, path, "") { _, err ->
+                sendBtn.isEnabled = true
+                if (err != null) Toast.makeText(this, "发送失败：$err", Toast.LENGTH_LONG).show()
+                else renderMessages()
+            }
+        } else {
+            val name = queryDisplayName(uri) ?: "file"
+            engine.sendDocumentAsync(chatJid, path, name) { _, err ->
+                sendBtn.isEnabled = true
+                if (err != null) Toast.makeText(this, "发送失败：$err", Toast.LENGTH_LONG).show()
+                else renderMessages()
+            }
+        }
+    }
+
+    private fun copyUriToCache(uri: android.net.Uri, req: Int): String? = try {
+        val dir = java.io.File(cacheDir, "send").apply { mkdirs() }
+        val name = queryDisplayName(uri) ?: ("pick-" + System.currentTimeMillis() +
+            if (req == REQ_PICK_IMAGE) ".jpg" else "")
+        val f = java.io.File(dir, name)
+        contentResolver.openInputStream(uri)!!.use { ins -> f.outputStream().use { ins.copyTo(it) } }
+        f.absolutePath
+    } catch (_: Throwable) { null }
+
+    private fun queryDisplayName(uri: android.net.Uri): String? = try {
+        contentResolver.query(uri, null, null, null, null)?.use { c ->
+            val idx = c.getColumnIndex(android.provider.OpenableColumns.DISPLAY_NAME)
+            if (idx >= 0 && c.moveToFirst()) c.getString(idx) else null
+        }
+    } catch (_: Throwable) { null }
+}
+
+/**
+ * 语音波形条（对齐 WATransChat：灰色细条，播放时绿色推进）。
+ * 有真实 waveform 数据时按字节渲染；否则按消息 id 生成确定性伪波形。
+ */
+class WaveformView(context: android.content.Context, private val night: Boolean) : android.view.View(context) {
+
+    private var bars: FloatArray = FloatArray(0)
+    private var progress = 0f // 0..1
+    private var animateJob: android.os.Handler? = null
+
+    private val idleColor = if (night) 0xFF8696A0.toInt() else 0xFFB0B8C4.toInt()
+    private val playedColor = com.weifan.app.WaSpec.GREEN_LIGHT
+
+    private val paint = android.graphics.Paint(android.graphics.Paint.ANTI_ALIAS_FLAG).apply {
+        style = android.graphics.Paint.Style.FILL
+    }
+
+    fun setData(bytes: ByteArray?, seed: String) {
+        bars = if (bytes != null && bytes.size > 8) {
+            FloatArray(36) { i -> (Math.abs(bytes[i % bytes.size].toInt()) % 100 / 100f).coerceIn(0.18f, 1f) }
+        } else {
+            FloatArray(36) { i ->
+                val v = Math.abs((seed + i).hashCode()) % 100 / 100f
+                v.coerceIn(0.18f, 1f)
+            }
+        }
+        invalidate()
+    }
+
+    /** 播放时做一次性的绿色填充动画（不做逐帧同步，视觉近似即可） */
+    private var tickRunnable: Runnable? = null
+
+    fun animateProgress(playing: Boolean) {
+        tickRunnable?.let { animateJob?.removeCallbacks(it) }
+        if (playing) {
+            val h = android.os.Handler(android.os.Looper.getMainLooper())
+            animateJob = h
+            var p = 0f
+            val r = object : Runnable {
+                override fun run() {
+                    p += 0.04f
+                    progress = p.coerceAtMost(1f)
+                    invalidate()
+                    if (p < 1f) h.postDelayed(this, 120)
+                }
+            }
+            tickRunnable = r
+            h.post(r)
+        } else {
+            progress = 0f
+            invalidate()
+        }
+    }
+
+    override fun onDraw(canvas: android.graphics.Canvas) {
+        super.onDraw(canvas)
+        if (bars.isEmpty()) return
+        val n = bars.size
+        val gap = 3f * resources.displayMetrics.density
+        val bw = (width - gap * (n - 1)) / n
+        val cy = height / 2f
+        val playedX = width * progress
+        var x = 0f
+        for (i in 0 until n) {
+            val h = bars[i] * height * 0.92f
+            paint.color = if (x + bw / 2 <= playedX) playedColor else idleColor
+            canvas.drawRoundRect(x, cy - h / 2, x + bw, cy + h / 2, bw / 2, bw / 2, paint)
+            x += bw + gap
         }
     }
 }
