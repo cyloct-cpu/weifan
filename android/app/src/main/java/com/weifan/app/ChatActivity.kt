@@ -62,6 +62,7 @@ class ChatActivity : BaseActivity() {
 
     /** 引用回复状态（id/participant/摘要） */
     private var pendingQuote: Triple<String, String, String>? = null
+    private var loadingOlder = false
     private lateinit var quoteBar: LinearLayout
 
     private fun stopPlayback() {
@@ -183,6 +184,16 @@ class ChatActivity : BaseActivity() {
                 dp(WaSpec.MESSAGE_LIST_PADDING_H_DP), dp(8))
         }
         scroll.addView(listBox)
+        // 向上翻页：滚到顶自动拉更早历史（P0-5）
+        scroll.viewTreeObserver.addOnScrollChangedListener {
+            if (scroll.scrollY == 0 && !loadingOlder && listBox.childCount > 0) {
+                loadingOlder = true
+                engine.loadOlderMessagesAsync(chatJid) {
+                    loadingOlder = false
+                    if (it) main.post { renderMessages() }
+                }
+            }
+        }
         scroll.post {
             val w = maxOf(scroll.width, 1)
             val h = maxOf(scroll.height, 1)

@@ -139,6 +139,21 @@ class ChatDb(context: Context) : SQLiteOpenHelper(context, "chats.db", null, 3) 
             arrayOf(translated, lang, chatJid, id))
     }
 
+    /** 撤回：正文替换为占位，媒体标记也清掉（官方显示「您撤回了这条消息」） */
+    fun applyRevoke(chatJid: String, id: String) {
+        writableDatabase.execSQL(
+            "UPDATE messages SET text='此消息已撤回', media_kind='', media_thumb='', media_meta='' " +
+            "WHERE chat_jid=? AND id=?", arrayOf(chatJid, id))
+    }
+
+    /** 编辑：更新正文（译文失效，一并清空） */
+    fun applyEdit(chatJid: String, id: String, newText: String) {
+        writableDatabase.execSQL(
+            "UPDATE messages SET text=?, translated='', translated_lang='' WHERE chat_jid=? AND id=?",
+            arrayOf(newText, chatJid, id))
+    }
+
+
     fun messages(chatJid: String, limit: Int = 200): List<MessageRow> {
         return readableDatabase.rawQuery(
             "SELECT id, chat_jid, sender_jid, from_me, text, original, translated, translated_lang, ts, " +

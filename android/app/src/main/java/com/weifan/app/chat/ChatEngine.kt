@@ -10,6 +10,7 @@ import com.weifan.app.data.ChatDb
 import com.weifan.app.data.MessageRow
 import mobile.ConnectionListener
 import mobile.MessageListener
+import mobile.MessageEventListener
 import mobile.Mobile
 import mobile.ReceiptListener
 import mobile.TypingListener
@@ -27,7 +28,8 @@ import java.util.concurrent.ConcurrentHashMap
  *  - 会话语言记忆：每个会话记住最近一次检测的目标语言（D-19 思路）
  */
 class ChatEngine private constructor(context: Context) :
-    MessageListener, ConnectionListener, ReceiptListener, TypingListener {
+    MessageListener, ConnectionListener, ReceiptListener, TypingListener,
+    MessageEventListener {
 
     private val appContext = context.applicationContext
     val db = ChatDb(appContext)
@@ -43,6 +45,7 @@ class ChatEngine private constructor(context: Context) :
         client.setConnectionListener(this)
         client.setReceiptListener(this)
         client.setTypingListener(this)
+        client.setMessageEventListener(this)
     }
 
     /** 每个会话最近确认的语言（"es" 等；会话级记忆） */
@@ -283,6 +286,44 @@ class ChatEngine private constructor(context: Context) :
     }
 
     fun isTyping(chatJid: String): Boolean = typingState[chatJid] == true
+
+    // MARK: - MessageEventListener（P0-4 撤回/编辑）
+
+    override fun onMessageEvent(json: String?) {
+        try {
+            val o = JSONObject(json ?: return)
+            val chatJid = o.optString("chatJid")
+            val id = o.optString("id")
+            val kind = o.optString("kind")
+            when (kind) {
+                "revoke" -> db.applyRevoke(chatJid, id)
+                "edit" -> {
+                    val newText = o.optString("editText")
+                    if (newText.isNotBlank()) db.applyEdit(chatJid, id, newText)
+                }
+            }
+            main.post { onChatUpdated?.invoke() }
+        } catch (_: Throwable) { }
+    }
+
+    /** 历史向上翻页：取当前最早一条做锚点，请求更早 count 条 */
+    fun loadOlderMessagesAsync(chatJid: String, count: Int = 50, onDone: ((Boolean) -> Unit)? = null) {
+        Thread {
+            var ok = false
+            try {
+                val oldest = db.messages(chatJid, 1).firstOrNull()
+                // messages() 是 ts ASC，第一条=最早
+                val first = db.messages(chatJid).firstOrNull()
+                if (first != null) {
+                    client.requestHistorySyncOnDemand(
+                        chatJid, first.id, first.fromMe, first.ts, count)
+                    ok = true
+                }
+            } catch (_: Throwable) { }
+            val res = ok
+            onDone?.let { main.post { it(res) } }
+        }.start()
+    }
 
     /** 上报已读（进会话页时：把该会话所有收到的消息标 read） */
     fun markReadOnServerAsync(chatJid: String) {
