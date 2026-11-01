@@ -190,7 +190,7 @@ class ChatActivity : BaseActivity() {
                 loadingOlder = true
                 engine.loadOlderMessagesAsync(chatJid) {
                     loadingOlder = false
-                    if (it) main.post { renderMessages() }
+                    if (it) main.post { renderMessages(stickToBottom = false) }
                 }
             }
         }
@@ -424,7 +424,10 @@ class ChatActivity : BaseActivity() {
         engine.onTypingChanged = null
     }
 
-    private fun renderMessages() {
+    private fun renderMessages(stickToBottom: Boolean = true) {
+        val prevHeight = listBox.height
+        // 只在用户本来就贴近底部时才自动粘底；在上方阅读旧消息时不打扰
+        val wasAtBottom = scroll.scrollY >= (listBox.height - scroll.height - dp(60))
         listBox.removeAllViews()
         val msgs = engine.db.messages(chatJid)
         if (msgs.isEmpty()) {
@@ -446,10 +449,16 @@ class ChatActivity : BaseActivity() {
         for (m in msgs.filter { !it.fromMe && it.translated.isBlank() && it.text.isNotBlank() }) {
             engine.translateIncomingAsync(m.chatJid, m.id, m.text)
         }
-        for (m in msgs.filter { !it.fromMe && it.translated.isBlank() }) {
-            engine.translateIncomingAsync(m.chatJid, m.id, m.text)
+        if (stickToBottom && wasAtBottom) {
+            // 双重 post：等 ScrollView 完成一轮布局再滚到底，否则消息多时会停在顶部
+            main.post { scroll.post { scroll.fullScroll(ScrollView.FOCUS_DOWN) } }
+        } else if (!stickToBottom) {
+            // 历史翻页：内容头部变长，把视口停在原来那条消息上
+            scroll.post {
+                val delta = listBox.height - prevHeight
+                if (delta > 0) scroll.scrollTo(0, delta)
+            }
         }
-        main.post { scroll.fullScroll(ScrollView.FOCUS_DOWN) }
     }
 
     /**
