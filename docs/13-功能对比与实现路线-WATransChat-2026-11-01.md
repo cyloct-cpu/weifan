@@ -44,7 +44,15 @@
 | 20 | 客户备注（本地 CRM）✅ v2.8.0：DB v7 chats.note + 联络人资料页多行备注 | — | 本地存储，不动官方 appstate（官方备注同步留作后续） |
 | 21 | 稳定性 ✅ v2.8.0：ANR（主线程解码）+ lmkd 内存击杀（1.4GB→300MB：inSampleSize 降采样+LRU 缓存+渲染去抖）双修复 |
 | 22 | 投票点选/改票+票数回流 ✅ v2.9.0（VotePoll+poll_votes DB v8+气泡徽章，实测改票生效）；群管理员升降级 ✅；官方端拉黑 ✅ |
-| 23 | APK 减重 ✅ v2.9.1：splits.abi 三包（arm64-v8a/armeabi-v7a/x86_64）149MB→37–40MB；附件面板窗口泄漏治理 ✅ | — | 后台解码铁律：必须降采样，只移后台不解内存 |
+| 23 | APK 减重 ✅ v2.9.1：splits.abi 三包（arm64-v8a/armeabi-v7a/x86_64）149MB→37–40MB；附件面板窗口泄漏治理 ✅ |
+| 24 | 会话内消息搜索 ✅ v3.0.0（头部 🔍 + 44dp 搜索条，原文/译文双字段过滤） | — | 对齐参考 searchButton + chatSearchBar |
+| 25 | 头部客户标签徽章行 ✅ v3.0.0（＋标签快捷改标） | — | 对齐参考 headerLabelBadges |
+| 26 | 接口实时延时探测 ✅ v3.0.0（测速逐个真实请求，胶囊显示「名称 · NNNms」） | — | 对齐参考下拉延时展示 |
+| 27 | AI 提示词编辑+模板 / 译文颜色 / 原文字号 ✅ v3.0.0 | — | effectivePrompt 覆盖层，不动四端逐字一致的内置默认 |
+| 28 | 跟进待办 ✅ v3.0.0（DB v9 todos 表 + 独立页：筛选/到期/过期标红/跳会话） | — | 入口：设置→客户管理、会话长按 |
+| 29 | 新建联系人 ✅ v3.0.0（查号是否在 WhatsApp + 写系统通讯录 + 直接开聊） | — | WRITE_CONTACTS；RawContacts 插入 |
+| 30 | 发送圆钮配色对齐参考（白底+1dp描边+深色图标）✅ v3.0.0 | — | 反编译实值 wa_input_action_btn_bg=@color/wa_surface |
+| 31 | 媒体发送前预览页 ⏳ 未做（下一版） | — | 参考 MediaSendPreviewActivity | — | 后台解码铁律：必须降采样，只移后台不解内存 |
 
 ### P3 —— 建议放弃或远期
 
