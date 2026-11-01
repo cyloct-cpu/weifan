@@ -75,12 +75,12 @@ object WaSpec {
     val LOGIN_TEXT_MUTED_NIGHT = Color.parseColor("#AEAEB2")
     val LOGIN_TEXT_HINT = Color.parseColor("#9CA3AF")    // login_text_hint
     val LOGIN_TEXT_HINT_NIGHT = Color.parseColor("#8E8E93")
-    val PRIMARY_COLOR = Color.parseColor("#4A4AF4")      // login_accent 紫蓝（按钮/进度）
-    val PRIMARY_COLOR_NIGHT = Color.parseColor("#7B7BFF")
+    val PRIMARY_COLOR = GREEN                            // 全局主色：品牌绿（统一绿）
+    val PRIMARY_COLOR_NIGHT = Color.parseColor("#2DB875")
     val LOGIN_BANNER_BG = Color.parseColor("#EEF2FF")    // bg_login_trial_banner 浅紫
     val LOGIN_INPUT_BORDER = Color.parseColor("#E5E7EB") // bg_login_input 描边
     val LOGIN_INPUT_BORDER_NIGHT = Color.parseColor("#3A3A3C")
-    val LOGIN_BTN_GRADIENT_END = Color.parseColor("#4A4AF4") // 单色（参考页按钮是纯紫蓝）
+    val LOGIN_BTN_GRADIENT_END = GREEN                   // 渐变终点也用绿（纯色）
     val LOGOUT_BANNER_TEXT = Color.parseColor("#C2410C") // logout_banner_text
 
     // ─────────────────────────── 尺寸（dp / sp，全部来自资源表）───────────────────────────

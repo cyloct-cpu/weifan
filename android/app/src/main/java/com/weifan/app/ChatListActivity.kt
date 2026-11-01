@@ -54,6 +54,13 @@ class ChatListActivity : BaseActivity() {
         super.onCreate(savedInstanceState)
         engine = ChatEngine.get(this)
 
+        // 入口逻辑：未配对 → 直接进配对页（配对成功后自动回到本页）
+        if (!engine.isPaired()) {
+            startActivity(Intent(this, PairingActivity::class.java))
+            finish()
+            return
+        }
+
         val root = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
             setBackgroundColor(WaSpec.surface(night))
