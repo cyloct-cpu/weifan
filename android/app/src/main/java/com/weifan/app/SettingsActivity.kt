@@ -131,18 +131,49 @@ class SettingsActivity : BaseActivity() {
             setImageResource(R.drawable.qr_donate)
             adjustViewBounds = true
             maxWidth = dp(320)
+            // 长按图片也能保存
+            setOnLongClickListener { saveQrToGallery(); true }
         })
         box.addView(TextView(this).apply {
-            text = "保存这张图片，用微信扫码打赏"
-            textSize = 15f
-            setTextColor(WaSpec.textPrimary(night))
+            text = "长按图片或点下方按钮保存，再用微信扫码"
+            textSize = 14f
+            setTextColor(WaSpec.textSecondary(night))
             gravity = Gravity.CENTER
-            setPadding(0, dp(14), 0, 0)
+            setPadding(0, dp(12), 0, 0)
+        })
+        box.addView(Ui.solidButton(this, "保存到相册", WaSpec.primary(night), Color.WHITE) {
+            saveQrToGallery()
+        }, LinearLayout.LayoutParams(
+            ViewGroup.LayoutParams.MATCH_PARENT, dp(46)).apply {
+            topMargin = dp(12)
         })
         android.app.AlertDialog.Builder(this)
             .setView(box)
             .setPositiveButton("关闭", null)
             .show()
+    }
+
+    /** 二维码存入相册 Pictures/WeFlip（Android 10+ 走 MediaStore，无需权限） */
+    private fun saveQrToGallery() {
+        try {
+            val bmp = android.graphics.BitmapFactory.decodeResource(resources, R.drawable.qr_donate)
+            val name = "WeFlip-donate-${System.currentTimeMillis()}.jpg"
+            val cv = android.content.ContentValues().apply {
+                put(android.provider.MediaStore.Images.Media.DISPLAY_NAME, name)
+                put(android.provider.MediaStore.Images.Media.MIME_TYPE, "image/jpeg")
+                if (android.os.Build.VERSION.SDK_INT >= 29) {
+                    put(android.provider.MediaStore.Images.Media.RELATIVE_PATH, "Pictures/WeFlip")
+                }
+            }
+            val uri = contentResolver.insert(
+                android.provider.MediaStore.Images.Media.EXTERNAL_CONTENT_URI, cv)!!
+            contentResolver.openOutputStream(uri)!!.use {
+                bmp.compress(android.graphics.Bitmap.CompressFormat.JPEG, 95, it)
+            }
+            Toast.makeText(this, "已保存到相册 Pictures/WeFlip，打开微信扫一扫即可", Toast.LENGTH_LONG).show()
+        } catch (e: Throwable) {
+            Toast.makeText(this, "保存失败：${e.message ?: "未知"}", Toast.LENGTH_LONG).show()
+        }
     }
 
 
