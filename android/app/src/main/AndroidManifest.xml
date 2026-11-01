@@ -53,6 +53,12 @@
             android:exported="false"
             android:label="账号" />
 
+        <!-- 客户/群详情页（对齐 WhatsApp Web 联络人资料） -->
+        <activity
+            android:name=".ChatInfoActivity"
+            android:exported="false"
+            android:label="详情" />
+
 
 
         <!--

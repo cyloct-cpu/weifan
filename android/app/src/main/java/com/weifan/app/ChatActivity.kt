@@ -169,7 +169,10 @@ class ChatActivity : BaseActivity() {
             gravity = Gravity.CENTER
             setTextColor(WaSpec.textPrimary(night))
             isClickable = true
-            setOnClickListener { finish() }
+            setOnClickListener {
+                startActivity(Intent(this@ChatActivity, ChatInfoActivity::class.java)
+                    .putExtra("jid", chatJid).putExtra("title", chatTitle))
+            }
         }, LinearLayout.LayoutParams(dp(WaSpec.CHAT_BACK_BTN_DP), dp(WaSpec.CHAT_BACK_BTN_DP)))
 
         root.addView(top)

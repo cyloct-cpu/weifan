@@ -17,6 +17,7 @@ import android.widget.ImageView
 import android.widget.LinearLayout
 import android.widget.ScrollView
 import android.widget.TextView
+import android.widget.Toast
 import com.weifan.app.chat.ChatEngine
 import com.weifan.app.data.ChatRow
 import java.text.SimpleDateFormat
@@ -260,6 +261,7 @@ class ChatListActivity : BaseActivity() {
             isClickable = true
             setOnClickListener { action() }
         }
+        box.addView(item("新建群聊") { dlg.dismiss(); showNewGroupDialog() })
         box.addView(item(if (chat.pinned) "取消置顶" else "置顶聊天") {
             dlg.dismiss()
             engine.db.setChatFlags(chat.jid, pinned = !chat.pinned)
@@ -294,6 +296,52 @@ class ChatListActivity : BaseActivity() {
         dlg.setView(box)
         dlg.show()
         dlg.window?.setLayout(dp(300), ViewGroup.LayoutParams.WRAP_CONTENT)
+    }
+
+    /** 建群：群名 + 成员手机号（逗号分隔），先校验后创建 */
+    private fun showNewGroupDialog() {
+        val box = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding(dp(24), dp(12), dp(24), 0)
+        }
+        val name = EditText(this).apply { hint = "群名称（25 字内）" }
+        val members = EditText(this).apply {
+            hint = "成员手机号，逗号分隔\n如 +5218120398050,+447925169391"
+            setSingleLine(false)
+            minLines = 2
+        }
+        box.addView(name)
+        box.addView(members)
+        android.app.AlertDialog.Builder(this)
+            .setTitle("新建群聊")
+            .setView(box)
+            .setPositiveButton("创建") { _, _ ->
+                val n = name.text.toString().trim()
+                val list = members.text.toString().split(",", "，", "\n")
+                    .map { it.trim().replace("+", "").filter { c -> c.isDigit() } }
+                    .filter { it.length in 8..15 }
+                if (n.isBlank() || list.isEmpty()) {
+                    Toast.makeText(this, "群名和至少一个成员号码必填", Toast.LENGTH_SHORT).show()
+                    return@setPositiveButton
+                }
+                Toast.makeText(this, "正在创建…", Toast.LENGTH_SHORT).show()
+                val phones = org.json.JSONArray(list).toString()
+                Thread {
+                    val jid = try { ChatEngine.get(this).client.createGroup(n, phones) }
+                        catch (e: Throwable) { null }
+                    main.post {
+                        if (jid != null) {
+                            Toast.makeText(this, "群已创建", Toast.LENGTH_SHORT).show()
+                            startActivity(Intent(this, ChatActivity::class.java)
+                                .putExtra("jid", jid).putExtra("title", n))
+                        } else {
+                            Toast.makeText(this, "创建失败（可能号码未注册或无权限）", Toast.LENGTH_LONG).show()
+                        }
+                    }
+                }.start()
+            }
+            .setNegativeButton("取消", null)
+            .show()
     }
 
     /** 空态：标题 15sp / 统计 14sp / 提示 13sp，间距 12dp、8dp、8dp（对齐 emptyView 一组）*/
