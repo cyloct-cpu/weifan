@@ -137,6 +137,8 @@ class ChatEngine private constructor(context: Context) :
                 }
             }
             if (chatJid.isBlank() || id.isBlank() || (text.isBlank() && mediaKind.isBlank())) return
+            // 应用内拉黑：来信直接丢弃（不入库、不通知、不进列表）
+            if (!fromMe && !fromHistory && db.isBlocked(chatJid)) return
 
             val row = MessageRow(
                 id = id, chatJid = chatJid, senderJid = o.optString("senderJid"),

@@ -9,7 +9,7 @@ import android.database.sqlite.SQLiteOpenHelper
  * 会话与消息存储。零依赖：直接 SQLiteOpenHelper，不引 Room。
  * 表结构对齐 Go 层 whatsmeow store（它自己存协议状态；这里只存 UI 需要的会话/消息/译文）。
  */
-class ChatDb(context: Context) : SQLiteOpenHelper(context, "chats.db", null, 5) {
+class ChatDb(context: Context) : SQLiteOpenHelper(context, "chats.db", null, 6) {
 
     override fun onCreate(db: SQLiteDatabase) {
         db.execSQL("""
@@ -21,7 +21,8 @@ class ChatDb(context: Context) : SQLiteOpenHelper(context, "chats.db", null, 5) 
               unread INTEGER NOT NULL DEFAULT 0,
               pinned INTEGER NOT NULL DEFAULT 0,
               archived INTEGER NOT NULL DEFAULT 0,
-              muted INTEGER NOT NULL DEFAULT 0
+              muted INTEGER NOT NULL DEFAULT 0,
+              blocked INTEGER NOT NULL DEFAULT 0
             )
         """)
         db.execSQL("""
@@ -49,6 +50,10 @@ class ChatDb(context: Context) : SQLiteOpenHelper(context, "chats.db", null, 5) 
     }
 
     override fun onUpgrade(db: SQLiteDatabase, oldVersion: Int, newVersion: Int) {
+        // v6: 应用内拉黑（来信不入库、会话从列表隐藏；官方端拉黑独立不受影响）
+        if (oldVersion < 6) {
+            db.execSQL("ALTER TABLE chats ADD COLUMN blocked INTEGER NOT NULL DEFAULT 0")
+        }
         // v2: 发件直译直发 —— 发出去的是译文，用户敲的原文存 original 字段
         if (oldVersion < 2) {
             db.execSQL("ALTER TABLE messages ADD COLUMN original TEXT NOT NULL DEFAULT ''")
@@ -110,13 +115,13 @@ class ChatDb(context: Context) : SQLiteOpenHelper(context, "chats.db", null, 5) 
 
     fun chats(): List<ChatRow> {
         return readableDatabase.rawQuery(
-            "SELECT jid, title, last_message, last_ts, unread, pinned, archived, muted FROM chats " +
-            "ORDER BY pinned DESC, last_ts DESC", null
+            "SELECT jid, title, last_message, last_ts, unread, pinned, archived, muted, blocked " +
+            "FROM chats WHERE blocked=0 ORDER BY pinned DESC, last_ts DESC", null
         ).use { c ->
             val out = mutableListOf<ChatRow>()
             while (c.moveToNext()) {
                 out += ChatRow(c.getString(0), c.getString(1), c.getString(2), c.getLong(3), c.getInt(4),
-                    c.getInt(5) == 1, c.getInt(6) == 1, c.getInt(7) == 1)
+                    c.getInt(5) == 1, c.getInt(6) == 1, c.getInt(7) == 1, c.getInt(8) == 1)
             }
             out
         }
@@ -211,14 +216,35 @@ class ChatDb(context: Context) : SQLiteOpenHelper(context, "chats.db", null, 5) 
     }
 
     /** 设置会话本地标记（P1-3 置顶/归档/静音） */
-    fun setChatFlags(jid: String, pinned: Boolean? = null, archived: Boolean? = null, muted: Boolean? = null) {
+    fun setChatFlags(jid: String, pinned: Boolean? = null, archived: Boolean? = null,
+                     muted: Boolean? = null, blocked: Boolean? = null) {
         val cv = ContentValues().apply {
             pinned?.let { put("pinned", if (it) 1 else 0) }
             archived?.let { put("archived", if (it) 1 else 0) }
             muted?.let { put("muted", if (it) 1 else 0) }
+            blocked?.let { put("blocked", if (it) 1 else 0) }
         }
         writableDatabase.update("chats", cv, "jid=?", arrayOf(jid))
     }
+
+    fun isBlocked(jid: String): Boolean =
+        readableDatabase.rawQuery("SELECT blocked FROM chats WHERE jid=?", arrayOf(jid)).use { c ->
+            (c.moveToFirst() && c.getInt(0) == 1)
+        }
+
+    /** 已拉黑会话（设置页管理列表用） */
+    fun blockedChats(): List<ChatRow> =
+        readableDatabase.rawQuery(
+            "SELECT jid, title, last_message, last_ts, unread, pinned, archived, muted, blocked " +
+            "FROM chats WHERE blocked=1 ORDER BY last_ts DESC", null
+        ).use { c ->
+            val out = mutableListOf<ChatRow>()
+            while (c.moveToNext()) {
+                out += ChatRow(c.getString(0), c.getString(1), c.getString(2), c.getLong(3), c.getInt(4),
+                    c.getInt(5) == 1, c.getInt(6) == 1, c.getInt(7) == 1, c.getInt(8) == 1)
+            }
+            out
+        }
 
     /** 会话重命名（本地备注名） */
     fun renameChat(jid: String, title: String) {
@@ -271,7 +297,8 @@ data class ChatRow(
     var unread: Int,
     val pinned: Boolean = false,
     val archived: Boolean = false,
-    val muted: Boolean = false
+    val muted: Boolean = false,
+    val blocked: Boolean = false
 )
 
 data class MessageRow(

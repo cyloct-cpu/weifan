@@ -327,6 +327,18 @@ class ChatListActivity : BaseActivity() {
             engine.db.setChatFlags(chat.jid, muted = !chat.muted)
             renderChats()
         })
+        box.addView(item("拉黑（应用内屏蔽）") {
+            dlg.dismiss()
+            android.app.AlertDialog.Builder(this@ChatListActivity)
+                .setTitle("拉黑此会话？")
+                .setMessage("拉黑后对方消息不再出现在应用内（不向 WhatsApp 服务器同步拉黑，官方客户端仍可收到）。可在 设置 → 已拉黑联系人 中恢复。")
+                .setPositiveButton("拉黑") { _, _ ->
+                    engine.db.setChatFlags(chat.jid, blocked = true)
+                    renderChips(); renderChats()
+                }
+                .setNegativeButton("取消", null)
+                .show()
+        })
         box.addView(item("重命名") {
             dlg.dismiss()
             val input = EditText(this).apply { setText(chat.title) }

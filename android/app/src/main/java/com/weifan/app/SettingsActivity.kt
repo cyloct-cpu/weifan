@@ -115,9 +115,30 @@ class SettingsActivity : BaseActivity() {
             showDonateDialog()
         })
 
+        // ---- 拉黑管理 ----
+        list.addView(section("隐私与屏蔽"))
+        list.addView(row("已拉黑联系人", "查看与解除应用内拉黑") { showBlockedList() })
+
         // ---- 关于 ----
         list.addView(section("关于"))
         list.addView(rowValue("版本", appVersion(), onClick = null))
+    }
+
+    /** 已拉黑联系人：解除拉黑 */
+    private fun showBlockedList() {
+        val rows = engine().db.blockedChats()
+        if (rows.isEmpty()) {
+            Toast.makeText(this, "暂无拉黑联系人", Toast.LENGTH_SHORT).show(); return
+        }
+        val names = rows.map { it.title.ifBlank { it.jid } }.toTypedArray()
+        android.app.AlertDialog.Builder(this)
+            .setTitle("已拉黑联系人")
+            .setItems(names) { _, i ->
+                engine().db.setChatFlags(rows[i].jid, blocked = false)
+                Toast.makeText(this, "已解除：${names[i]}", Toast.LENGTH_SHORT).show()
+            }
+            .setNegativeButton("关闭", null)
+            .show()
     }
 
     /** 打赏弹窗：大图二维码 + 提示保存后微信扫码 */
