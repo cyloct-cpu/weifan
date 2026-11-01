@@ -426,6 +426,9 @@ class ChatActivity : BaseActivity() {
                 }
             }
         }
+        engine.onPollVotesChanged = { jid, pollMsgId ->
+            main.post { if (jid == chatJid) renderMessagesSoon() }
+        }
         engine.db.markChatRead(chatJid)
         renderMessages()
         engine.connectAsync()
@@ -606,13 +609,18 @@ class ChatActivity : BaseActivity() {
                 // 真投票渲染：📊 问题 + 选项圆点行 + "投票 · 点按查看" 提示（对齐 WhatsApp）
                 val meta = try { JSONObject(m.mediaMeta) } catch (_: Throwable) { JSONObject() }
                 val opts = meta.optString("waveform").split("\n").filter { it.isNotBlank() }
+                // v2.9.0：落库票数（poll_votes）→ 选项行尾显示票数徽章；点击选项直接投票
+                val counts = engine.db.pollCounts(m.id)
+                val voters = engine.db.pollVoterCount(m.id)
                 val col = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
                 col.addView(TextView(this).apply {
                     text = "📊  " + m.mediaName.ifBlank { "投票" }
                     textSize = 14.5f
                     setTextColor(WaSpec.textPrimary(night))
                 })
+                val hasVotes = counts.isNotEmpty()
                 for (opt in opts.take(8)) {
+                    val n = counts[opt] ?: 0
                     val row = LinearLayout(this).apply {
                         orientation = LinearLayout.HORIZONTAL
                         gravity = Gravity.CENTER_VERTICAL
@@ -627,11 +635,29 @@ class ChatActivity : BaseActivity() {
                         textSize = 13.5f
                         setTextColor(WaSpec.textPrimary(night))
                     }, LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT,
-                        ViewGroup.LayoutParams.WRAP_CONTENT).apply { marginStart = dp(9) })
+                        ViewGroup.LayoutParams.WRAP_CONTENT).apply { marginStart = dp(9); weight = 1f })
+                    if (hasVotes) {
+                        row.addView(TextView(this).apply {
+                            text = "$n"
+                            textSize = 13f
+                            typeface = Typeface.create("sans-serif-medium", Typeface.NORMAL)
+                            setTextColor(if (n > 0) WaSpec.primary(night) else WaSpec.textSecondary(night))
+                        }, LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT,
+                            ViewGroup.LayoutParams.WRAP_CONTENT).apply { marginStart = dp(8) })
+                    }
+                    // 点选项即投票（改票=重投）；只对我收到的投票开放（我发的由对方投）
+                    row.isClickable = true
+                    row.isFocusable = true
+                    android.util.Log.i("WeFlipPoll", "bind row opt=$opt msg=${m.id}")
+                    row.setOnClickListener {
+                        android.util.Log.i("WeFlipPoll", "CLICKED opt=$opt msg=${m.id}")
+                        voteOnPoll(m, opts, opt)
+                    }
                     col.addView(row)
                 }
                 col.addView(TextView(this).apply {
-                    text = "投票 · 长按可转发"
+                    text = if (hasVotes) "$voters 人已投 · 点选项可投票/改票 · 长按转发"
+                           else "点选项可投票 · 长按转发"
                     textSize = 11.5f
                     setTextColor(WaSpec.textSecondary(night))
                     setPadding(0, dp(7), 0, 0)
@@ -872,8 +898,9 @@ class ChatActivity : BaseActivity() {
             mv.setOnLongClickListener { showActionMenu(m); true }
             col.addView(mv)
         }
-        // 文本行（有文字或有 caption 才显示）
-        if (m.text.isNotBlank()) {
+        // 文本行（有文字或有 caption 才显示）；
+        // poll/location/contact 三类卡片已在媒体区完整渲染，跳过重复文字行
+        if (m.text.isNotBlank() && m.mediaKind !in setOf("poll", "location", "contact")) {
         col.addView(TextView(this).apply {
             text = m.text
             textSize = 15f
@@ -1224,7 +1251,36 @@ class ChatActivity : BaseActivity() {
     }
 
     /** 录音对话框：按住说话 / 松开发送 / 左滑取消 */
+
+    /** 点选项投票/改票；确认后走协议，成功本地先落一笔（本人票即时反馈） */
+    private fun voteOnPoll(m: MessageRow, opts: List<String>, choice: String) {
+        android.app.AlertDialog.Builder(this)
+            .setTitle("投票")
+            .setMessage("选择「$choice」？再次点其他选项可改票")
+            .setPositiveButton("投这一票") { _, _ ->
+                // senderJid 传投票消息的发送者；Go 侧用它构造 MessageInfo（IsFromMe 自动判定）
+                engine.votePollAsync(chatJid, m.id, m.senderJid, m.ts, listOf(choice)) { err ->
+                    android.util.Log.i("WeFlipPoll", "vote result err=$err choice=$choice")
+                    if (err != null) {
+                        Toast.makeText(this, "投票失败：$err", Toast.LENGTH_LONG).show()
+                    } else {
+                        // 本地即时落一笔本人票，待服务器 PollUpdate 回流校准（voterJid 用 self 占位）
+                        engine.db.replacePollVotes(chatJid, m.id, "self", "我", listOf(choice), System.currentTimeMillis())
+                        renderMessagesSoon()
+                    }
+                }
+            }
+            .setNegativeButton("取消", null)
+            .show()
+    }
+
     private fun showRecordDialog() {
+        // 运行时权限：模拟器 appops 默认 allow 会掩盖缺失；真机不声明不请求直接失败
+        if (checkSelfPermission(android.Manifest.permission.RECORD_AUDIO)
+                != android.content.pm.PackageManager.PERMISSION_GRANTED) {
+            requestPermissions(arrayOf(android.Manifest.permission.RECORD_AUDIO), 4102)
+            return
+        }
         val box = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
             gravity = Gravity.CENTER
@@ -1382,6 +1438,14 @@ class ChatActivity : BaseActivity() {
 
     override fun onRequestPermissionsResult(requestCode: Int, permissions: Array<out String>, grantResults: IntArray) {
         super.onRequestPermissionsResult(requestCode, permissions, grantResults)
+        if (requestCode == 4102) {
+            if (grantResults.firstOrNull() == android.content.pm.PackageManager.PERMISSION_GRANTED) {
+                showRecordDialog()
+            } else {
+                Toast.makeText(this, "未授权麦克风，无法发送语音", Toast.LENGTH_SHORT).show()
+            }
+            return
+        }
         if (requestCode == 4101) {
             if (grantResults.firstOrNull() == android.content.pm.PackageManager.PERMISSION_GRANTED) {
                 showContactDialog()

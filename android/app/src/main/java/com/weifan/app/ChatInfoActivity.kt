@@ -301,10 +301,13 @@ class ChatInfoActivity : BaseActivity() {
             setPadding(0, dp(10), 0, dp(10))
             isLongClickable = true
             setOnLongClickListener {
+                val opts = mutableListOf(
+                    "移除成员" to { removeMember(phone) },
+                    if (admin) ("降为普通成员" to { changeAdminRole(phone, false) })
+                    else ("升为管理员" to { changeAdminRole(phone, true) }))
                 android.app.AlertDialog.Builder(this@ChatInfoActivity)
-                    .setTitle("移除成员")
-                    .setMessage("确定把 $phone 移出群聊？")
-                    .setPositiveButton("移除") { _, _ -> removeMember(phone) }
+                    .setTitle(phone.substringBefore("@"))
+                    .setItems(opts.map { it.first }.toTypedArray()) { _, i -> opts[i].second() }
                     .setNegativeButton("取消", null)
                     .show()
                 true
@@ -401,6 +404,26 @@ class ChatInfoActivity : BaseActivity() {
             })
         }
         renderMediaContent()
+    }
+
+    /** 升/降管理员：promote/demote（仅群主可用） */
+    private fun changeAdminRole(phone: String, promote: Boolean) {
+        Toast.makeText(this, if (promote) "正在升管理员…" else "正在降为成员…", Toast.LENGTH_SHORT).show()
+        Thread {
+            val err = try {
+                if (promote) engine().client.promoteGroupParticipants(chatJid, "[\"$phone\"]")
+                else engine().client.demoteGroupParticipants(chatJid, "[\"$phone\"]")
+                null
+            } catch (e: Throwable) { e.message ?: e.toString() }
+            main.post {
+                if (isDestroyed) return@post
+                if (err != null) Toast.makeText(this, "操作失败：$err", Toast.LENGTH_LONG).show()
+                else {
+                    Toast.makeText(this, if (promote) "已升为管理员" else "已降为普通成员", Toast.LENGTH_SHORT).show()
+                    loadGroupInfo()
+                }
+            }
+        }.start()
     }
 
     private fun removeMember(phone: String) {

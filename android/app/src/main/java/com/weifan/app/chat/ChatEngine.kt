@@ -46,6 +46,7 @@ class ChatEngine private constructor(context: Context) :
         client.setReceiptListener(this)
         client.setTypingListener(this)
         client.setMessageEventListener(this)
+        // pollUpdateListener 在下方属性声明后于 initPoll 注册（属性初始化顺序）
     }
 
     /** 每个会话最近确认的语言（"es" 等；会话级记忆） */
@@ -59,6 +60,58 @@ class ChatEngine private constructor(context: Context) :
     var onReceiptChanged: ((chatJid: String, ids: List<String>, read: Boolean) -> Unit)? = null
     /** 对方正在输入 */
     var onTypingChanged: ((chatJid: String, typing: Boolean) -> Unit)? = null
+
+    /** 投票结果变更（含改票）；UI 订阅后重渲染该投票气泡 */
+    var onPollVotesChanged: ((chatJid: String, pollMsgId: String) -> Unit)? = null
+
+    // Go 侧投票解密回调：SHA-256 哈希 → 用该会话选项表反向映射成选项名落库
+    private val pollUpdateListener = object : mobile.PollUpdateListener {
+        override fun onPollUpdate(json: String) {
+            try {
+                val o = JSONObject(json)
+                val chatJid = o.getString("chatJid")
+                val pollMsgId = o.getString("pollMsgId")
+                val voterJid = o.getString("voterJid")
+                val voterName = o.optString("voterName")
+                val ts = o.optLong("ts", System.currentTimeMillis())
+                val hashes = o.optJSONArray("optionHash") ?: return
+                // 选项表：从本地消息行 mediaMeta.waveform（\n 分隔）取
+                val row = db.message(chatJid, pollMsgId) ?: return
+                val meta = try { JSONObject(row.mediaMeta) } catch (_: Throwable) { JSONObject() }
+                val options = meta.optString("waveform").split("\n").filter { it.isNotBlank() }
+                // SHA-256(optionName) → optionName；对不上（选项已改）就丢弃该哈希
+                val names = (0 until hashes.length()).mapNotNull { i ->
+                    val h = hashes.getString(i)
+                    options.firstOrNull { sha256Hex(it.toByteArray()) == h }
+                }
+                db.replacePollVotes(chatJid, pollMsgId, voterJid, voterName, names, ts)
+                main.post { onPollVotesChanged?.invoke(chatJid, pollMsgId) }
+            } catch (_: Throwable) {
+            }
+        }
+    }
+
+    init {
+        client.setPollUpdateListener(pollUpdateListener)
+    }
+
+    private fun sha256Hex(bytes: ByteArray): String {
+        val d = java.security.MessageDigest.getInstance("SHA-256").digest(bytes)
+        return d.joinToString("") { "%02x".format(it) }
+    }
+
+    /** 以本人身份给投票投选（改票即重投） */
+    fun votePollAsync(chatJid: String, pollMsgId: String, senderJid: String, tsMs: Long,
+                      optionNames: List<String>, onResult: (String?) -> Unit) {
+        Thread {
+            val err = try {
+                client.votePoll(chatJid, pollMsgId, senderJid, tsMs, optionNames.joinToString(","))
+                null
+            } catch (e: Throwable) { e.message }
+            main.post { onResult(err) }
+        }.start()
+    }
+
 
     // 我方消息被读状态（内存：msgId → 是否已读）
     val readReceipts = ConcurrentHashMap<String, Boolean>()
@@ -640,10 +693,13 @@ class ChatEngine private constructor(context: Context) :
                 val now = System.currentTimeMillis()
                 db.insertMessage(MessageRow(
                     id = msgId ?: "local-$now", chatJid = chatJid, senderJid = "",
-                    fromMe = true, text = "📊 " + question, original = "",
+                    fromMe = true, text = "", original = "",
                     translated = "", translatedLang = "", ts = now,
-                    mediaKind = "poll", mediaMime = "", mediaName = optionsCsv))
-                db.upsertChat(chatJid, "", "📊 " + question, now, incrementUnread = false)
+                    mediaKind = "poll", mediaMime = "", mediaName = question,
+                    mediaMeta = "{\"kind\":\"poll\",\"waveform\":\"" +
+                        optionsCsv.replace("\\", "\\\\").replace("\"", "\\\"")
+                            .replace(",", "\\n") + "\"}"))
+                db.upsertChat(chatJid, "", "📊 " + question, now, incrementUnread = false)  // 摘要仍显示问题
                 main.post { onChatUpdated?.invoke() }
                 main.post { onResult(msgId, null) }
             } catch (e: Throwable) {

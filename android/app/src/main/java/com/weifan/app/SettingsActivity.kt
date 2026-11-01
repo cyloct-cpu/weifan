@@ -135,6 +135,14 @@ class SettingsActivity : BaseActivity() {
             .setTitle("已拉黑联系人")
             .setItems(names) { _, i ->
                 engine().db.setChatFlags(rows[i].jid, blocked = false)
+                Thread {
+                    val err = try { engine().client.updateBlocklist(rows[i].jid, "unblock"); null }
+                    catch (e: Throwable) { e.message ?: e.toString() }
+                    runOnUiThread {
+                        Toast.makeText(this, if (err == null) "已解除（含官方端）：${names[i]}"
+                            else "本地已恢复；官方端同步失败：$err", Toast.LENGTH_LONG).show()
+                    }
+                }.start()
                 Toast.makeText(this, "已解除：${names[i]}", Toast.LENGTH_SHORT).show()
             }
             .setNegativeButton("关闭", null)

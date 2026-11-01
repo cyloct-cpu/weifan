@@ -327,13 +327,22 @@ class ChatListActivity : BaseActivity() {
             engine.db.setChatFlags(chat.jid, muted = !chat.muted)
             renderChats()
         })
-        box.addView(item("拉黑（应用内屏蔽）") {
+        box.addView(item("拉黑") {
             dlg.dismiss()
             android.app.AlertDialog.Builder(this@ChatListActivity)
                 .setTitle("拉黑此会话？")
-                .setMessage("拉黑后对方消息不再出现在应用内（不向 WhatsApp 服务器同步拉黑，官方客户端仍可收到）。可在 设置 → 已拉黑联系人 中恢复。")
+                .setMessage("拉黑后对方消息不再出现在应用内，并同步拉黑到 WhatsApp 官方端（官方客户端也收不到）。可在 设置 → 已拉黑联系人 中恢复。")
                 .setPositiveButton("拉黑") { _, _ ->
                     engine.db.setChatFlags(chat.jid, blocked = true)
+                    Thread {
+                        val err = try {
+                            engine.client.updateBlocklist(chat.jid, "block"); null
+                        } catch (e: Throwable) { e.message ?: e.toString() }
+                        main.post {
+                            if (err != null) Toast.makeText(this, "本地已屏蔽；官方端同步失败：$err", Toast.LENGTH_LONG).show()
+                            else Toast.makeText(this, "已拉黑（含官方端）", Toast.LENGTH_SHORT).show()
+                        }
+                    }.start()
                     renderChips(); renderChats()
                 }
                 .setNegativeButton("取消", null)

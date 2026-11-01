@@ -9,7 +9,7 @@ import android.database.sqlite.SQLiteOpenHelper
  * 会话与消息存储。零依赖：直接 SQLiteOpenHelper，不引 Room。
  * 表结构对齐 Go 层 whatsmeow store（它自己存协议状态；这里只存 UI 需要的会话/消息/译文）。
  */
-class ChatDb(context: Context) : SQLiteOpenHelper(context, "chats.db", null, 7) {
+class ChatDb(context: Context) : SQLiteOpenHelper(context, "chats.db", null, 8) {
 
     override fun onCreate(db: SQLiteDatabase) {
         db.execSQL("""
@@ -48,9 +48,37 @@ class ChatDb(context: Context) : SQLiteOpenHelper(context, "chats.db", null, 7) 
             )
         """)
         db.execSQL("CREATE INDEX IF NOT EXISTS idx_messages_ts ON messages(chat_jid, ts DESC)")
+        // v8: 投票结果（每行 = 一人投的一项；改票时该人旧行删除重插）
+        db.execSQL("""
+            CREATE TABLE IF NOT EXISTS poll_votes(
+              chat_jid TEXT NOT NULL,
+              poll_msg_id TEXT NOT NULL,
+              voter_jid TEXT NOT NULL,
+              option_name TEXT NOT NULL,
+              voter_name TEXT NOT NULL DEFAULT '',
+              ts INTEGER NOT NULL,
+              PRIMARY KEY(chat_jid, poll_msg_id, voter_jid, option_name)
+            )
+        """)
+        db.execSQL("CREATE INDEX IF NOT EXISTS idx_poll_votes ON poll_votes(poll_msg_id)")
     }
 
     override fun onUpgrade(db: SQLiteDatabase, oldVersion: Int, newVersion: Int) {
+        // v8: 投票结果表
+        if (oldVersion < 8) {
+            db.execSQL("""
+                CREATE TABLE IF NOT EXISTS poll_votes(
+                  chat_jid TEXT NOT NULL,
+                  poll_msg_id TEXT NOT NULL,
+                  voter_jid TEXT NOT NULL,
+                  option_name TEXT NOT NULL,
+                  voter_name TEXT NOT NULL DEFAULT '',
+                  ts INTEGER NOT NULL,
+                  PRIMARY KEY(chat_jid, poll_msg_id, voter_jid, option_name)
+                )
+            """)
+            db.execSQL("CREATE INDEX IF NOT EXISTS idx_poll_votes ON poll_votes(poll_msg_id)")
+        }
         // v7: 客户备注（本地 CRM；对每会话自由文本，跟设备不跟服务器）
         if (oldVersion < 7) {
             db.execSQL("ALTER TABLE chats ADD COLUMN note TEXT NOT NULL DEFAULT ''")
@@ -127,6 +155,40 @@ class ChatDb(context: Context) : SQLiteOpenHelper(context, "chats.db", null, 7) 
         "SELECT note FROM chats WHERE jid=?", arrayOf(jid)).use { c ->
         if (c.moveToFirst()) c.getString(0) ?: "" else ""
     }
+
+    /** 记录一次投票：该人该投票的旧选择先删后插（全量替换，支持改票/取消票） */
+    fun replacePollVotes(chatJid: String, pollMsgId: String, voterJid: String,
+                         voterName: String, optionNames: List<String>, ts: Long) {
+        val db = writableDatabase
+        db.beginTransaction()
+        try {
+            db.execSQL("DELETE FROM poll_votes WHERE chat_jid=? AND poll_msg_id=? AND voter_jid=?",
+                arrayOf(chatJid, pollMsgId, voterJid))
+            for (opt in optionNames) {
+                db.execSQL("INSERT OR REPLACE INTO poll_votes(chat_jid,poll_msg_id,voter_jid,option_name,voter_name,ts) " +
+                    "VALUES(?,?,?,?,?,?)", arrayOf(chatJid, pollMsgId, voterJid, opt, voterName, ts))
+            }
+            db.setTransactionSuccessful()
+        } finally {
+            db.endTransaction()
+        }
+    }
+
+    /** 某投票各选项票数：optionName → count */
+    fun pollCounts(pollMsgId: String): Map<String, Int> {
+        val out = mutableMapOf<String, Int>()
+        readableDatabase.rawQuery(
+            "SELECT option_name, COUNT(*) FROM poll_votes WHERE poll_msg_id=? GROUP BY option_name",
+            arrayOf(pollMsgId)).use { c ->
+            while (c.moveToNext()) out[c.getString(0)] = c.getInt(1)
+        }
+        return out
+    }
+
+    /** 某投票总投票人数（去重） */
+    fun pollVoterCount(pollMsgId: String): Int = readableDatabase.rawQuery(
+        "SELECT COUNT(DISTINCT voter_jid) FROM poll_votes WHERE poll_msg_id=?",
+        arrayOf(pollMsgId)).use { c -> if (c.moveToFirst()) c.getInt(0) else 0 }
 
     fun chats(): List<ChatRow> {
         return readableDatabase.rawQuery(
@@ -301,6 +363,21 @@ class ChatDb(context: Context) : SQLiteOpenHelper(context, "chats.db", null, 7) 
             }
             out
         }
+    }
+
+    /** 按 ID 取单条消息（投票哈希反查选项表用）；无则 null */
+    fun message(chatJid: String, id: String): MessageRow? = readableDatabase.rawQuery(
+        "SELECT id, chat_jid, sender_jid, from_me, text, original, translated, translated_lang, ts, " +
+        "media_kind, media_mime, media_name, media_size, media_path, media_thumb, media_meta " +
+        "FROM messages WHERE chat_jid=? AND id=?", arrayOf(chatJid, id)).use { c ->
+        if (!c.moveToFirst()) return null
+        MessageRow(
+            id = c.getString(0), chatJid = c.getString(1), senderJid = c.getString(2),
+            fromMe = c.getInt(3) == 1, text = c.getString(4), original = c.getString(5),
+            translated = c.getString(6), translatedLang = c.getString(7), ts = c.getLong(8),
+            mediaKind = c.getString(9), mediaMime = c.getString(10), mediaName = c.getString(11),
+            mediaSize = c.getLong(12), mediaPath = c.getString(13),
+            mediaThumb = c.getString(14), mediaMeta = c.getString(15))
     }
 }
 
