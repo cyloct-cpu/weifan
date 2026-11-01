@@ -390,6 +390,12 @@ class ChatInfoActivity : BaseActivity() {
                         gravity = Gravity.CENTER
                         maxLines = 1
                     })
+                    cell.isClickable = true
+                    cell.setOnClickListener {
+                        startActivity(android.content.Intent(this@ChatInfoActivity,
+                            MediaViewerActivity::class.java)
+                            .putExtra("jid", chatJid).putExtra("msgId", m.id))
+                    }
                     row?.addView(cell, LinearLayout.LayoutParams(0, dp(92), 1f).apply {
                         marginStart = if (idx % 3 > 0) dp(4) else 0
                     })

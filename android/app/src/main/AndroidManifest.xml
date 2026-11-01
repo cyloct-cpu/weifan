@@ -59,6 +59,13 @@
             android:exported="false"
             android:label="详情" />
 
+        <!-- 全屏媒体查看器 -->
+        <activity
+            android:name=".MediaViewerActivity"
+            android:exported="false"
+            android:theme="@android:style/Theme.Black.NoTitleBar.Fullscreen"
+            android:label="查看" />
+
 
 
         <!--
