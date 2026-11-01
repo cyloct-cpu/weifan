@@ -37,6 +37,8 @@ class ChatInfoActivity : BaseActivity() {
     private lateinit var subText: TextView
     private lateinit var memberBox: LinearLayout
     private lateinit var mediaGrid: LinearLayout
+    private lateinit var mediaTabs: LinearLayout
+    private var mediaTab: String = "图片与视频"
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -170,15 +172,28 @@ class ChatInfoActivity : BaseActivity() {
             })
         }
 
-        // ── 媒体九宫格
+        // ── 媒体分类 tabs（对齐 WhatsApp Web，去小程序/视频号）：文件/图片与视频/链接/音乐与音频/日期
         box.addView(sectionLabel("媒体、链接和文件"))
+        val tabsScroll = android.widget.HorizontalScrollView(this).apply {
+            isHorizontalScrollBarEnabled = false
+        }
+        mediaTabs = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER_VERTICAL
+        }
+        tabsScroll.addView(mediaTabs)
+        box.addView(tabsScroll, LinearLayout.LayoutParams(
+            ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply {
+            topMargin = dp(8)
+        })
         mediaGrid = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
         box.addView(mediaGrid, LinearLayout.LayoutParams(
             ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply {
             topMargin = dp(8)
         })
-        renderMediaGrid()
+        renderMediaTabs("图片与视频")
     }
+
 
     private fun dp(v: Int) = Ui.dp(this, v)
 
@@ -282,57 +297,201 @@ class ChatInfoActivity : BaseActivity() {
         }.start()
     }
 
-    /** 本地媒体九宫格：每行 3 格，方形缩略图；文档显示 📄+名 */
-    private fun renderMediaGrid() {
-        mediaGrid.removeAllViews()
-        val msgs = engine().db.messages(chatJid).filter { it.mediaKind.isNotBlank() }
-        if (msgs.isEmpty()) {
-            mediaGrid.addView(TextView(this).apply {
-                text = "暂无媒体"
-                textSize = 13f
-                setTextColor(WaSpec.textSecondary(night))
-                setPadding(0, dp(6), 0, 0)
-            })
-            return
-        }
-        var row: LinearLayout? = null
-        for ((idx, m) in msgs.withIndex()) {
-            if (idx % 3 == 0) {
-                row = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL }
-                mediaGrid.addView(row, LinearLayout.LayoutParams(
-                    ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply {
-                    topMargin = dp(4)
-                })
-            }
-            val cell = LinearLayout(this).apply {
-                orientation = LinearLayout.VERTICAL
-                gravity = Gravity.CENTER
+    // MARK: - 媒体分类（文件/图片与视频/链接/音乐与音频/日期）
+
+    private val mediaTabsDef = listOf("文件", "图片与视频", "链接", "音乐与音频", "日期")
+
+    /** 顶部 tab 行（选中绿底白字，其余灰底） */
+    private fun renderMediaTabs(active: String) {
+        mediaTab = active
+        mediaTabs.removeAllViews()
+        for (t in mediaTabsDef) {
+            val sel = t == active
+            mediaTabs.addView(TextView(this).apply {
+                text = t
+                textSize = 13.5f
+                setTextColor(if (sel) Color.WHITE else WaSpec.textSecondary(night))
+                typeface = Typeface.create(if (sel) "sans-serif-medium" else "sans-serif", Typeface.NORMAL)
                 background = Ui.roundBg(this@ChatInfoActivity,
-                    if (night) WaSpec.SEARCH_BG_NIGHT else WaSpec.GRAY6, 8)
-                setPadding(dp(4), dp(8), dp(4), dp(8))
-                weightSum = 1f
-            }
-            val label = when (m.mediaKind) {
-                "image", "sticker" -> "🖼"
-                "video" -> "🎬"
-                "audio" -> "🎧"
-                else -> "📄 ${m.mediaName.take(8)}"
-            }
-            cell.addView(TextView(this).apply {
-                text = label
-                textSize = 22f
-                gravity = Gravity.CENTER
+                    if (sel) WaSpec.primary(night)
+                    else (if (night) WaSpec.SEARCH_BG_NIGHT else WaSpec.GRAY6), 16)
+                setPadding(dp(14), dp(7), dp(14), dp(7))
+                isClickable = true
+                setOnClickListener { renderMediaTabs(t) }
+            }, LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply {
+                if (mediaTabs.childCount > 0) marginStart = dp(8)
             })
-            cell.addView(TextView(this).apply {
-                text = m.mediaName.ifBlank { m.mediaKind }
-                textSize = 10.5f
-                setTextColor(WaSpec.textSecondary(night))
+        }
+        renderMediaContent()
+    }
+
+    private fun allMedia() = engine().db.messages(chatJid).filter { it.mediaKind.isNotBlank() }
+
+    private fun fmtTime(ts: Long): String =
+        java.text.SimpleDateFormat("yyyy-M-d HH:mm", java.util.Locale.getDefault()).format(java.util.Date(ts))
+
+    private fun fmtSize(n: Long): String = when {
+        n >= 1 shl 20 -> String.format(java.util.Locale.US, "%.1f MB", n / 1048576.0)
+        n >= 1024 -> String.format(java.util.Locale.US, "%.0f KB", n / 1024.0)
+        n > 0 -> "${n}B"
+        else -> ""
+    }
+
+    /** 按 tab 渲染内容区 */
+    private fun renderMediaContent() {
+        mediaGrid.removeAllViews()
+        val media = allMedia()
+        when (mediaTab) {
+            "图片与视频" -> {
+                val imgs = media.filter { it.mediaKind in listOf("image", "sticker", "video") }
+                if (imgs.isEmpty()) return emptyHint()
+                // 九宫格：缩略图（已下载用真图，否则占位图标+时间）
+                var row: LinearLayout? = null
+                for ((idx, m) in imgs.withIndex()) {
+                    if (idx % 3 == 0) {
+                        row = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL }
+                        mediaGrid.addView(row, LinearLayout.LayoutParams(
+                            ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply {
+                            topMargin = dp(4)
+                        })
+                    }
+                    val cell = LinearLayout(this).apply {
+                        orientation = LinearLayout.VERTICAL
+                        gravity = Gravity.CENTER
+                        background = Ui.roundBg(this@ChatInfoActivity,
+                            if (night) WaSpec.SEARCH_BG_NIGHT else WaSpec.GRAY6, 8)
+                        setPadding(dp(4), dp(6), dp(4), dp(6))
+                    }
+                    val img = ImageView(this).apply {
+                        scaleType = ImageView.ScaleType.CENTER_CROP
+                        val f = if (m.mediaPath.isNotBlank()) java.io.File(m.mediaPath) else null
+                        if (f != null && f.exists()) {
+                            setImageBitmap(BitmapFactory.decodeFile(f.absolutePath))
+                        } else {
+                            // 尚未下载：用消息自带缩略图
+                            try {
+                                val tb = android.util.Base64.decode(m.mediaThumb,
+                                    android.util.Base64.DEFAULT)
+                                val bmp = BitmapFactory.decodeByteArray(tb, 0, tb.size)
+                                if (bmp != null) setImageBitmap(bmp)
+                                else setImageResource(android.R.drawable.ic_menu_gallery)
+                            } catch (_: Throwable) {
+                                setImageResource(android.R.drawable.ic_menu_gallery)
+                            }
+                        }
+                    }
+                    cell.addView(img, LinearLayout.LayoutParams(
+                        ViewGroup.LayoutParams.MATCH_PARENT, dp(64)))
+                    cell.addView(TextView(this).apply {
+                        text = (if (m.mediaKind == "video") "🎬 " else "") + fmtTime(m.ts)
+                        textSize = 9.5f
+                        setTextColor(WaSpec.textSecondary(night))
+                        gravity = Gravity.CENTER
+                        maxLines = 1
+                    })
+                    row?.addView(cell, LinearLayout.LayoutParams(0, dp(92), 1f).apply {
+                        marginStart = if (idx % 3 > 0) dp(4) else 0
+                    })
+                }
+            }
+            "文件" -> {
+                val docs = media.filter { it.mediaKind == "document" }
+                if (docs.isEmpty()) return emptyHint()
+                for (m in docs) {
+                    mediaGrid.addView(mediaListRow("📄", m.mediaName.ifBlank { "文件" },
+                        listOf(fmtSize(m.mediaSize), fmtTime(m.ts)).filter { it.isNotBlank() }.joinToString(" · ")))
+                }
+            }
+            "音乐与音频" -> {
+                val auds = media.filter { it.mediaKind == "audio" }
+                if (auds.isEmpty()) return emptyHint()
+                for (m in auds) {
+                    mediaGrid.addView(mediaListRow("🎧", "语音消息",
+                        listOf(fmtTime(m.ts)).joinToString("")))
+                }
+            }
+            "链接" -> {
+                // 从文本消息里抽 http(s) URL
+                data class Link(val url: String, val ts: Long)
+                val links = mutableListOf<Link>()
+                val re = Regex("https?://[\\w\\-./?#&=%+:@~]+")
+                for (m in engine().db.messages(chatJid).filter { it.text.isNotBlank() }) {
+                    for (u in re.findAll(m.text)) {
+                        links += Link(u.value, m.ts)
+                    }
+                }
+                if (links.isEmpty()) return emptyHint()
+                for (l in links.reversed()) {
+                    val host = try { java.net.URI(l.url).host ?: l.url } catch (_: Throwable) { l.url }
+                    mediaGrid.addView(mediaListRow("🔗", l.url,
+                        "$host · ${fmtTime(l.ts)}"))
+                }
+            }
+            "日期" -> {
+                // 全部媒体按月分组（yyyy年M月）
+                val grouped = media.groupBy {
+                    java.text.SimpleDateFormat("yyyy年M月", java.util.Locale.getDefault()).format(java.util.Date(it.ts))
+                }
+                for ((month, list) in grouped.toSortedMap(java.util.Collections.reverseOrder())) {
+                    mediaGrid.addView(TextView(this).apply {
+                        text = month
+                        textSize = 13.5f
+                        setTextColor(WaSpec.textPrimary(night))
+                        typeface = Typeface.create("sans-serif-medium", Typeface.NORMAL)
+                        setPadding(0, dp(10), 0, dp(4))
+                    })
+                    for (m in list) {
+                        val icon = when (m.mediaKind) {
+                            "image", "sticker" -> "🖼"; "video" -> "🎬"
+                            "audio" -> "🎧"; else -> "📄"
+                        }
+                        mediaGrid.addView(mediaListRow(icon,
+                            m.mediaName.ifBlank { m.mediaKind },
+                            listOf(fmtSize(m.mediaSize), fmtTime(m.ts)).filter { it.isNotBlank() }.joinToString(" · ")))
+                    }
+                }
+            }
+        }
+    }
+
+    private fun emptyHint() {
+        mediaGrid.addView(TextView(this).apply {
+            text = "该分类暂无内容"
+            textSize = 13f
+            setTextColor(WaSpec.textSecondary(night))
+            setPadding(0, dp(6), 0, 0)
+        })
+    }
+
+    /** 列表行：图标 + 主文本 + 副文本 */
+    private fun mediaListRow(icon: String, title: String, sub: String): View =
+        LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER_VERTICAL
+            setPadding(0, dp(10), 0, dp(10))
+            addView(TextView(this@ChatInfoActivity).apply {
+                text = icon
+                textSize = 17f
+            })
+            val col = LinearLayout(this@ChatInfoActivity).apply {
+                orientation = LinearLayout.VERTICAL
+            }
+            col.addView(TextView(this@ChatInfoActivity).apply {
+                text = title
+                textSize = 14f
+                setTextColor(WaSpec.textPrimary(night))
                 maxLines = 1
                 ellipsize = android.text.TextUtils.TruncateAt.MIDDLE
             })
-            row?.addView(cell, LinearLayout.LayoutParams(0, dp(84), 1f).apply {
-                marginStart = if (idx % 3 > 0) dp(4) else 0
+            if (sub.isNotBlank()) col.addView(TextView(this@ChatInfoActivity).apply {
+                text = sub
+                textSize = 11.5f
+                setTextColor(WaSpec.textSecondary(night))
+                setPadding(0, dp(2), 0, 0)
+            })
+            addView(col, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f).apply {
+                marginStart = dp(10)
             })
         }
-    }
 }

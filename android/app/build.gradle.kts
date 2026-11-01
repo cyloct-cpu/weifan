@@ -11,8 +11,8 @@ android {
         applicationId = "com.weifan.app"
         minSdk = 26
         targetSdk = 34
-        versionCode = 27
-        versionName = "2.1.0"
+        versionCode = 28
+        versionName = "2.2.0"
     }
 
     buildTypes {
