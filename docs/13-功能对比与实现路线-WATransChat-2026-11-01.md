@@ -52,7 +52,7 @@
 | 28 | 跟进待办 ✅ v3.0.0（DB v9 todos 表 + 独立页：筛选/到期/过期标红/跳会话） | — | 入口：设置→客户管理、会话长按 |
 | 29 | 新建联系人 ✅ v3.0.0（查号是否在 WhatsApp + 写系统通讯录 + 直接开聊） | — | WRITE_CONTACTS；RawContacts 插入 |
 | 30 | 发送圆钮配色对齐参考（白底+1dp描边+深色图标）✅ v3.0.0 | — | 反编译实值 wa_input_action_btn_bg=@color/wa_surface |
-| 31 | 媒体发送前预览页 ⏳ 未做（下一版） | — | 参考 MediaSendPreviewActivity | — | 后台解码铁律：必须降采样，只移后台不解内存 |
+| 31 | 媒体发送前预览页 ✅ v3.1.0：选完先进预览（图片后台降采样预览 / 文档卡片 + 大小）、可加说明随媒体发出、返回即取消不产生消息 | — | 对齐参考 MediaSendPreviewActivity；sendDocumentAsync 补 caption | — | 后台解码铁律：必须降采样，只移后台不解内存 |
 
 ### P3 —— 建议放弃或远期
 
