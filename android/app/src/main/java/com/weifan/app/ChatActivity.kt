@@ -1714,21 +1714,13 @@ class ChatActivity : BaseActivity() {
         val path = copyUriToCache(uri, requestCode) ?: run {
             Toast.makeText(this, "读取文件失败", Toast.LENGTH_SHORT).show(); return
         }
-        sendBtn.isEnabled = false
-        if (requestCode == REQ_PICK_IMAGE) {
-            engine.sendImageAsync(chatJid, path, "") { _, err ->
-                sendBtn.isEnabled = true
-                if (err != null) Toast.makeText(this, "发送失败：$err", Toast.LENGTH_LONG).show()
-                else renderMessages()
-            }
-        } else {
-            val name = queryDisplayName(uri) ?: "file"
-            engine.sendDocumentAsync(chatJid, path, name) { _, err ->
-                sendBtn.isEnabled = true
-                if (err != null) Toast.makeText(this, "发送失败：$err", Toast.LENGTH_LONG).show()
-                else renderMessages()
-            }
-        }
+        // 不直接发：先进预览页，看清内容并补一句说明（批3-c）。
+        // 预览页发送完会 finish，本页 onResume 里重新 renderMessages。
+        startActivity(Intent(this, MediaSendPreviewActivity::class.java)
+            .putExtra("path", path)
+            .putExtra("kind", if (requestCode == REQ_PICK_IMAGE) "image" else "document")
+            .putExtra("name", queryDisplayName(uri) ?: java.io.File(path).name)
+            .putExtra("jid", chatJid))
     }
 
     private fun copyUriToCache(uri: android.net.Uri, req: Int): String? = try {

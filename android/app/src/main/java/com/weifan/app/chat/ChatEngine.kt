@@ -733,19 +733,20 @@ class ChatEngine private constructor(context: Context) :
 
     /** 发送本地文档（经代理上传） */
     fun sendDocumentAsync(chatJid: String, path: String, fileName: String,
+                          caption: String = "",
                           onResult: (String?, String?) -> Unit) {
         Thread {
             try {
-                val msgId = client.sendDocumentFromPath(chatJid, path, fileName, "")
+                val msgId = client.sendDocumentFromPath(chatJid, path, fileName, caption)
                 val now = System.currentTimeMillis()
                 db.insertMessage(MessageRow(
                     id = msgId ?: "local-$now", chatJid = chatJid, senderJid = "",
-                    fromMe = true, text = "", original = "",
+                    fromMe = true, text = caption, original = "",
                     translated = "", translatedLang = "", ts = now,
                     mediaKind = "document", mediaMime = "",
                     mediaName = fileName, mediaSize = java.io.File(path).length(),
                     mediaPath = path))
-                db.upsertChat(chatJid, "", "[文件] $fileName", now, incrementUnread = false)
+                db.upsertChat(chatJid, "", caption.ifBlank { "[文件] $fileName" }, now, incrementUnread = false)
                 main.post { onChatUpdated?.invoke() }
                 main.post { onResult(msgId, null) }
             } catch (e: Throwable) {
