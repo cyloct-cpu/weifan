@@ -45,6 +45,11 @@ class ChatListActivity : BaseActivity() {
     private lateinit var chipRow: LinearLayout
     private lateinit var connectingBar: LinearLayout
     private lateinit var emptyBox: LinearLayout
+    // A3 多选：selectionBar（对齐参考 selectionClose / selectionCount / selectionAssign）
+    private lateinit var selectionBar: LinearLayout
+    private lateinit var selectionCount: TextView
+    private val selectedJids = linkedSetOf<String>()
+    private var selectMode = false
     private val main = Handler(Looper.getMainLooper())
     private var filter = "所有"
     private var query = ""
@@ -97,6 +102,41 @@ class ChatListActivity : BaseActivity() {
         chipWrap.addView(chipRow)
         root.addView(chipWrap)
         renderChips()
+
+        // ── 多选栏（A3，对齐参考 selectionBar：✕ 40dp + 计数占宽 + 批量指派 40dp）
+        selectionBar = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER_VERTICAL
+            setBackgroundColor(WaSpec.surface(night))
+            setPadding(dp(8), dp(6), dp(8), dp(6))
+            visibility = View.GONE
+        }
+        selectionBar.addView(TextView(this).apply {
+            text = "✕"
+            textSize = 20f
+            gravity = Gravity.CENTER
+            setTextColor(WaSpec.textPrimary(night))
+            isClickable = true
+            setOnClickListener { exitSelectMode() }
+        }, LinearLayout.LayoutParams(dp(40), dp(40)))
+        selectionCount = TextView(this).apply {
+            text = ""
+            textSize = 15f
+            gravity = Gravity.CENTER
+            setTextColor(WaSpec.textPrimary(night))
+            layoutParams = LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f)
+        }
+        selectionBar.addView(selectionCount)
+        selectionBar.addView(TextView(this).apply {
+            text = "👥"
+            textSize = 19f
+            gravity = Gravity.CENTER
+            setTextColor(WaSpec.textPrimary(night))
+            isClickable = true
+            setOnClickListener { batchAssignLabels() }
+        }, LinearLayout.LayoutParams(dp(40), dp(40)))
+        root.addView(selectionBar, LinearLayout.LayoutParams(
+            ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT))
 
         // ── 连接状态条（默认隐藏，连接中才显示）
         connectingBar = LinearLayout(this).apply {
@@ -291,6 +331,63 @@ class ChatListActivity : BaseActivity() {
         val timeFmt = SimpleDateFormat("HH:mm", Locale.getDefault())
         val dayFmt = SimpleDateFormat("M月d日", Locale.getDefault())
         for (chat in filtered) listBox.addView(chatRow(chat, timeFmt, dayFmt))
+    }
+
+    // MARK: - A3 多选 + 批量指派（对齐参考 selectionBar）
+
+
+    private fun enterSelectMode(first: String) {
+        selectMode = true
+        selectedJids.clear()
+        selectedJids.add(first)
+        selectionBar.visibility = View.VISIBLE
+        renderChats()
+        updateSelectionCount()
+    }
+
+    private fun exitSelectMode() {
+        selectMode = false
+        selectedJids.clear()
+        selectionBar.visibility = View.GONE
+        renderChats()
+    }
+
+    private fun toggleSelect(jid: String) {
+        if (!selectedJids.remove(jid)) selectedJids.add(jid)
+        if (selectedJids.isEmpty()) { exitSelectMode(); return }
+        renderChats()
+        updateSelectionCount()
+    }
+
+    private fun updateSelectionCount() {
+        selectionCount.text = "已选 ${selectedJids.size} 个会话"
+    }
+
+    /** 批量指派：把选中的会话一次性打上标签（复用本地 labels 表） */
+    private fun batchAssignLabels() {
+        if (selectedJids.isEmpty()) return
+        val all = engine.db.labels()
+        if (all.isEmpty()) {
+            Toast.makeText(this, "还没有标签，先在列表顶部「＋」建一个", Toast.LENGTH_LONG).show()
+            return
+        }
+        val names = all.map { it.second }.toTypedArray()
+        // 取交集作为初始勾选（所有选中会话都已有的标签）
+        val common = selectedJids.map { engine.db.chatLabelNames(it).toSet() }
+            .reduceOrNull { a, b -> a intersect b } ?: emptySet()
+        val states = names.map { it in common }.toBooleanArray()
+        android.app.AlertDialog.Builder(this)
+            .setTitle("批量设置标签（${selectedJids.size} 个会话）")
+            .setMultiChoiceItems(names, states) { _, which, isChecked -> states[which] = isChecked }
+            .setPositiveButton("应用") { _, _ ->
+                val ids = all.filterIndexed { i, _ -> states[i] }.map { it.first }
+                for (jid in selectedJids) engine.db.setChatLabels(jid, ids)
+                Toast.makeText(this, "已为 ${selectedJids.size} 个会话设置标签",
+                    Toast.LENGTH_SHORT).show()
+                exitSelectMode()
+            }
+            .setNegativeButton("取消", null)
+            .show()
     }
 
     /** 会话长按菜单：置顶/归档/静音/重命名（P1-2/3 本地实现） */
@@ -503,13 +600,27 @@ class ChatListActivity : BaseActivity() {
             orientation = LinearLayout.HORIZONTAL
             gravity = Gravity.CENTER_VERTICAL
             setPadding(dp(14), dp(12), dp(14), dp(12))
+            // 多选模式下选中行高亮（对齐参考选择态）
+            if (selectMode && chat.jid in selectedJids) {
+                setBackgroundColor(if (night) 0xFF1F2C34.toInt() else 0xFFE7F5EE.toInt())
+            }
             isClickable = true
             isLongClickable = true
+            isLongClickable = true
             setOnClickListener {
-                startActivity(Intent(this@ChatListActivity, ChatActivity::class.java)
-                    .putExtra("jid", chat.jid).putExtra("title", chat.title))
+                // 多选模式下点行 = 勾选/取消（对齐参考 selectionBar 行为）
+                if (selectMode) {
+                    toggleSelect(chat.jid)
+                } else {
+                    startActivity(Intent(this@ChatListActivity, ChatActivity::class.java)
+                        .putExtra("jid", chat.jid).putExtra("title", chat.title))
+                }
             }
-            setOnLongClickListener { showChatMenu(chat); true }
+            // 多选模式：长按弹菜单；平时长按直接进多选（比先进菜单再选更顺手）
+            setOnLongClickListener {
+                if (!selectMode) { enterSelectMode(chat.jid); true }
+                else { showChatMenu(chat); true }
+            }
         }
         row.addView(avatar(chat.jid, chat.title))
 

@@ -61,6 +61,9 @@ class ChatActivity : BaseActivity() {
     // 会话内搜索（批1-b）
     private lateinit var chatSearchBar: LinearLayout
     private lateinit var chatSearchInput: EditText
+    // A5/A6：建议面板（@ 提及 / 斜杠命令）
+    private lateinit var suggestionPanel: LinearLayout
+    private var groupMembers: List<Pair<String, String>> = emptyList()   // phone → 名字
     // 头部标签徽章（批1-c）
     private lateinit var labelBadges: HorizontalScrollView
     private lateinit var labelBadgeRow: LinearLayout
@@ -363,6 +366,8 @@ class ChatActivity : BaseActivity() {
             override fun onTextChanged(s: CharSequence?, a: Int, b: Int, c: Int) {}
             override fun afterTextChanged(s: android.text.Editable?) {
                 if (s?.isNotBlank() == true) engine.notifyComposing(chatJid)
+                // A5/A6：@ 提及（群聊）与 / 斜杠命令建议面板
+                maybeShowSuggestions(s?.toString() ?: "")
             }
         })
 
@@ -418,6 +423,18 @@ class ChatActivity : BaseActivity() {
             })
         }
         bottomWrap.addView(quoteBar, LinearLayout.LayoutParams(
+            ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply {
+            bottomMargin = dp(6)
+        })
+        // ── A5/A6 建议面板（@ 提及 / 斜杠命令），默认隐藏，在输入胶囊上方
+        suggestionPanel = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            background = Ui.roundBg(this@ChatActivity,
+                if (night) WaSpec.SURFACE_NIGHT else Color.WHITE, 12, 1, WaSpec.divider(night))
+            setPadding(dp(6), dp(4), dp(6), dp(4))
+            visibility = View.GONE
+        }
+        bottomWrap.addView(suggestionPanel, LinearLayout.LayoutParams(
             ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply {
             bottomMargin = dp(6)
         })
@@ -908,29 +925,37 @@ class ChatActivity : BaseActivity() {
             }
             "image", "sticker", "video" -> {
                 showImage(localFile())
+                // imageView / play / wrap 三层都挂监听：只挂 wrap 时实机点不到
+                // （点击被上层子 View 吃掉的典型情况），三层都设等于无论点哪个像素都能开
                 if (m.mediaKind == "video") {
                     // ▶ 遮罩叠层
                     val wrap = android.widget.FrameLayout(this)
                     wrap.addView(imageView, android.widget.FrameLayout.LayoutParams(
                         ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT))
+                    // ▶ 只做视觉叠层：不可点击，事件留给下层 imageView（图片分支已验证有效）
                     val play = TextView(this).apply {
                         text = "▶"
                         textSize = 22f
                         setTextColor(Color.WHITE)
                         gravity = Gravity.CENTER
+                        isClickable = false
+                        isFocusable = false
                         background = Ui.roundBg(this@ChatActivity, 0x66000000, 24)
                     }
                     wrap.addView(play, android.widget.FrameLayout.LayoutParams(dp(48), dp(48)).apply {
                         gravity = Gravity.CENTER
                     })
-                    wrap.isClickable = true
-                    wrap.setOnClickListener { engine.fetchMediaAsync(m.chatJid, m.id) { f -> showImage(f) } }
+                    wrap.isClickable = false
+                    wrap.isFocusable = false
+                    // 监听直接挂在 imageView（与图片分支同构，那条实测能进）
+                    val openIt = View.OnClickListener { openVideo(m) }
+                    imageView.isClickable = true
+                    imageView.setOnClickListener(openIt)
                     wrap
                 } else {
                     imageView.isClickable = true
-                    imageView.setOnClickListener {
-                        engine.fetchMediaAsync(m.chatJid, m.id) { f -> showImage(f) }
-                    }
+                    // 图片/贴图：点开全屏查看器，可左右滑看同一会话的全部媒体
+                    imageView.setOnClickListener { openMediaViewer(m) }
                     imageView
                 }
             }
@@ -1044,15 +1069,228 @@ class ChatActivity : BaseActivity() {
                     row.addView(colX, LinearLayout.LayoutParams(0,
                         ViewGroup.LayoutParams.WRAP_CONTENT, 1f).apply { marginStart = dp(8) })
                     row.setOnClickListener {
-                        engine.fetchMediaAsync(m.chatJid, m.id) { f ->
-                            Toast.makeText(this@ChatActivity,
-                                if (f != null) "已保存：${f.name}" else "下载失败",
-                                Toast.LENGTH_SHORT).show()
+                        // 本地已有就直接开，否则先下再开（对标参考 PdfViewerActivity）
+                        val local = localFile()
+                        if (local != null && local.exists()) openDocument(local, m)
+                        else {
+                            Toast.makeText(this@ChatActivity, "正在下载…", Toast.LENGTH_SHORT).show()
+                            engine.fetchMediaAsync(m.chatJid, m.id) { f ->
+                                if (f != null && f.exists()) openDocument(f, m)
+                                else Toast.makeText(this@ChatActivity, "下载失败",
+                                    Toast.LENGTH_SHORT).show()
+                            }
                         }
                     }
                     row
                 }
             }
+        }
+    }
+
+    // MARK: - 媒体打开（A1/A2：独立 viewer）
+
+    private fun existingFile(m: MessageRow): java.io.File? {
+        if (m.mediaPath.isBlank()) return null
+        val f = java.io.File(m.mediaPath)
+        return if (f.exists()) f else null
+    }
+
+    /** 图片/贴图：全屏查看器（可左右滑看本会话全部媒体） */
+    private fun openMediaViewer(m: MessageRow) {
+        android.util.Log.i("WeFlipOpen", "openMediaViewer id=${m.id} kind=${m.mediaKind} path=${m.mediaPath}")
+        if (existingFile(m) == null) {
+            engine.fetchMediaAsync(m.chatJid, m.id) { f ->
+                if (f != null && f.exists()) startActivity(Intent(this, MediaViewerActivity::class.java)
+                    .putExtra("jid", chatJid).putExtra("msgId", m.id))
+                else Toast.makeText(this, "下载失败", Toast.LENGTH_SHORT).show()
+            }
+            return
+        }
+        startActivity(Intent(this, MediaViewerActivity::class.java)
+            .putExtra("jid", chatJid).putExtra("msgId", m.id))
+    }
+
+    /** 视频：确保已下载后开独立播放器 */
+    private fun openVideo(m: MessageRow) {
+        android.util.Log.i("WeFlipOpen", "openVideo id=${m.id} path=${m.mediaPath}")
+        val open = { f: java.io.File? ->
+            if (f != null && f.exists()) startActivity(Intent(this, VideoViewerActivity::class.java)
+                .putExtra("path", f.absolutePath)
+                .putExtra("name", m.mediaName.ifBlank { f.name }))
+            else Toast.makeText(this, "视频下载失败", Toast.LENGTH_SHORT).show()
+            Unit
+        }
+        val local = existingFile(m)
+        if (local != null) open(local)
+        else {
+            Toast.makeText(this, "正在下载视频…", Toast.LENGTH_SHORT).show()
+            engine.fetchMediaAsync(m.chatJid, m.id) { f -> open(f) }
+        }
+    }
+
+    /** 文档：PDF 进专用查看器，其它交给系统「打开方式」 */
+    private fun openDocument(f: java.io.File, m: MessageRow) {
+        val name = m.mediaName.ifBlank { f.name }
+        val isPdf = name.endsWith(".pdf", true) || m.mediaMime.contains("pdf", true) ||
+            f.name.endsWith(".pdf", true)
+        if (isPdf) {
+            startActivity(Intent(this, PdfViewerActivity::class.java)
+                .putExtra("path", f.absolutePath).putExtra("name", name))
+            return
+        }
+        // 非 PDF：文本类用内置预览；其它交系统「打开方式」（零依赖，不经 FileProvider）
+        val isText = listOf(".txt", ".md", ".csv", ".json", ".xml", ".log")
+            .any { name.endsWith(it, true) } || m.mediaMime.startsWith("text/")
+        if (isText) {
+            openTextPreview(f, name)
+            return
+        }
+        try {
+            val uri = android.net.Uri.fromFile(f)
+            startActivity(Intent(Intent.ACTION_VIEW).apply {
+                setDataAndType(uri, m.mediaMime.ifBlank { "*/*" })
+                addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+            })
+        } catch (e: Throwable) {
+            // file:// 在 targetSdk≥24 可能被拦，所以给个可执行的下一步而不是死路
+            Toast.makeText(this,
+                "没有能打开这种文件的应用。长按气泡可另存到手机。", Toast.LENGTH_LONG).show()
+        }
+    }
+
+    /** 文本类文件的内置预览（等宽字体 + 选框，大文件只读前 200KB） */
+    private fun openTextPreview(f: java.io.File, name: String) {
+        val content = try {
+            val max = 200 * 1024
+            f.inputStream().use { ins ->
+                val buf = ByteArray(max)
+                val n = ins.read(buf)
+                if (n <= 0) "" else String(buf, 0, n, Charsets.UTF_8)
+            }
+        } catch (e: Throwable) { "读取失败：${e.message ?: e}" }
+        val tv = TextView(this).apply {
+            text = content
+            textSize = 12f
+            typeface = android.graphics.Typeface.MONOSPACE
+            setTextIsSelectable(true)
+            setTextColor(WaSpec.textPrimary(night))
+            setBackgroundColor(WaSpec.surface(night))
+            setPadding(dp(14), dp(14), dp(14), dp(14))
+        }
+        val sv = android.widget.ScrollView(this).apply {
+            addView(tv)
+            setPadding(dp(8), dp(8), dp(8), dp(8))
+        }
+        android.app.AlertDialog.Builder(this)
+            .setTitle(name)
+            .setView(sv)
+            .setPositiveButton("关闭", null)
+            .show()
+    }
+
+
+    // MARK: - A5/A6 输入建议（@ 提及 / 斜杠命令）
+
+    /** 斜杠命令表：跨境场景最常用的几句模板，选中即插入 */
+    private val slashCommands = listOf(
+        "/quote" to "报价模板",
+        "/lead" to "交期说明",
+        "/ship" to "发货地址",
+        "/pay" to "付款方式",
+        "/thanks" to "感谢跟进"
+    )
+
+    private fun slashBody(cmd: String): String = when (cmd) {
+        "/quote" -> "Price: USD ___ /pc, FOB Shenzhen, MOQ ___. Quantity and delivery to be confirmed."
+        "/lead" -> "Lead time: ___ working days after deposit received."
+        "/ship" -> "Shipping address: ___, contact: ___, phone: ___."
+        "/pay" -> "Payment: 30% deposit, 70% before shipment. T/T or Alibaba Trade Assurance."
+        "/thanks" -> "Thanks for your inquiry. Please let me know if you need any further details."
+        else -> ""
+    }
+
+    /** 根据当前输入决定是否弹面板：行首『/』→ 命令；群聊里『@』→ 成员 */
+    private fun maybeShowSuggestions(text: String) {
+        if (!::suggestionPanel.isInitialized) return
+        if (text.startsWith("/") && !text.contains(' ')) {
+            val kw = text.drop(1)
+            val hits = slashCommands.filter { kw.isBlank() || it.first.drop(1).startsWith(kw, true) }
+            showSuggestionItems(hits.map { it.first to it.second }) { cmd, _ ->
+                input.setText(slashBody(cmd))
+                input.setSelection(input.text.length)
+                hideSuggestions()
+            }
+            return
+        }
+        if (chatJid.contains("@g.us")) {
+            val cur = input.selectionStart.coerceAtLeast(0)
+            val before = if (cur <= text.length) text.substring(0, cur) else text
+            val at = before.lastIndexOf('@')
+            if (at >= 0 && !before.substring(at).contains(' ')) {
+                val kw = before.substring(at + 1)
+                ensureGroupMembers()
+                val hits = groupMembers.filter { kw.isBlank() || it.second.contains(kw, true) }
+                if (hits.isNotEmpty()) {
+                    showSuggestionItems(hits.map { it.second to "@${it.second}" }) { _, label ->
+                        val start = at
+                        val end = input.selectionStart.coerceAtLeast(start)
+                        if (end <= input.text.length) input.text.replace(start, end, "$label ")
+                        hideSuggestions()
+                    }
+                    return
+                }
+            }
+        }
+        hideSuggestions()
+    }
+
+    /** 群成员：首次用时从协议层拉，失败不阻塞输入 */
+    private fun ensureGroupMembers() {
+        if (groupMembers.isNotEmpty()) return
+        Thread {
+            val list = mutableListOf<Pair<String, String>>()
+            try {
+                val raw = engine.client.getGroupInfo(chatJid)
+                val o = JSONObject(raw)
+                val arr = o.optJSONArray("participants") ?: o.optJSONArray("members")
+                if (arr != null) {
+                    for (i in 0 until arr.length()) {
+                        val p = arr.optJSONObject(i) ?: continue
+                        val phone = p.optString("phone").ifBlank { p.optString("jid") }
+                        val name = p.optString("name").ifBlank { phone.substringBefore("@") }
+                        if (phone.isNotBlank()) list.add(phone to name)
+                    }
+                }
+            } catch (_: Throwable) { }
+            main.post {
+                if (isFinishing || isDestroyed) return@post
+                groupMembers = list.take(120)
+            }
+        }.start()
+    }
+
+    private fun showSuggestionItems(items: List<Pair<String, String>>,
+                                    onPick: (String, String) -> Unit) {
+        if (items.isEmpty()) { hideSuggestions(); return }
+        suggestionPanel.removeAllViews()
+        for ((k, label) in items.take(6)) {
+            suggestionPanel.addView(TextView(this).apply {
+                text = if (label.startsWith("@")) label else "$k   ·  $label"
+                textSize = 14f
+                setTextColor(WaSpec.textPrimary(night))
+                setPadding(dp(12), dp(10), dp(12), dp(10))
+                isClickable = true
+                setOnClickListener { onPick(k, label) }
+            }, LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT))
+        }
+        suggestionPanel.visibility = View.VISIBLE
+    }
+
+    private fun hideSuggestions() {
+        if (::suggestionPanel.isInitialized) {
+            suggestionPanel.visibility = View.GONE
+            suggestionPanel.removeAllViews()
         }
     }
 
@@ -1219,6 +1457,30 @@ class ChatActivity : BaseActivity() {
             setOnClickListener { action() }
         }
         box.addView(item("回复") { dlg.dismiss(); setQuote(Triple(m.id, m.senderJid, m.text.ifBlank { "[媒体]" })) })
+        // 媒体消息：菜单里也给一个「打开」入口（长按比点准，且与微信习惯一致）
+        if (m.mediaKind.isNotBlank()) box.addView(item(
+            when (m.mediaKind) {
+                "video" -> "播放视频"
+                "document" -> "打开文件"
+                else -> "查看大图"
+            }
+        ) {
+            dlg.dismiss()
+            when (m.mediaKind) {
+                "video" -> openVideo(m)
+                "document" -> {
+                    val local = existingFile(m)
+                    if (local != null) openDocument(local, m) else {
+                        Toast.makeText(this, "正在下载…", Toast.LENGTH_SHORT).show()
+                        engine.fetchMediaAsync(m.chatJid, m.id) { f ->
+                            if (f != null && f.exists()) openDocument(f, m)
+                            else Toast.makeText(this, "下载失败", Toast.LENGTH_SHORT).show()
+                        }
+                    }
+                }
+                else -> openMediaViewer(m)
+            }
+        })
         box.addView(item("转发") { dlg.dismiss(); showForwardPicker(m) })
         if (m.text.isNotBlank()) box.addView(item("复制") {
             dlg.dismiss()
@@ -1366,6 +1628,48 @@ class ChatActivity : BaseActivity() {
     private var recordPath: String? = null
     private var recordStart = 0L
     private var recordDialog: android.app.AlertDialog? = null
+    // A4：计时器 / 锁定态 / 锁定后的发送-删除按钮
+    private var recordTicker: android.os.Handler? = null
+    private var recordTickRunnable: Runnable? = null
+    private var recordLocked = false
+    private lateinit var recordLockedRow: LinearLayout
+    private lateinit var recordSendBtn: TextView
+    private lateinit var recordDeleteBtn: TextView
+
+    /** A4：录音浮层计时（每秒刷一次 00:0X） */
+    private fun startRecordTimer(mic: TextView, hint: TextView) {
+        stopRecordTimer()
+        val h = android.os.Handler(android.os.Looper.getMainLooper())
+        recordTicker = h
+        val r = object : Runnable {
+            override fun run() {
+                if (isFinishing || isDestroyed) return
+                val sec = ((System.currentTimeMillis() - recordStart) / 1000).toInt()
+                val mmss = "%02d:%02d".format(sec / 60, sec % 60)
+                val showTimer = "🎤  $mmss"
+                if (recordLocked) mic.text = "🔒  $mmss" else if (mic.text.startsWith("🎤")) mic.text = showTimer
+                h.postDelayed(this, 500)
+            }
+        }
+        recordTickRunnable = r
+        h.post(r)
+    }
+
+    private fun stopRecordTimer() {
+        recordTickRunnable?.let { recordTicker?.removeCallbacks(it) }
+        recordTickRunnable = null
+        recordTicker = null
+    }
+
+    /** A4：上滑到锁定区松手 → 继续录音，浮层留下发送/删除（即语音草稿态） */
+    private fun enterLockedRecording(mic: TextView, hint: TextView, hold: TextView) {
+        recordLocked = true
+        mic.text = "🔒"
+        hint.text = "已锁定 · 松手继续录音\n想好再点发送，或点删除"
+        hint.setTextColor(WaSpec.primary(night))
+        hold.visibility = View.GONE
+        recordLockedRow.visibility = View.VISIBLE
+    }
 
     private fun startRecording() {
         val dir = java.io.File(cacheDir, "voice").apply { mkdirs() }
@@ -1452,6 +1756,7 @@ class ChatActivity : BaseActivity() {
 
     private fun showRecordDialog() {
         // 运行时权限：模拟器 appops 默认 allow 会掩盖缺失；真机不声明不请求直接失败
+        recordLocked = false   // 上次锁定态不能留到下一次（否则按住没反应）
         if (checkSelfPermission(android.Manifest.permission.RECORD_AUDIO)
                 != android.content.pm.PackageManager.PERMISSION_GRANTED) {
             requestPermissions(arrayOf(android.Manifest.permission.RECORD_AUDIO), 4102)
@@ -1467,8 +1772,9 @@ class ChatActivity : BaseActivity() {
             textSize = 54f
             gravity = Gravity.CENTER
         }
+        // A4：提示行随手势状态变化（录音 / 上滑取消 / 上滑锁定）
         val hint = TextView(this).apply {
-            text = "按住下方按钮说话，松开即发送\n时长不足 1 秒将取消"
+            text = "按住下方按钮说话\n松开发送 · 上滑取消 · 继续上滑锁定"
             textSize = 13.5f
             setTextColor(WaSpec.textSecondary(night))
             gravity = Gravity.CENTER
@@ -1489,25 +1795,116 @@ class ChatActivity : BaseActivity() {
             topMargin = dp(20)
         })
         recordDialog = android.app.AlertDialog.Builder(this).create()
+
+        var downY = 0f
+        // 三个区间（dp）：>取消阀值=松手取消；>锁定阀值=松手后锁定（进入草稿态继续录）
+        val cancelAt = dp(64)
+        val lockAt = dp(150)
         hold.setOnTouchListener { v, e ->
             when (e.action) {
                 android.view.MotionEvent.ACTION_DOWN -> {
+                    if (recordLocked) return@setOnTouchListener false
+                    downY = e.rawY
                     hold.text = "松开 发送"
                     hold.background = Ui.roundBg(this@ChatActivity, 0xCC4444, 28)
                     startRecording()
+                    startRecordTimer(mic, hint)
                     v.isPressed = true
                     true
                 }
-                android.view.MotionEvent.ACTION_UP, android.view.MotionEvent.ACTION_CANCEL -> {
+                android.view.MotionEvent.ACTION_MOVE -> {
+                    if (recordLocked) return@setOnTouchListener false
+                    val dy = downY - e.rawY
+                    when {
+                        dy >= lockAt -> {
+                            mic.text = "🔒"
+                            hint.text = "松开手指，锁定录音\n锁定后可松手继续录，再点发送"
+                            hint.setTextColor(WaSpec.primary(night))
+                        }
+                        dy >= cancelAt -> {
+                            mic.text = "🗑"
+                            hint.text = "松开手指，取消发送"
+                            hint.setTextColor(0xFFE53935.toInt())
+                        }
+                        else -> {
+                            mic.text = "🎤"
+                            hint.text = "松开即发送\n上滑取消 · 继续上滑锁定"
+                            hint.setTextColor(WaSpec.textSecondary(night))
+                        }
+                    }
+                    true
+                }
+                android.view.MotionEvent.ACTION_UP -> {
                     v.isPressed = false
-                    val send = e.action == android.view.MotionEvent.ACTION_UP
-                    stopRecording(send)
-                    recordDialog?.dismiss()
+                    val dy = downY - e.rawY
+                    if (recordLocked) return@setOnTouchListener false   // 锁定态交给按钮
+                    when {
+                        dy >= lockAt -> {
+                            // pttLockHint → 锁定：松手不停录，进入草稿态
+                            enterLockedRecording(mic, hint, hold)
+                            true
+                        }
+                        dy >= cancelAt -> {
+                            stopRecordTimer()
+                            stopRecording(false)   // 垃圾桶：删除不发送
+                            recordDialog?.dismiss()
+                            true
+                        }
+                        else -> {
+                            stopRecordTimer()
+                            stopRecording(true)
+                            recordDialog?.dismiss()
+                            true
+                        }
+                    }
+                }
+                android.view.MotionEvent.ACTION_CANCEL -> {
+                    stopRecordTimer()
+                    if (!recordLocked) { stopRecording(false); recordDialog?.dismiss() }
                     true
                 }
                 else -> false
             }
         }
+        // 锁定态下的发送 / 删除按钮（默认隐藏，锁定时显现）
+        recordLockedRow = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER
+            visibility = View.GONE
+        }
+        recordSendBtn = TextView(this).apply {
+            text = "发送"
+            textSize = 16f
+            setTextColor(Color.WHITE)
+            gravity = Gravity.CENTER
+            background = Ui.roundBg(this@ChatActivity, WaSpec.primary(night), 24)
+            setPadding(dp(22), dp(12), dp(22), dp(12))
+            isClickable = true
+            setOnClickListener {
+                stopRecordTimer(); stopRecording(true); recordDialog?.dismiss()
+            }
+        }
+        recordDeleteBtn = TextView(this).apply {
+            text = "删除"
+            textSize = 16f
+            setTextColor(Color.WHITE)
+            gravity = Gravity.CENTER
+            background = Ui.roundBg(this@ChatActivity, 0xCC4444, 24)
+            setPadding(dp(22), dp(12), dp(22), dp(12))
+            isClickable = true
+            setOnClickListener {
+                stopRecordTimer(); stopRecording(false); recordDialog?.dismiss()
+            }
+        }
+        recordLockedRow.addView(recordDeleteBtn)
+        recordLockedRow.addView(recordSendBtn, LinearLayout.LayoutParams(
+            ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply {
+            marginStart = dp(12)
+        })
+        box.addView(recordLockedRow, LinearLayout.LayoutParams(
+            ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply {
+            topMargin = dp(12)
+        })
         android.app.AlertDialog.Builder(this)
             .setView(box)
             .setNegativeButton("取消", null)

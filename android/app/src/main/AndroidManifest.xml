@@ -69,6 +69,21 @@
             android:theme="@android:style/Theme.Black.NoTitleBar.Fullscreen"
             android:label="查看" />
 
+        <!-- 独立 PDF 查看器（A1，对标参考 PdfViewerActivity） -->
+        <activity
+            android:name=".PdfViewerActivity"
+            android:exported="false"
+            android:theme="@android:style/Theme.Black.NoTitleBar.Fullscreen"
+            android:label="PDF" />
+
+        <!-- 独立视频查看器（A2，对标参考 VideoViewerActivity） -->
+        <activity
+            android:name=".VideoViewerActivity"
+            android:exported="false"
+            android:theme="@android:style/Theme.Black.NoTitleBar.Fullscreen"
+            android:configChanges="orientation|screenSize"
+            android:label="视频" />
+
         <!-- 跟进待办（本地 CRM，批3-a） -->
         <activity
             android:name=".FollowupTodosActivity"
