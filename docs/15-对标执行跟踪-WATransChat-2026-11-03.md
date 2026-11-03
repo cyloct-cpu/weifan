@@ -274,3 +274,84 @@ xcodebuild -project WeiFan.xcodeproj -scheme WeiFan \
 3. 启动：`xcrun simctl launch booted com.weifan.app` → 截图验证界面
 4. 逐个验证 5 个页面（发送 / 客户 / 术语表 / 设置）+ 键盘扩展在系统设置里可启用
 5. 真机运行需在 `project.yml` 填 `DEVELOPMENT_TEAM`（或 Xcode 里选 Team）
+---
+
+## 5. iOS 版验证结果（2026-11-03 完成）
+
+### 5.1 环境（全部就绪）
+
+| 项 | 状态 |
+|---|---|
+| Xcode | 27.2（27B52），`/Applications`，`xcode-select` 已指向 |
+| iOS SDK | 27.2（iphonesimulator + iphoneos）✅ |
+| 模拟器 runtime | iOS 27.2（24B8117，8.32GB）✅ 已装 |
+| 模拟器设备 | iPhone 17 Pro（`ED181CCE-3FFD-4914-85C1-84FFFBC028A1`）已启动 |
+| `Simulator.app` | ❌ **不存在**（App Store 精简版 Xcode 未含 GUI）→ 鼠标点不了，改用 XCUITest |
+| Core 单测 | ✅ 27 tests / 0 failures |
+| iOS 编译 | ✅ `xcodebuild -scheme WeiFan` BUILD SUCCEEDED |
+| App 安装 | ✅ `simctl install` 成功（App + 2 扩展） |
+
+### 5.2 修掉的 4 个真实缺陷（全是首次真构建/真安装才暴露）
+
+| 文件 | 现象 | 修复 |
+|---|---|---|
+| `Info-App.plist` | 缺 `CFBundleIdentifier` / `CFBundleExecutable` → `simctl install` 报 **Missing bundle ID** | 补 `$(PRODUCT_BUNDLE_IDENTIFIER)` / `$(EXECUTABLE_NAME)` / `CFBundlePackageType=APPL` |
+| `Info-Keyboard.plist` / `Info-Share.plist` | 缺 `CFBundleIdentifier` / `CFBundleExecutable` | 同上（`XPC!` 类型保留） |
+| 同上两个扩展 plist | 缺 `CFBundleVersion` / `CFBundleShortVersionString` → **Failed to create app extension placeholder**（扩展装不上） | 补 `$(MARKETING_VERSION)` / `$(CURRENT_PROJECT_VERSION)`，与宿主一致 |
+| `LanguageDetector.swift` / `TranslationCore.swift` | `markers: []` 对 `[String:Double]` 不合法；协议方法默认参数不生效 | 三处改 `[:]`；显式传 `candidates:` |
+
+### 5.3 UI 验证（XCUITest，headless，2 个用例全过）
+
+```
+Test Case testAllTabsReachable                     passed (28.5s)
+Test Case testTranslateWithoutKeyShowsReadableError passed (11.1s)
+** TEST SUCCEEDED **
+```
+
+五个页面截图（`docs/screenshots/ios/`）：
+
+| 文件 | 验证内容 |
+|---|---|
+| `01-翻译页.png` | 三步操作说明、试译输入框、目标语言（自动默认英语）、翻译按钮、最近翻译空态 |
+| `02-客户页.png` | 空态 + 客户档案用途说明 + 右上角「＋」添加 |
+| `03-术语页.png` | 新增词条表单（原样保留 / 固定译法 切换）、已有词条 (0)、还没有词条 |
+| `04-设置页.png` | 兜底目标语言、点译即替换、语言判断不确定时强制预览、分享扩展译完自动复制、长句阈值滑杆（60 字）、键盘语言芯片（英/西/葡/法…） |
+| `05-无密钥反馈.png` | 输入中文点翻译 → 红色可读提示「缺少密钥：Google / DeepL / 大模型 任一」，App 未崩溃 |
+
+### 5.4 断言口径的教训
+
+首版测试用页面正文文案断言（如「自动检测」），**客户页为空时该文案根本不渲染 → 误判失败**。
+实际 `dump` 显示 tab 早就切成功了。改判据为 **NavigationBar identifier**（由 `navigationTitle` 决定，与内容无关）后稳定通过。
+同时给关键控件加了 `accessibilityIdentifier`（`sourceText` / `translateButton`），
+避免与 tab 栏同名按钮冲突（「翻译」既是 tab 又是按钮）。
+
+### 5.5 iOS 与 Android 的定位差异（如实说明）
+
+| | Android（com.weifan.app） | iOS（com.weifan.app） |
+|---|---|---|
+| 形态 | **WhatsApp 多设备客户端**（whatsmeow + Go） | **翻译工具**：主 App + 键盘扩展 + 分享扩展 |
+| 聊天能力 | 收发消息、媒体、投票、群管理、CRM 待办 | 无聊天；靠键盘在 WhatsApp 内替换输入框、分享扩展翻译外部内容 |
+| 与参考对标 | A1–A6 全部落地 | 不适用（参考应用 WATransChat 也是 Android 端多设备客户端） |
+| 共同点 | 翻译内核逻辑一致（`WeiFanCore` 与 Android `core/` 同源设计） | 同左 |
+
+iOS 侧若要追上 Android 的聊天能力，需要把 Go 协议层用 gomobile 编成
+`WeifanProtocol.xcframework`（`weifan-protocol/build-ios.sh` 已备），再补聊天 UI —— 属于下一阶段工作，不在本轮范围。
+
+### 5.6 复跑命令
+
+```bash
+cd weifan/ios
+xcodegen generate
+xcodebuild -project WeiFan.xcodeproj -scheme WeiFan \
+  -sdk iphonesimulator -configuration Debug \
+  -derivedDataPath ./DerivedData \
+  -destination 'generic/platform=iOS Simulator' build CODE_SIGNING_ALLOWED=NO
+
+# UI 测试（截图进 .xcresult）
+xcodebuild test -project WeiFan.xcodeproj -scheme WeiFanUITests \
+  -destination 'platform=iOS Simulator,id=ED181CCE-3FFD-4914-85C1-84FFFBC028A1' \
+  -derivedDataPath ./DerivedData -resultBundlePath /tmp/uitest.xcresult CODE_SIGNING_ALLOWED=NO
+
+# 导出截图
+xcrun xcresulttool export attachments --path /tmp/uitest.xcresult --output-path /tmp/atts
+```

@@ -26,6 +26,8 @@ struct SendView: View {
 
             Section("试译") {
                 TextEditor(text: $input)
+                    .accessibilityIdentifier("sourceText")
+                    .frame(minHeight: 90)
                     .frame(minHeight: 90)
                     .focused($focused)
                     .overlay(alignment: .topLeading) {
@@ -52,6 +54,7 @@ struct SendView: View {
                         Text(isWorking ? "翻译中…" : "翻译")
                     }
                 }
+                .accessibilityIdentifier("translateButton")
                 .disabled(input.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || isWorking)
             }
 

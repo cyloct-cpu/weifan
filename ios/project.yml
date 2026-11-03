@@ -81,3 +81,19 @@ targets:
         GENERATE_INFOPLIST_FILE: NO
         MARKETING_VERSION: "0.1.0"
         CURRENT_PROJECT_VERSION: "1"
+
+  # UI 测试：本机没有 Simulator.app（精简版 Xcode），鼠标点不了，
+  # 用 XCUITest 驱动导航与断言，headless 也能跑，同时留下可复跑的资产。
+  WeiFanUITests:
+    type: bundle.ui-testing
+    platform: iOS
+    deploymentTarget: "16.0"
+    sources:
+      - path: Tests/UITests
+    dependencies:
+      - target: WeiFan
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.weifan.app.uitests
+        GENERATE_INFOPLIST_FILE: YES
+        TEST_TARGET_NAME: WeiFan
