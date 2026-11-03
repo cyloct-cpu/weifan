@@ -212,11 +212,11 @@ public struct HeuristicLanguageDetector: LanguageDetecting {
             ),
             .indonesian: Lexicon(
                 words: ["dan", "yang", "untuk", "dengan", "ini", "itu", "halo", "terima kasih", "kapan", "pesanan", "harga", "sangat", "tapi", "ya", "tidak", "kami", "anda"],
-                markers: []
+                markers: [:]
             ),
             .malay: Lexicon(
                 words: ["dan", "yang", "untuk", "dengan", "ini", "itu", "hai", "terima kasih", "bila", "pesanan", "harga", "sangat", "tetapi", "ya", "tidak", "kami", "awak"],
-                markers: []
+                markers: [:]
             ),
             .polish: Lexicon(
                 words: ["i", "w", "na", "do", "z", "że", "nie", "jest", "cześć", "dziękuję", "kiedy", "zamówienie", "cena", "bardzo", "ale", "tak", "my", "wy"],
@@ -224,7 +224,7 @@ public struct HeuristicLanguageDetector: LanguageDetecting {
             ),
             .filipino: Lexicon(
                 words: ["ang", "ng", "sa", "na", "at", "kumusta", "salamat", "kailan", "order", "presyo", "sobrang", "pero", "oo", "hindi", "kami", "ikaw"],
-                markers: []
+                markers: [:]
             )
         ]
     }

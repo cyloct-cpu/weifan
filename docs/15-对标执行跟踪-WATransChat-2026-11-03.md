@@ -235,10 +235,42 @@
 | 依赖 | Swift Package `WeiFanCore`（`weifan/core`，含 Providers/Routing/Glossary/LanguageDetector/Storage/TranslationCore + Tests） |
 | 资源配置 | 三套 Info.plist + 三套 entitlements（App/Keyboard/Share）已就位 |
 
-### 4.3 阻塞项（需人工一步）
+### 4.3 环境已打通（2026-11-03 完成）
 
-Xcode `.xip` 下载必须登录 Apple ID（浏览器会话），无法脚本化。下载存到 `/Volumes/CY-MAC/` 后，执行：
+用户从 App Store 安装 Xcode 27.2（Build 27B52）到 `/Applications`，`xcode-select` 已自动指向，**无需 sudo**。
+
+| 验证项 | 结果 |
+|---|---|
+| `xcodebuild -version` | Xcode 27.2 / 27B52 ✅ |
+| iOS SDK | `iphonesimulator 27.2` + `iphoneos 27.2` ✅ |
+| `swift build`（core） | ✅ Build complete（之前 CLT 链不上的问题消失） |
+| `swift test`（core） | ✅ **27 tests, 0 failures** |
+| `xcodegen generate` | ✅ 生成 `WeiFan.xcodeproj`（3 target） |
+| **`xcodebuild -scheme WeiFan`** | ✅ **BUILD SUCCEEDED** —— 主 App + 键盘扩展 + 分享扩展全部编译通过 |
+| iOS 模拟器 runtime | ⏳ `xcodebuild -downloadPlatform iOS` 下载中（8.32GB） |
+
+**编译过程中修掉的两个真实错误**（都是新版编译器才暴露的，属于既有代码的问题）：
+
+| 文件 | 错误 | 修复 |
+|---|---|---|
+| `LanguageDetector.swift` | `markers: []` 对 `[String: Double]` 不合法（Swift 6.2 要求显式空字典字面量） | 三处改为 `markers: [:]` |
+| `TranslationCore.swift:144` | `detector.detect(text)` 缺 `candidates` 参数 —— **协议方法上写的默认参数值不生效**（`detector` 静态类型是 `LanguageDetecting`） | 显式传 `candidates: LanguageCode.sendTargets` |
+
+**构建方式的关键坑**：`xcodebuild -target WeiFan` 会让 SPM 依赖（WeiFanCore）构建到 `core/build`，而扩展在 `ios/build` 里找模块 → `Unable to resolve module dependency: 'WeiFanCore'`。正确做法是用 **scheme + 统一 DerivedData**：
+
 ```bash
-cd weifan && ./ios/install-xcode-from-xip.sh /Volumes/CY-MAC/Xcode_*.xip
+cd weifan/ios
+xcodebuild -project WeiFan.xcodeproj -scheme WeiFan \
+  -sdk iphonesimulator -configuration Debug \
+  -derivedDataPath ./DerivedData \
+  -destination 'generic/platform=iOS Simulator' build \
+  CODE_SIGNING_ALLOWED=NO
 ```
-脚本会完成解包、工具链切换、工程生成与 Core 编译验证。
+
+### 4.4 下一步（runtime 下载完即可执行）
+
+1. 启动模拟器：`xcrun simctl boot <device>` → `open -a Simulator`
+2. 安装：`xcrun simctl install booted "DerivedData/Build/Products/Debug-iphonesimulator/微翻.app"`
+3. 启动：`xcrun simctl launch booted com.weifan.app` → 截图验证界面
+4. 逐个验证 5 个页面（发送 / 客户 / 术语表 / 设置）+ 键盘扩展在系统设置里可启用
+5. 真机运行需在 `project.yml` 填 `DEVELOPMENT_TEAM`（或 Xcode 里选 Team）

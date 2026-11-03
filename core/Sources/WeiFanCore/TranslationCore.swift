@@ -141,7 +141,8 @@ public struct TranslationCore: Sendable {
 
     public func translateIncoming(_ text: String, profile: CustomerProfile? = nil) async throws -> IncomingOutcome {
         let started = Date()
-        let detection = detector.detect(text)
+        // 必须显式传参：协议方法上默认值不生效（detector 的静态类型是 LanguageDetecting）
+        let detection = detector.detect(text, candidates: LanguageCode.sendTargets)
 
         if let detection, detection.language.isChinese {
             return IncomingOutcome(translated: text, sourceLanguage: detection.language,
