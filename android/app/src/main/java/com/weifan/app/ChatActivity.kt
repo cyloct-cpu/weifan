@@ -2384,21 +2384,70 @@ class ChatActivity : BaseActivity() {
             main.post {
                 if (isDestroyed || isFinishing) return@post
                 if (merged.isEmpty()) { showContactInputDialog(); return@post }
-                val names = merged.map { it.first }.toTypedArray()
-                android.app.AlertDialog.Builder(this)
-                    .setTitle("选择联系人（${merged.size}）")
-                    .setItems(names) { _, i ->
-                        val (nm2, ph2) = merged[i]
-                        sendBtn.isEnabled = false
-                        engine.sendContactAsync(chatJid, nm2.substringAfter(" "), ph2) { _, e2 ->
-                            sendBtn.isEnabled = true
-                            if (e2 != null) Toast.makeText(this, "发送失败：$e2", Toast.LENGTH_LONG).show()
-                            else renderMessages()
-                        }
+                // 对齐参考 dialog_send_contact_picker + item_contact_picker：
+                // 选择型族（20sp 标题 + 15sp 搜索）+ 每行 padding 12/8、行高 40dp
+                val listBox = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
+                lateinit var cd: android.app.AlertDialog
+                fun sendContact(nm2: String, ph2: String) {
+                    cd.dismiss()
+                    sendBtn.isEnabled = false
+                    engine.sendContactAsync(chatJid, nm2.substringAfter(" "), ph2) { _, e2 ->
+                        sendBtn.isEnabled = true
+                        if (e2 != null) Toast.makeText(this, "发送失败：$e2",
+                            Toast.LENGTH_LONG).show()
+                        else renderMessages()
                     }
+                }
+                fun renderContacts(query: String) {
+                    listBox.removeAllViews()
+                    val hits = merged.filter {
+                        query.isBlank() || it.first.contains(query, true) || it.second.contains(query)
+                    }
+                    if (hits.isEmpty()) {
+                        listBox.addView(TextView(this).apply {
+                            text = "没有匹配的联系人"
+                            textSize = 14f
+                            setTextColor(WaSpec.textSecondary(night))
+                            gravity = Gravity.CENTER
+                            setPadding(0, dp(24), 0, dp(24))
+                        })
+                        return
+                    }
+                    for ((nm2, ph2) in hits.take(40)) {
+                        val row = LinearLayout(this).apply {
+                            orientation = LinearLayout.HORIZONTAL
+                            gravity = Gravity.CENTER_VERTICAL
+                            setPadding(dp(12), dp(8), dp(12), dp(8))
+                            minimumHeight = dp(40)
+                            isClickable = true
+                            setOnClickListener { sendContact(nm2, ph2) }
+                        }
+                        row.addView(TextView(this).apply {
+                            text = nm2
+                            textSize = 15f
+                            setTextColor(WaSpec.textPrimary(night))
+                            maxLines = 1
+                        }, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
+                        row.addView(TextView(this).apply {
+                            text = ph2
+                            textSize = 12f
+                            setTextColor(WaSpec.textSecondary(night))
+                        })
+                        listBox.addView(row)
+                    }
+                }
+                renderContacts("")
+                val shell = Ui.pickerDialogShell(this, "选择联系人（${merged.size}）",
+                    "搜索姓名或号码", night) { q2 -> renderContacts(q2) }
+                val scroll = android.widget.ScrollView(this).apply { addView(listBox) }
+                shell.addView(scroll, LinearLayout.LayoutParams(
+                    ViewGroup.LayoutParams.MATCH_PARENT, dp(300)))
+                cd = android.app.AlertDialog.Builder(this)
+                    .setView(shell)
                     .setPositiveButton("手动输入") { _, _ -> showContactInputDialog() }
                     .setNegativeButton("取消", null)
-                    .show()
+                    .create()
+                cd.show()
             }
         }.start()
     }
@@ -2941,24 +2990,50 @@ class ChatActivity : BaseActivity() {
     }
 
     private fun showPollDialog() {
-        val box = LinearLayout(this).apply {
-            orientation = LinearLayout.VERTICAL
-            setPadding(dp(24), dp(12), dp(24), 0)
+        // 对齐参考 dialog_create_poll + item_poll_option_field：
+        // 行高 40dp / 16sp 的问题行，选项框 15sp 多行（padding 12/8）
+        val q = Ui.dialogRow(this, "", night, hint = "问题，如 选哪个交期？").apply {
+            // dialogRow 返回 TextView，投票需要可编辑 → 换成 EditText 但沿用同规格
         }
-        val q = EditText(this).apply { hint = "问题，如 选哪个交期？"; setSingleLine(true) }
-        val opts = EditText(this).apply {
-            hint = "选项，逗号分隔\n如 下周三,下周五,下周六"; setSingleLine(false); minLines = 2 }
-        box.addView(q); box.addView(opts)
+        val qInput = EditText(this).apply {
+            hint = "问题，如 选哪个交期？"
+            textSize = 16f
+            setTextColor(WaSpec.textPrimary(night))
+            setHintTextColor(WaSpec.textSecondary(night))
+            setBackground(Ui.roundBg(this@ChatActivity,
+                if (night) WaSpec.SEARCH_BG_NIGHT else WaSpec.GRAY6, 10))
+            setPadding(dp(12), 0, dp(12), 0)
+            minimumHeight = dp(40)
+            setSingleLine(true)
+        }
+        val optsInput = EditText(this).apply {
+            hint = "选项，逗号分隔\n如 下周三,下周五,下周六"
+            textSize = 15f
+            setTextColor(WaSpec.textPrimary(night))
+            setHintTextColor(WaSpec.textSecondary(night))
+            setBackground(Ui.roundBg(this@ChatActivity,
+                if (night) WaSpec.SEARCH_BG_NIGHT else WaSpec.GRAY6, 10))
+            setPadding(dp(12), dp(8), dp(12), dp(8))
+            setSingleLine(false)
+            minLines = 3
+        }
+        val content = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            addView(qInput)
+            addView(optsInput, LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply {
+                topMargin = dp(10)
+            })
+        }
         val dlg = android.app.AlertDialog.Builder(this)
-            .setTitle("发起投票")
-            .setView(box)
+            .setView(Ui.formDialogShell(this, "发起投票", night, content))
             .setPositiveButton("发送") { _, _ ->
-                if (q.text.isBlank() || opts.text.isBlank()) {
+                if (qInput.text.isBlank() || optsInput.text.isBlank()) {
                     Toast.makeText(this, "问题和选项必填", Toast.LENGTH_SHORT).show(); return@setPositiveButton
                 }
                 sendBtn.isEnabled = false
-                engine.sendPollAsync(chatJid, q.text.toString().trim(),
-                    opts.text.toString()) { _, err ->
+                engine.sendPollAsync(chatJid, qInput.text.toString().trim(),
+                    optsInput.text.toString()) { _, err ->
                     sendBtn.isEnabled = true
                     if (err != null) Toast.makeText(this, "发送失败：$err", Toast.LENGTH_LONG).show()
                     else renderMessages()
