@@ -2430,9 +2430,36 @@ class ChatActivity : BaseActivity() {
         var to = localCurrency ?: "USD"
         if (from == to) to = if (from == "CNY") "USD" else "CNY"
 
+        // 对齐参考 dialog_currency_fx 头部：
+        // paddingTop 12 / start 16 / end 8；标题 17sp + 副标题 12sp（marginTop 4）+ 关闭钮 36dp
+        val header = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER_VERTICAL
+            setPadding(dp(16), dp(12), dp(8), 0)
+        }
+        val headCol = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding(0, 0, dp(8), 0)
+        }
+        headCol.addView(TextView(this).apply {
+            text = "汇率转换"
+            textSize = 17f
+            setTextColor(WaSpec.textPrimary(night))
+        })
+        headCol.addView(TextView(this).apply {
+            text = "支持四则运算，如 100*0.2、100/1.2"
+            textSize = 12f
+            setTextColor(WaSpec.textSecondary(night))
+        }, LinearLayout.LayoutParams(
+            ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply {
+            topMargin = dp(4)
+        })
+        header.addView(headCol, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
+
         val box = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
-            setPadding(dp(22), dp(16), dp(22), dp(8))
+            // 内容区 padding 16/8/16/12（参考 ScrollView 内层）
+            setPadding(dp(16), dp(8), dp(16), dp(12))
         }
 
         // 汇率状态行
@@ -2647,9 +2674,27 @@ class ChatActivity : BaseActivity() {
             }
         }
 
-        android.app.AlertDialog.Builder(this)
-            .setTitle("汇率转换")
-            .setView(box)
+        val rootBox = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding(0, 0, 0, dp(12))
+            addView(header)
+            addView(box)
+        }
+        // 关闭钮：36dp（参考 ImageButton layout_height=36dp），绑到 header 右侧
+        val closeBtn = TextView(this).apply {
+            text = "✕"
+            textSize = 17f
+            gravity = Gravity.CENTER
+            setTextColor(WaSpec.textSecondary(night))
+            isClickable = true
+        }
+        header.addView(closeBtn, LinearLayout.LayoutParams(dp(36), dp(36)))
+
+        var dlgRef: android.app.AlertDialog? = null
+        closeBtn.setOnClickListener { dlgRef?.dismiss() }
+
+        dlgRef = android.app.AlertDialog.Builder(this)
+            .setView(rootBox)
             .setPositiveButton("更新汇率") { _, _ ->
                 if (updating) return@setPositiveButton
                 updating = true

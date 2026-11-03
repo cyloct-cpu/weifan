@@ -246,10 +246,11 @@ class ChatListActivity : BaseActivity() {
 
     /** 新建标签（chips ＋） */
     private fun showNewLabelDialog() {
-        val input = EditText(this).apply { hint = "标签名，如 高意向客户" }
+        // 对齐参考 dialog_create_label：formDialogShell（padding 20/22/20/18 + 标题 17sp）
+        val input = Ui.dialogRow(this, "", night, hint = "标签名，如 高意向客户")
+        val shell = Ui.formDialogShell(this, "新建标签", night, input)
         android.app.AlertDialog.Builder(this)
-            .setTitle("新建标签")
-            .setView(input)
+            .setView(shell)
             .setPositiveButton("创建") { _, _ ->
                 val n = input.text.toString().trim()
                 if (n.isNotBlank()) {
@@ -472,21 +473,30 @@ class ChatListActivity : BaseActivity() {
 
     /** 建群：群名 + 成员手机号（逗号分隔），先校验后创建 */
     private fun showNewGroupDialog() {
-        val box = LinearLayout(this).apply {
-            orientation = LinearLayout.VERTICAL
-            setPadding(dp(24), dp(12), dp(24), 0)
+        // 对齐参考 dialog_create_group_picker：大标题族（padding 20/22/20/20 + 标题 20sp）
+        val name = EditText(this).apply {
+            hint = "群名称（25 字内）"
+            textSize = 16f
+            minHeight = dp(40)
         }
-        val name = EditText(this).apply { hint = "群名称（25 字内）" }
         val members = EditText(this).apply {
             hint = "成员手机号，逗号分隔\n如 +5218120398050,+447925169391"
+            textSize = 15f
             setSingleLine(false)
             minLines = 2
         }
-        box.addView(name)
-        box.addView(members)
+        val content = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            addView(name, LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT))
+            addView(members, LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply {
+                topMargin = dp(10)
+            })
+        }
+        val shell = Ui.bigTitleDialogShell(this, "新建群聊", night, content)
         android.app.AlertDialog.Builder(this)
-            .setTitle("新建群聊")
-            .setView(box)
+            .setView(shell)
             .setPositiveButton("创建") { _, _ ->
                 val n = name.text.toString().trim()
                 val list = members.text.toString().split(",", "，", "\n")
