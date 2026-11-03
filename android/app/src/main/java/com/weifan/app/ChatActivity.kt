@@ -53,6 +53,8 @@ class ChatActivity : BaseActivity() {
     private var chatLangLabel: String = ""
     /** B1：resolvePn 解析出的对方真实号码（LID 会话靠它推货币） */
     private var resolvedPhone: String = ""
+    /** 下载失败过的消息 id：避免每轮重渲染都重试，形成死循环重绘 */
+    private val mediaDownloadFailed = java.util.Collections.synchronizedSet(mutableSetOf<String>())
 
     private lateinit var listBox: LinearLayout
     private lateinit var scroll: ScrollView
@@ -288,8 +290,9 @@ class ChatActivity : BaseActivity() {
         scroll = ScrollView(this)
         listBox = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
+            // 底部留白 76dp：滚到底时最后一条消息不会被输入胶囊盖住（实机发现的遮挡）
             setPadding(dp(WaSpec.MESSAGE_LIST_PADDING_H_DP), dp(8),
-                dp(WaSpec.MESSAGE_LIST_PADDING_H_DP), dp(8))
+                dp(WaSpec.MESSAGE_LIST_PADDING_H_DP), dp(76))
         }
         scroll.addView(listBox)
         // 向上翻页：滚到顶自动拉更早历史（P0-5）
@@ -673,10 +676,18 @@ class ChatActivity : BaseActivity() {
             return
         }
         for (m in msgs) listBox.addView(bubble(m))
-        // 图片/贴纸/语音/文档自动下载（视频仍手动点）；下载完重渲染一次
-        for (m in msgs.filter { it.mediaKind.isNotBlank() && it.mediaKind != "video" &&
-            it.mediaPath.isBlank() }) {
-            engine.fetchMediaAsync(m.chatJid, m.id) { _ -> main.post { renderMessagesSoon() } }
+        // 图片/贴纸/语音/文档自动下载（视频仍手动点）；下载完重渲染一次。
+        // 关键：只对真正带媒体文件的消息下载。poll/location/contact/event 没有文件可下，
+        // 之前一并发请求 → 每轮都失败回调 → 每 300ms 重建整个列表，
+        // 导致气泡点击/长按事件全部丢失（实测发现）。失败过的也不再重试。
+        val downloadable = setOf("image", "sticker", "audio", "document")
+        for (m in msgs.filter {
+            it.mediaKind in downloadable && it.mediaPath.isBlank() && it.id !in mediaDownloadFailed
+        }) {
+            engine.fetchMediaAsync(m.chatJid, m.id) { f ->
+                if (f == null) mediaDownloadFailed.add(m.id)
+                main.post { renderMessagesSoon() }
+            }
         }
         for (m in msgs.filter { !it.fromMe && it.translated.isBlank() && it.text.isNotBlank() }) {
             engine.translateIncomingAsync(m.chatJid, m.id, m.text)
@@ -1316,7 +1327,11 @@ class ChatActivity : BaseActivity() {
             text = m.text
             textSize = prefs.sourceTextSp   // 批2-d：原文字号可调
             setTextColor(WaSpec.textPrimary(night))
-            })
+            // 长按直接挂菜单：只设 isLongClickable=false 不管用，TextView 会自己进入
+            // 文本选择模式（实测），直接在控件上接管长按才稳
+            isLongClickable = true
+            setOnLongClickListener { showActionMenu(m); true }
+        })
         }
         // 收件：译文行（蓝色，13sp）
         if (!m.fromMe && m.translated.isNotBlank()) {
@@ -1327,6 +1342,12 @@ class ChatActivity : BaseActivity() {
                 setTextColor(prefs.translationColor.takeIf { it != 0 } ?: WaSpec.TRANSLATE_TEXT)
                 typeface = Typeface.create("sans-serif-medium", Typeface.NORMAL)
                 setPadding(0, dp(3), 0, 0)
+                isClickable = true
+                // 点译文 = 对译文不满意 → 弹「用哪个接口重译」
+                // （长按菜单仍保留，但 adb 自动化下长按不可靠，点击更直接也好用）
+                setOnClickListener { showRetranslatePicker(m) }
+                isLongClickable = true
+                setOnLongClickListener { showActionMenu(m); true }
             })
         }
         // 发件：中文原文副行（灰色）
@@ -1358,6 +1379,10 @@ class ChatActivity : BaseActivity() {
         }, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT))
 
         val holder = FrameLayout(this)
+        // 点击和长按都弹菜单：仅靠长按时，实测在滚动容器里经常收不到事件，
+        // 点击气泡主体更稳也更易发现
+        col.isClickable = true
+        col.setOnClickListener { showActionMenu(m) }
         col.isLongClickable = true
         col.setOnLongClickListener { showActionMenu(m); true }
         holder.addView(col.apply {
@@ -1445,6 +1470,7 @@ class ChatActivity : BaseActivity() {
     // MARK: - 长按菜单（回复/转发/复制/下载，对齐 WATransChat）
 
     private fun showActionMenu(m: MessageRow) {
+        android.util.Log.i("WeFlipMenu", "showActionMenu id=${m.id} fromMe=${m.fromMe}")
         val box = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
             background = Ui.roundBg(this@ChatActivity,
@@ -1492,6 +1518,10 @@ class ChatActivity : BaseActivity() {
             cm.setPrimaryClip(android.content.ClipData.newPlainText("weifan", m.text))
             Toast.makeText(this, "已复制", Toast.LENGTH_SHORT).show()
         })
+        // B6：收件消息可换另一家引擎重译（当前译文不对 / 这家接口挂了）
+        if (!m.fromMe && m.text.isNotBlank()) {
+            box.addView(item("换引擎重译") { dlg.dismiss(); showRetranslatePicker(m) })
+        }
         // 自己发的消息：撤回 / 编辑（官方规则：编辑 15 分钟窗口）
         if (m.fromMe) {
             box.addView(item("撤回") {
@@ -1533,6 +1563,36 @@ class ChatActivity : BaseActivity() {
                     engine.editAsync(chatJid, m.id, t) { ok ->
                         Toast.makeText(this, if (ok) "已编辑" else "编辑失败", Toast.LENGTH_SHORT).show()
                         if (ok) renderMessages()
+                    }
+                }
+            }
+            .setNegativeButton("取消", null)
+            .show()
+    }
+
+    /**
+     * B6：选一家引擎重译这条消息。
+     * 列出已配置密钥的引擎；没有则提示先去设置填。
+     */
+    private fun showRetranslatePicker(m: MessageRow) {
+        val engines = com.weifan.app.core.Engine.configuredEngines(prefs)
+        if (engines.isEmpty()) {
+            Toast.makeText(this, "还没有已配密钥的接口，先到设置里填一家",
+                Toast.LENGTH_LONG).show()
+            return
+        }
+        val names = engines.map { it.second }.toTypedArray()
+        android.app.AlertDialog.Builder(this)
+            .setTitle("用哪个接口重译")
+            .setItems(names) { _, which ->
+                val (id, label) = engines[which]
+                Toast.makeText(this, "$label 翻译中…", Toast.LENGTH_SHORT).show()
+                engine.retranslateAsync(chatJid, m.id, m.text, id) { _, err ->
+                    if (err != null) {
+                        Toast.makeText(this, "$label 失败: $err", Toast.LENGTH_LONG).show()
+                    } else {
+                        Toast.makeText(this, "$label 重译完成", Toast.LENGTH_SHORT).show()
+                        renderMessages(false)
                     }
                 }
             }

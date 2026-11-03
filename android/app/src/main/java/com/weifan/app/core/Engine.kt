@@ -49,6 +49,21 @@ object Engine {
         return TestOutcome(result.text, result.provider, System.currentTimeMillis() - started)
     }
 
+    /**
+     * B6：列出已填好密钥的引擎，供「换引擎重译」选择。
+     * 返回 (id, 显示名)；id 直接作为 Providers.translate 的 selection 用，
+     * 自定义接口固定为 "custom:<id>" 形式。
+     */
+    fun configuredEngines(prefs: Prefs): List<Pair<String, String>> {
+        val free = Providers.DEFS
+            .filter { prefs.isConfigured(it.id) }
+            .map { it.id to it.label }
+        val customs = prefs.customs
+            .filter { it.isComplete }
+            .map { "custom:${it.id}" to it.displayName }
+        return free + customs
+    }
+
     data class GenericOutcome(
         val text: String,
         val provider: String,
@@ -61,7 +76,9 @@ object Engine {
         text: String,
         source: String?,
         target: String,
-        prefs: Prefs
+        prefs: Prefs,
+        /** B6：指定引擎（providerId / "custom:xxx"）；null = 走用户设置的优先级链 */
+        engineId: String? = null
     ): GenericOutcome {
         Providers.promptOverride = prefs.promptTemplate   // 批2-b：自定义提示词生效
         val started = System.currentTimeMillis()
@@ -73,7 +90,8 @@ object Engine {
             route = if (prefs.style == "business") "llm" else "mt",
             creds = prefs.allCredentials(),
             customs = prefs.customs,
-            selection = prefs.selection,
+            // B6：指定了引擎就锁死这一家（不降级），否则按用户优先级链
+            selection = engineId ?: prefs.selection,
             chainOrder = prefs.serviceChainOrder,
             chainOff = prefs.serviceChainOff,
             blocked = prefs.blockedProviders()

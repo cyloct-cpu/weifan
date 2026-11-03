@@ -425,6 +425,30 @@ class ChatEngine private constructor(context: Context) :
 
     // MARK: - 翻译（复用 core.Engine）
 
+    /**
+     * B6：用指定引擎重译一条已有收件消息（译成中文）。
+     * 场景：“当前译文不对 / 这家接口挂了”，用户长按消息换一家重翻。
+     */
+    fun retranslateAsync(chatJid: String, id: String, text: String, engineId: String,
+                         callback: (translated: String?, error: String?) -> Unit) {
+        Thread {
+            try {
+                val res = Engine.translateText(
+                    text = text, source = null,
+                    target = "zh-Hans",
+                    prefs = prefs, engineId = engineId)
+                if (res.text.isBlank()) {
+                    main.post { callback(null, "未返回译文") }
+                    return@Thread
+                }
+                db.updateTranslation(chatJid, id, res.text, "")
+                main.post { callback(res.text, null) }
+            } catch (e: Throwable) {
+                main.post { callback(null, e.message ?: e.toString()) }
+            }
+        }.start()
+    }
+
     /** 收件：对方语言 → 中文 */
     fun translateIncomingAsync(chatJid: String, id: String, text: String) {
         Thread {
