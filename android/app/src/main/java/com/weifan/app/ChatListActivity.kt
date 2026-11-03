@@ -230,11 +230,38 @@ class ChatListActivity : BaseActivity() {
         val names = all.map { it.second }.toTypedArray()
         val checked = engine.db.chatLabelNames(chat.jid).toSet()
         val states = names.map { it in checked }.toBooleanArray()
-        android.app.AlertDialog.Builder(this)
-            .setTitle("设置标签：${chat.title.ifBlank { chat.jid.substringBefore("@") }}")
-            .setMultiChoiceItems(names, states) { _, which, isChecked ->
-                states[which] = isChecked
+        // 对齐参考 dialog_select_label：formDialogShell（20/22/20/18 + 17sp）
+        // + 每行 40dp 可点切换，选中行右侧 ✓
+        val listBox = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
+        fun renderRows() {
+            listBox.removeAllViews()
+            for ((i, n) in names.withIndex()) {
+                val row = LinearLayout(this).apply {
+                    orientation = LinearLayout.HORIZONTAL
+                    gravity = Gravity.CENTER_VERTICAL
+                    minimumHeight = dp(40)
+                    isClickable = true
+                    setOnClickListener {
+                        states[i] = !states[i]
+                        renderRows()
+                    }
+                }
+                row.addView(TextView(this).apply {
+                    text = n
+                    textSize = 16f
+                    setTextColor(WaSpec.textPrimary(night))
+                }, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
+                if (states[i]) row.addView(TextView(this).apply {
+                    text = "✓"; textSize = 16f
+                    setTextColor(WaSpec.primary(night))
+                })
+                listBox.addView(row)
             }
+        }
+        renderRows()
+        android.app.AlertDialog.Builder(this)
+            .setView(Ui.formDialogShell(this,
+                "设置标签", night, listBox))
             .setPositiveButton("保存") { _, _ ->
                 val ids = all.filterIndexed { i, _ -> states[i] }.map { it.first }
                 engine.db.setChatLabels(chat.jid, ids)

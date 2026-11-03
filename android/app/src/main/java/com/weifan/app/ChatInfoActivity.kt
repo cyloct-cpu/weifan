@@ -142,30 +142,54 @@ class ChatInfoActivity : BaseActivity() {
             }, LinearLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT, dp(46)).apply { topMargin = dp(10) })
 
-            // ── 客户备注（本地 CRM）：多行自由文本，存 chats.note
+            // ── 客户备注（本地 CRM）：改为点行开弹层编辑
+            // 对齐参考 dialog_edit_customer_note（普通表单族 20/22/20/18 + 标题 17sp），
+            // 不再把输入框常驻在资料页里（原实现占半屏且与「添加成员」共用 id 出过 bug）
             box.addView(sectionLabel("客户备注（仅保存在本机）"))
-            box.addView(EditText(this).apply {
-                setText(engine().db.chatNote(chatJid))
-                hint = "成交意向、商品偏好、跟进计划…"
-                textSize = 15f
-                setTextColor(WaSpec.textPrimary(night))
+            val notePreview = TextView(this).apply {
+                val n = engine().db.chatNote(chatJid)
+                text = n.ifBlank { "点此添加成交意向、商品偏好、跟进计划…" }
+                textSize = 14f
+                setTextColor(if (n.isBlank()) WaSpec.textSecondary(night)
+                    else WaSpec.textPrimary(night))
                 background = Ui.roundBg(this@ChatInfoActivity,
                     if (night) WaSpec.SEARCH_BG_NIGHT else WaSpec.GRAY6, 12)
                 setPadding(dp(14), dp(12), dp(14), dp(12))
-                minLines = 3
-                gravity = Gravity.TOP
-                // 2012 而不是 2002：2002 已被下方「添加成员」输入框占用，
-                // 同 id 会让 findViewById 拿错控件（添加成员会误读备注内容）
-                id = 2012
-            }, LinearLayout.LayoutParams(
+                isClickable = true
+                tag = "notePreview"
+            }
+            box.addView(notePreview, LinearLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply {
                 topMargin = dp(8)
             })
-            box.addView(Ui.solidButton(this, "保存客户备注", WaSpec.primary(night), Color.WHITE) {
-                engine().db.setChatNote(chatJid, findViewById<EditText>(2012).text.toString())
-                Toast.makeText(this, "已保存", Toast.LENGTH_SHORT).show()
-            }, LinearLayout.LayoutParams(
-                ViewGroup.LayoutParams.MATCH_PARENT, dp(46)).apply { topMargin = dp(10) })
+            notePreview.setOnClickListener {
+                val input = EditText(this).apply {
+                    setText(engine().db.chatNote(chatJid))
+                    hint = "成交意向、商品偏好、跟进计划…"
+                    textSize = 15f
+                    setTextColor(WaSpec.textPrimary(night))
+                    setHintTextColor(WaSpec.textSecondary(night))
+                    background = Ui.roundBg(this@ChatInfoActivity,
+                        if (night) WaSpec.SEARCH_BG_NIGHT else WaSpec.GRAY6, 12)
+                    setPadding(dp(14), dp(12), dp(14), dp(12))
+                    minLines = 4
+                    gravity = Gravity.TOP
+                }
+                android.app.AlertDialog.Builder(this)
+                    .setView(Ui.formDialogShell(this, "客户备注", night, input))
+                    .setPositiveButton("保存") { _, _ ->
+                        val v = input.text.toString()
+                        engine().db.setChatNote(chatJid, v)
+                        notePreview.text = v.ifBlank {
+                            "点此添加成交意向、商品偏好、跟进计划…" }
+                        notePreview.setTextColor(
+                            if (v.isBlank()) WaSpec.textSecondary(night)
+                            else WaSpec.textPrimary(night))
+                        Toast.makeText(this, "已保存", Toast.LENGTH_SHORT).show()
+                    }
+                    .setNegativeButton("取消", null)
+                    .show()
+            }
         } else {
             // ── 群成员
             box.addView(sectionLabel("成员"))
@@ -178,10 +202,19 @@ class ChatInfoActivity : BaseActivity() {
 
             // 改群名
             box.addView(Ui.solidButton(this, "修改群名", WaSpec.primary(night), Color.WHITE) {
-                val input = EditText(this).apply { setText(nameText.text.toString()) }
+                // 对齐参考 dialog_edit_group_field：大标题族（20/22/20/20 + 标题 20sp）
+                val input = EditText(this).apply {
+                    setText(nameText.text.toString())
+                    textSize = 16f
+                    setTextColor(WaSpec.textPrimary(night))
+                    setHintTextColor(WaSpec.textSecondary(night))
+                    setBackground(Ui.roundBg(this@ChatInfoActivity,
+                        if (night) WaSpec.SEARCH_BG_NIGHT else WaSpec.GRAY6, 10))
+                    setPadding(dp(12), dp(10), dp(12), dp(10))
+                    minimumHeight = dp(40)
+                }
                 android.app.AlertDialog.Builder(this)
-                    .setTitle("修改群名")
-                    .setView(input)
+                    .setView(Ui.bigTitleDialogShell(this, "修改群名", night, input))
                     .setPositiveButton("保存") { _, _ ->
                         val n = input.text.toString().trim()
                         if (n.isNotBlank()) renameGroup(n)
