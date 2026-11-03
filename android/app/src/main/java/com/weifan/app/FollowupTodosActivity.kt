@@ -28,10 +28,12 @@ import java.util.Locale
 class FollowupTodosActivity : BaseActivity() {
 
     private val onlyJid: String get() = intent.getStringExtra("jid") ?: ""
-    private var showAll = false
+    /** 当前标签：ALL / OVERDUE / TODAY / DONE（对齐参考 4 个标签页） */
+    private var tab = "TODAY"
     private lateinit var listBox: LinearLayout
     private lateinit var filterRow: LinearLayout
-    private lateinit var countText: TextView
+    private lateinit var statOverdueNum: TextView
+    private lateinit var statPendingNum: TextView
     private val dayFmt = SimpleDateFormat("M月d日", Locale.CHINA)
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -52,19 +54,28 @@ class FollowupTodosActivity : BaseActivity() {
             }))
 
         // 筛选：未完成 / 全部
+        // 标签条：对齐参考 HorizontalScrollView padding 12/4/12/10，chip 间距 8dp
+        val tabScroll = android.widget.HorizontalScrollView(this).apply {
+            isHorizontalScrollBarEnabled = false
+            clipToPadding = false
+            setPadding(dp(12), dp(4), dp(12), dp(10))
+        }
         filterRow = LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL
             gravity = Gravity.CENTER_VERTICAL
-            setPadding(dp(12), dp(10), dp(12), dp(6))
         }
-        root.addView(filterRow)
+        tabScroll.addView(filterRow)
+        root.addView(tabScroll)
 
-        countText = TextView(this).apply {
-            textSize = 12.5f
-            setTextColor(WaSpec.textSecondary(night))
-            setPadding(dp(12), 0, dp(12), dp(6))
+        // 统计卡片行：对齐参考 padding 16/12/16/4，两卡各 weight=1，间距 6dp
+        val statRow = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            setPadding(dp(16), dp(12), dp(16), dp(4))
         }
-        root.addView(countText)
+        statOverdueNum = statCard(statRow, "逾期", 0)
+        statRow.addView(android.view.View(this), LinearLayout.LayoutParams(dp(6), 1))
+        statPendingNum = statCard(statRow, "待跟进", 1)
+        root.addView(statRow)
 
         val scroll = ScrollView(this)
         listBox = LinearLayout(this).apply {
@@ -87,11 +98,13 @@ class FollowupTodosActivity : BaseActivity() {
 
     private fun dp(v: Int) = Ui.dp(this, v)
 
+    /** 4 个标签页：全部 / 逾期 / 今日 / 已完成（对齐参考 activity_followup_todos） */
     private fun renderFilters() {
         filterRow.removeAllViews()
-        for ((label, value) in listOf("未完成" to false, "全部" to true)) {
-            filterRow.addView(Ui.chip(this, label, showAll == value, night) {
-                showAll = value
+        for ((label, key) in listOf("全部" to "ALL", "逾期" to "OVERDUE",
+                                    "今日" to "TODAY", "已完成" to "DONE")) {
+            filterRow.addView(Ui.chip(this, label, tab == key, night) {
+                tab = key
                 renderFilters()
                 renderTodos()
             }, LinearLayout.LayoutParams(
@@ -101,14 +114,55 @@ class FollowupTodosActivity : BaseActivity() {
         }
     }
 
+    /**
+     * 统计卡片（对齐参考 bg_followup_stat_card：weight=1、padding 14/12、
+     * 标签 12sp secondary + 数字 22sp bold primary + marginTop 2dp）。
+     */
+    private fun statCard(parent: LinearLayout, label: String, index: Int): TextView {
+        val card = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            background = Ui.roundBg(this@FollowupTodosActivity,
+                if (night) WaSpec.SURFACE_NIGHT else Color.WHITE, 12, 1, WaSpec.divider(night))
+            setPadding(dp(14), dp(12), dp(14), dp(12))
+        }
+        card.addView(TextView(this).apply {
+            text = label
+            textSize = 12f
+            setTextColor(WaSpec.textSecondary(night))
+        })
+        val num = TextView(this).apply {
+            text = "0"
+            textSize = 22f
+            setTypeface(typeface, Typeface.BOLD)
+            setTextColor(WaSpec.textPrimary(night))
+        }
+        card.addView(num, LinearLayout.LayoutParams(
+            ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply {
+            topMargin = dp(2)
+        })
+        parent.addView(card, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f).apply {
+            if (index == 0) marginEnd = 0
+        })
+        return num
+    }
+
     private fun renderTodos() {
         listBox.removeAllViews()
-        val items = engine().db.todos(onlyOpen = !showAll, chatJid = onlyJid)
-        val open = engine().db.openTodoCount()
-        countText.text = if (open == 0) "没有未完成的待办" else "$open 件待跟进"
+        // 统计卡片
+        val (overdueCount, pendingCount) = engine().db.todoStats()
+        if (::statOverdueNum.isInitialized) statOverdueNum.text = overdueCount.toString()
+        if (::statPendingNum.isInitialized) statPendingNum.text = pendingCount.toString()
+
+        val items = engine().db.todosByFilter(tab, onlyJid)
+
         if (items.isEmpty()) {
             listBox.addView(TextView(this).apply {
-                text = "点右上角 ＋ 记一条，例如「给 leon 发 500 件报价单」"
+                text = when (tab) {
+                    "OVERDUE" -> "没有逾期的待办"
+                    "TODAY" -> "今天没有待办"
+                    "DONE" -> "还没有完成的待办"
+                    else -> "点右上角 ＋ 记一条，例如「给 leon 发 500 件报价单」"
+                }
                 textSize = 14f
                 setTextColor(WaSpec.textSecondary(night))
                 gravity = Gravity.CENTER
@@ -116,18 +170,58 @@ class FollowupTodosActivity : BaseActivity() {
             })
             return
         }
-        for (t in items) listBox.addView(todoRow(t))
+
+        // 分组：今日计划 / 逾期未跟 / 稍后（对齐参考 followup_section_*）
+        if (tab == "ALL" || tab == "TODAY" || tab == "OVERDUE") {
+            val now = System.currentTimeMillis()
+            val cal = java.util.Calendar.getInstance().apply {
+                timeInMillis = now
+                set(java.util.Calendar.HOUR_OF_DAY, 0); set(java.util.Calendar.MINUTE, 0)
+                set(java.util.Calendar.SECOND, 0); set(java.util.Calendar.MILLISECOND, 0)
+            }
+            val dayStart = cal.timeInMillis
+            val dayEnd = dayStart + 24L * 3600_000L
+            val groups = linkedMapOf(
+                "逾期未跟" to items.filter { !it.done && it.dueTs in 1 until now },
+                "今日计划" to items.filter { !it.done && it.dueTs >= dayStart && it.dueTs < dayEnd },
+                "稍后" to items.filter {
+                    !it.done && (it.dueTs == 0L || it.dueTs >= dayEnd) },
+                "已完成" to items.filter { it.done })
+            for ((title, list) in groups) {
+                if (list.isEmpty()) continue
+                listBox.addView(sectionHeader(title))
+                for (t in list) listBox.addView(todoRow(t))
+            }
+        } else {
+            for (t in items) listBox.addView(todoRow(t))
+        }
+    }
+
+    /** 分组头（对齐参考 item_followup_section：13sp bold + padding 20/16/20/6 + letterSpacing 0.02） */
+    private fun sectionHeader(title: String): View = TextView(this).apply {
+        text = title
+        textSize = 13f
+        setTypeface(typeface, Typeface.BOLD)
+        setTextColor(WaSpec.textSecondary(night))
+        setPadding(dp(20), dp(16), dp(20), dp(6))
+        letterSpacing = 0.02f
     }
 
     private fun todoRow(t: TodoRow): View {
         val now = System.currentTimeMillis()
         val overdue = !t.done && t.dueTs in 1 until now
+        // 对齐参考 item_followup_todo：外层 padding 16/10/16/2，
+        // 卡片内 padding 上下 12 / start 8 / end 4
+        val outer = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding(dp(16), dp(10), dp(16), dp(2))
+        }
         val box = LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL
             gravity = Gravity.CENTER_VERTICAL
             background = Ui.roundBg(this@FollowupTodosActivity,
                 if (night) WaSpec.SURFACE_NIGHT else Color.WHITE, 12, 1, WaSpec.divider(night))
-            setPadding(dp(10), dp(10), dp(10), dp(10))
+            setPadding(dp(8), dp(12), dp(4), dp(12))
         }
         box.addView(CheckBox(this).apply {
             isChecked = t.done
@@ -194,7 +288,8 @@ class FollowupTodosActivity : BaseActivity() {
                     .putExtra("jid", t.chatJid).putExtra("title", t.customerTitle))
             }
         }
-        return wrap
+        outer.addView(wrap)
+        return outer
     }
 
     /** 新建待办：内容 + 到期（今天/明天/三天后/不指定）+ 客户（不带 jid 进入时可选） */

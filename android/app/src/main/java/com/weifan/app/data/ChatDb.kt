@@ -446,6 +446,56 @@ class ChatDb(context: Context) : SQLiteOpenHelper(context, "chats.db", null, 9) 
         return out
     }
 
+
+    /**
+     * 按参考 activity_followup_todos 的 4 个标签页过滤：
+     * ALL=全部 / OVERDUE=逾期 / TODAY=今日 / DONE=已完成
+     * 逾期与今日都只算未完成项。
+     */
+    fun todosByFilter(filter: String, chatJid: String = "", now: Long = System.currentTimeMillis()): List<TodoRow> {
+        val where = StringBuilder()
+        val args = mutableListOf<String>()
+        val cal = java.util.Calendar.getInstance().apply {
+            timeInMillis = now
+            set(java.util.Calendar.HOUR_OF_DAY, 0); set(java.util.Calendar.MINUTE, 0)
+            set(java.util.Calendar.SECOND, 0); set(java.util.Calendar.MILLISECOND, 0)
+        }
+        val dayStart = cal.timeInMillis
+        val dayEnd = dayStart + 24L * 3600_000L
+        when (filter) {
+            "OVERDUE" -> { where.append("done=0 AND due_ts>0 AND due_ts<?"); args += now.toString() }
+            "TODAY" -> { where.append("done=0 AND due_ts>=? AND due_ts<?")
+                args += dayStart.toString(); args += dayEnd.toString() }
+            "DONE" -> where.append("done=1")
+            else -> { }   // ALL：不过滤
+        }
+        if (chatJid.isNotBlank()) {
+            if (where.isNotEmpty()) where.append(" AND ")
+            where.append("chat_jid=?"); args += chatJid
+        }
+        val sql = "SELECT t.id, t.chat_jid, t.content, t.due_ts, t.done, t.created_ts, " +
+            "COALESCE(c.title,'') FROM todos t LEFT JOIN chats c ON c.jid=t.chat_jid" +
+            (if (where.isEmpty()) "" else " WHERE $where") +
+            " ORDER BY t.done ASC, (t.due_ts=0) ASC, t.due_ts ASC, t.created_ts DESC"
+        val out = mutableListOf<TodoRow>()
+        readableDatabase.rawQuery(sql, args.toTypedArray()).use { c ->
+            while (c.moveToNext()) out += TodoRow(
+                c.getLong(0), c.getString(1), c.getString(2), c.getLong(3),
+                c.getInt(4) == 1, c.getLong(5), c.getString(6))
+        }
+        return out
+    }
+
+    /** 统计：逾期数 / 待跟进数（对齐参考两个统计卡片） */
+    fun todoStats(now: Long = System.currentTimeMillis()): Pair<Int, Int> {
+        val overdue = readableDatabase.rawQuery(
+            "SELECT COUNT(*) FROM todos WHERE done=0 AND due_ts>0 AND due_ts<?",
+            arrayOf(now.toString())).use { c -> if (c.moveToFirst()) c.getInt(0) else 0 }
+        val pending = readableDatabase.rawQuery(
+            "SELECT COUNT(*) FROM todos WHERE done=0", null).use { c ->
+            if (c.moveToFirst()) c.getInt(0) else 0 }
+        return overdue to pending
+    }
     fun openTodoCount(): Int = readableDatabase.rawQuery(
         "SELECT COUNT(*) FROM todos WHERE done=0", null).use { c ->
         if (c.moveToFirst()) c.getInt(0) else 0
