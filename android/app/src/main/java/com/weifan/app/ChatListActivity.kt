@@ -195,11 +195,17 @@ class ChatListActivity : BaseActivity() {
         val userLabels = engine.db.labels().map { it.second }
         for (name in chips + userLabels) {
             val selected = name == filter
-            chipRow.addView(Ui.chip(this, name, selected, night) {
+            val c = Ui.chip(this, name, selected, night) {
                 filter = name
                 renderChips()
                 renderChats()
-            }, LinearLayout.LayoutParams(
+            }
+            // 长按用户标签 → 管理（改名/删除），对齐参考 dialog_manage_labels
+            if (name in userLabels) {
+                c.isLongClickable = true
+                c.setOnLongClickListener { showManageLabelDialog(name); true }
+            }
+            chipRow.addView(c, LinearLayout.LayoutParams(
                 ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply {
                 if (chipRow.childCount > 0) marginStart = dp(WaSpec.CHIP_GAP_DP)
             })
@@ -286,6 +292,56 @@ class ChatListActivity : BaseActivity() {
                     renderChips()
                     renderChats()
                 }
+            }
+            .setNegativeButton("取消", null)
+            .show()
+    }
+
+    /** 管理标签（长按 chip）：改名 / 删除（删除会同时清掉所有会话的该标签） */
+    private fun showManageLabelDialog(name: String) {
+        val all = engine.db.labels()
+        val id = all.firstOrNull { it.second == name }?.first ?: return
+        val content = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+        }
+        val input = EditText(this).apply {
+            setText(name)
+            textSize = 16f
+            setTextColor(WaSpec.textPrimary(night))
+            setHintTextColor(WaSpec.textSecondary(night))
+            setBackground(Ui.roundBg(this@ChatListActivity,
+                if (night) WaSpec.SEARCH_BG_NIGHT else WaSpec.GRAY6, 10))
+            setPadding(dp(12), dp(10), dp(12), dp(10))
+            minimumHeight = dp(40)
+        }
+        content.addView(input)
+        content.addView(TextView(this).apply {
+            text = "删除标签会同时从所有会话上移除"
+            textSize = 12f
+            setTextColor(WaSpec.textSecondary(night))
+            setPadding(0, dp(8), 0, 0)
+        })
+        android.app.AlertDialog.Builder(this)
+            .setView(Ui.formDialogShell(this, "管理标签", night, content))
+            .setPositiveButton("保存") { _, _ ->
+                val n = input.text.toString().trim()
+                if (n.isNotBlank() && n != name) {
+                    engine.db.renameLabel(id, n)
+                    if (filter == name) filter = "所有"
+                    renderChips(); renderChats()
+                }
+            }
+            .setNeutralButton("删除") { _, _ ->
+                android.app.AlertDialog.Builder(this)
+                    .setView(Ui.confirmBody(this, "删除标签「$name」？",
+                        "会从所有会话上移除", night))
+                    .setPositiveButton("删除") { _, _ ->
+                        engine.db.deleteLabel(id)
+                        if (filter == name) filter = "所有"
+                        renderChips(); renderChats()
+                    }
+                    .setNegativeButton("取消", null)
+                    .show()
             }
             .setNegativeButton("取消", null)
             .show()
@@ -435,6 +491,7 @@ class ChatListActivity : BaseActivity() {
             isClickable = true
             setOnClickListener { action() }
         }
+        box.addView(item("新建会话") { dlg.dismiss(); showNewChatDialog() })
         box.addView(item("新建群聊") { dlg.dismiss(); showNewGroupDialog() })
         box.addView(item("设置标签") { dlg.dismiss(); showLabelPicker(chat) })
         box.addView(item("该客户的待办") {
@@ -496,6 +553,45 @@ class ChatListActivity : BaseActivity() {
         dlg.setView(box)
         dlg.show()
         dlg.window?.setLayout(dp(300), ViewGroup.LayoutParams.WRAP_CONTENT)
+    }
+
+    /**
+     * 新建会话（对齐参考 dialog_new_chat：20sp 标题 + 15sp 搜索/输入框）。
+     * 输入完整号码后直接开聊——会话在首次发消息时才真正建立，这里只负责跳转。
+     */
+    private fun showNewChatDialog() {
+        val input = EditText(this).apply {
+            hint = "手机号（含国家码），如 +31612345678"
+            textSize = 15f
+            setTextColor(WaSpec.textPrimary(night))
+            setHintTextColor(WaSpec.textSecondary(night))
+            setBackground(Ui.roundBg(this@ChatListActivity,
+                if (night) WaSpec.SEARCH_BG_NIGHT else WaSpec.GRAY6, 10))
+            setPadding(dp(12), dp(9), dp(12), dp(9))
+            minHeight = 0
+            minimumHeight = dp(40)
+            inputType = android.text.InputType.TYPE_CLASS_PHONE
+        }
+        // pickerDialogShell 自带 20sp 标题 + 搜索框；把内容(提示文案)挂在它下面
+        val shell = Ui.pickerDialogShell(this, "新建会话", "手机号（含国家码）", night) { q ->
+            input.setText(q)
+        }
+        shell.addView(input, LinearLayout.LayoutParams(
+            ViewGroup.LayoutParams.MATCH_PARENT, dp(40)).apply { topMargin = dp(8) })
+        android.app.AlertDialog.Builder(this)
+            .setView(shell)
+            .setPositiveButton("打开") { _, _ ->
+                val digits = input.text.toString().filter { it.isDigit() }
+                if (digits.length !in 8..15) {
+                    Toast.makeText(this, "号码不完整", Toast.LENGTH_SHORT).show()
+                    return@setPositiveButton
+                }
+                startActivity(Intent(this, ChatActivity::class.java)
+                    .putExtra("jid", "$digits@s.whatsapp.net")
+                    .putExtra("title", "+$digits"))
+            }
+            .setNegativeButton("取消", null)
+            .show()
     }
 
     /** 建群：群名 + 成员手机号（逗号分隔），先校验后创建 */

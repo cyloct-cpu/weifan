@@ -303,6 +303,14 @@ class ChatDb(context: Context) : SQLiteOpenHelper(context, "chats.db", null, 9) 
         writableDatabase.execSQL("DELETE FROM chat_labels WHERE label_id=?", arrayOf(id))
     }
 
+    /** 重命名标签（名字冲突时走 UNIQUE 约束失败，静默忽略） */
+    fun renameLabel(id: Long, newName: String) {
+        try {
+            writableDatabase.execSQL("UPDATE labels SET name=? WHERE id=?",
+                arrayOf(newName.trim(), id))
+        } catch (_: Throwable) { }
+    }
+
     /** 给会话设置标签（全量替换） */
     fun setChatLabels(chatJid: String, labelIds: List<Long>) {
         writableDatabase.execSQL("DELETE FROM chat_labels WHERE chat_jid=?", arrayOf(chatJid))
