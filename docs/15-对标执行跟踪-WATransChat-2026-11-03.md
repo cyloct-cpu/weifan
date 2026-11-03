@@ -355,3 +355,64 @@ xcodebuild test -project WeiFan.xcodeproj -scheme WeiFanUITests \
 # 导出截图
 xcrun xcresulttool export attachments --path /tmp/uitest.xcresult --output-path /tmp/atts
 ```
+
+---
+
+## 6. 【方法论纠正】为什么 iOS 分析挖出了 Android 没挖出的功能
+
+### 6.1 事故经过
+
+| 阶段 | 动作 | 证据粒度 |
+|---|---|---|
+| 分析 Android 3.55 | `aapt dump badging` → 35 个 Activity 名；读 `SPEC.md` 布局、grep 色值 | **页面级** |
+| 分析 iOS 2.82 | 解析 `Localizable.strings` → 1206 条业务文案，按模块聚类 | **功能级** |
+| 结果 | iOS 侧"挖出"大量我们缺的能力，Android 侧显得单薄 | 假象 |
+
+### 6.2 真相
+
+Android APK 的资源表里**一直有完整文案**：
+
+```
+string/ 资源条目 1569
+中文值       1024 条
+去 SDK 前缀后 919 条业务文案
+与 iOS 相同 key：601 条（同 key 同值，确证同一产品双端）
+```
+
+我此前只 grep 了 `wa_*` 色值与 drawable 名，**从未导出字符串表** → 漏掉 6 项能力。
+
+### 6.3 漏项后果与已完成的补救
+
+| 漏项 | 是否我们已有 | 补救 |
+|---|---|---|
+| 汇率转换（fx 30 条） | ❌ grep 0 命中 | 记入 docs/14 §8.2 B1 |
+| 备份与恢复（restore/backup 23 条） | ❌ 0 命中 | B2 |
+| 多设备管理（device 19 条） | ❌ 0 命中 | B3 |
+| 译文字号（参考双端都有，我误称只有译文） | ⚠️ 只有原文字号 | B4 |
+| 历史消息独立引擎（chat_history_translation_engine） | ❌ 0 命中 | B5 |
+| 换引擎重译（message_retranslate_*） | ❌ 0 命中 | B6 |
+
+已做项复核：**A1–A6 六项结论不变**（确实都缺），但清单不完整，现补齐为 A1–A6 + B1–B6。
+
+### 6.4 今后规范（写死，避免重犯）
+
+分析**任何** App 的 shipped artifact，功能面对比**必须**先导出完整文案表，再做页面级分析：
+
+```bash
+# Android
+aapt dump --values resources app.apk > res.txt
+# 提取中文值后按 key 前缀聚类
+
+# iOS
+plutil -convert xml1 -o - Payload/App.app/zh-Hans.lproj/Localizable.strings
+# 按 key 前缀聚类
+
+# 双端交叉
+# 集合差集：仅A / 仅B / 共有 —— 共有才是产品核心，差集是版本不同步
+```
+
+只做 Activity/页面清单分析 = 只看到 30% 的功能面。
+
+### 6.5 待办
+
+B1–B6 六项是否落实、按什么顺序做，需用户决定（B1 汇率与 B6 换引擎重译对跨境场景收益最高）。
