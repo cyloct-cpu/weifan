@@ -60,6 +60,9 @@ class MainActivity : BaseActivity() {
     private lateinit var colorLabel: TextView
     private lateinit var colorSwatch: View
     private lateinit var sizeValue: TextView
+    // B4/B5
+    private lateinit var transSizeValue: TextView
+    private lateinit var historyEngineLabel: TextView
     private lateinit var resultText: TextView
     private lateinit var themeGroup: RadioGroup
     private lateinit var themeNote: TextView
@@ -241,6 +244,43 @@ class MainActivity : BaseActivity() {
             sizeRow.addView(sizeValue)
             sizeRow.addView(ghostButton("A＋") { bumpSourceTextSp(1f) }, step)
             addView(sizeRow)
+
+            // B4：译文字号（与原文分开调，参考双端都支持）
+            addView(label("译文字号"))
+            val tSizeRow = LinearLayout(this@MainActivity).apply {
+                orientation = LinearLayout.HORIZONTAL
+                gravity = Gravity.CENTER_VERTICAL
+            }
+            transSizeValue = TextView(this@MainActivity).apply {
+                text = "${prefs.translationTextSp.toInt()} sp"
+                textSize = 13f
+                setTextColor(p.text)
+                gravity = Gravity.CENTER
+                layoutParams = LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f)
+            }
+            tSizeRow.addView(ghostButton("A－") { bumpTransTextSp(-1f) }, step)
+            tSizeRow.addView(transSizeValue)
+            tSizeRow.addView(ghostButton("A＋") { bumpTransTextSp(1f) }, step)
+            addView(tSizeRow)
+
+            // B5：历史消息专用引擎（不影响输入框翻译）
+            addView(label("历史消息翻译接口"))
+            addView(TextView(this@MainActivity).apply {
+                text = "仅用于聊天窗口内历史消息的自动翻译，不影响输入框翻译。"
+                textSize = 11.5f
+                setTextColor(p.text3)
+                setPadding(0, 0, 0, dp(6))
+            })
+            historyEngineLabel = TextView(this@MainActivity).apply {
+                text = historyEngineSummary()
+                textSize = 13f
+                setTextColor(p.text)
+                background = roundBg(p.surface2, 10, 1, p.line)
+                setPadding(dp(12), dp(10), dp(12), dp(10))
+                isClickable = true
+                setOnClickListener { pickHistoryEngine() }
+            }
+            addView(historyEngineLabel)
         })
 
         // 发件（暖）
@@ -462,6 +502,37 @@ class MainActivity : BaseActivity() {
         val v = (prefs.sourceTextSp + delta).coerceIn(12f, 22f)
         prefs.sourceTextSp = v
         sizeValue.text = "${v.toInt()} sp"
+    }
+
+    /** B4：译文字号 ±1sp，限 10–22 */
+    private fun bumpTransTextSp(delta: Float) {
+        val v = (prefs.translationTextSp + delta).coerceIn(10f, 22f)
+        prefs.translationTextSp = v
+        transSizeValue.text = "${v.toInt()} sp"
+    }
+
+    /** B5：历史消息引擎当前选择摘要 */
+    private fun historyEngineSummary(): String {
+        val id = prefs.historyEngine
+        if (id.isBlank()) return "跟随全局优先级（点此指定）"
+        val label = com.weifan.app.core.Engine.configuredEngines(prefs)
+            .firstOrNull { it.first == id }?.second
+        return label?.let { "已指定：$it（点此更换）" } ?: "已指定引擎不可用，点此更换"
+    }
+
+    /** B5：选历史消息引擎 */
+    private fun pickHistoryEngine() {
+        val engines = com.weifan.app.core.Engine.configuredEngines(prefs)
+        val labels = listOf("跟随全局优先级") + engines.map { it.second }
+        android.app.AlertDialog.Builder(this)
+            .setTitle("历史消息用哪个接口")
+            .setItems(labels.toTypedArray()) { _, which ->
+                prefs.historyEngine = if (which == 0) "" else engines[which - 1].first
+                historyEngineLabel.text = historyEngineSummary()
+                Toast.makeText(this, "已保存（下次翻译生效）", Toast.LENGTH_SHORT).show()
+            }
+            .setNegativeButton("取消", null)
+            .show()
     }
 
     /** 颜色行的动态说明 */

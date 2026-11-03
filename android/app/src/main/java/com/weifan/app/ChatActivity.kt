@@ -1337,7 +1337,7 @@ class ChatActivity : BaseActivity() {
         if (!m.fromMe && m.translated.isNotBlank()) {
             col.addView(TextView(this).apply {
                 text = m.translated
-                textSize = WaSpec.TRANSLATION_TEXT_SP.toFloat()
+                textSize = prefs.translationTextSp   // B4：译文字号与原文分开调
                 // 批2-c：译文颜色可自定义（0 = 默认青蓝）
                 setTextColor(prefs.translationColor.takeIf { it != 0 } ?: WaSpec.TRANSLATE_TEXT)
                 typeface = Typeface.create("sans-serif-medium", Typeface.NORMAL)

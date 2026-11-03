@@ -453,7 +453,8 @@ class ChatEngine private constructor(context: Context) :
     fun translateIncomingAsync(chatJid: String, id: String, text: String) {
         Thread {
             try {
-                val res = Engine.translateIncoming(text, prefs)
+                // B5：历史消息用专用引擎（空则跟随全局链）
+                val res = Engine.translateIncoming(text, prefs, prefs.historyEngine.ifBlank { null })
                 if (!res.alreadyChinese && res.translated.isNotBlank()) {
                     res.sourceLanguage?.let { lang ->
                         if (lang.isNotBlank()) chatLangMemory[chatJid] = lang

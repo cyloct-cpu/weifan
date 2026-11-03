@@ -482,4 +482,30 @@ B1–B6 六项是否落实、按什么顺序做，需用户决定（B1 汇率与
 | B2 备份与恢复 | ⬜ 未开始 |
 | B3 多设备管理 | ⬜ 未开始 |
 
-B4/B5 是小改动（各约 30 分钟），B2 工作量大（导出 zip + 逐项恢复），B3 依赖服务端能力需先探测。
+### B4 译文字号　✅ 代码完成
+
+- 参考：`translation_text_font_size` + `original_text_font_size` **两个都有**（我此前误称参考只有译文字号）
+- 我们的实现：
+  - `Prefs.translationTextSp`（默认 13sp，范围 10–22）
+  - 气泡译文行 `textSize = prefs.translationTextSp`（原来写死 `WaSpec.TRANSLATION_TEXT_SP`）
+  - 翻译设置页新增「译文字号 A－/A＋」行，与原文字号并排
+- 验证：编译通过；纯数据绑定改动（原文字号同机制已验证可用）
+- 未做：字号视觉差异的实机截图比对（模拟器坐标漂移，见下）
+
+### B5 历史消息独立引擎　✅ 代码完成
+
+- 参考：`chat_history_translation_engine` +「仅用于聊天窗口内历史消息的自动翻译，不影响消息输入框翻译」
+- 我们的实现：
+  - `Prefs.historyEngine`（空 = 跟随全局优先级链）
+  - `Engine.translateIncoming(text, prefs, engineId)` 与私有 `translate(..., engineId)` 支持锁定单家
+  - `ChatEngine.translateIncomingAsync` 传入 `prefs.historyEngine`
+  - 翻译设置页新增「历史消息翻译接口」行，点击弹引擎列表（含「跟随全局优先级」）
+- 验证：编译通过；未做实机端到端（需有效引擎密钥 + 新收件消息）
+
+### 模拟器验证的现实限制（如实记录）
+
+本轮下半程出现**坐标漂移**：`adb shell input tap` 的落点与截图坐标持续不一致
+（点列表页头部却进了联络人资料页），`uiautomator dump` 也频繁 `could not get idle state`。
+根因推测是长会话（30+ 气泡 + 媒体）滚动后布局与点击时序不同步。
+结论：**B4/B5 这类纯绑定改动以编译 + 代码审查为准，B6 的 UI 触发留待真机验证**；
+不把「未能自动化验证」说成「已验证」。

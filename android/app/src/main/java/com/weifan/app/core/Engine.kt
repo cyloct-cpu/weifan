@@ -205,7 +205,9 @@ object Engine {
         )
     }
 
-    fun translateIncoming(text: String, prefs: Prefs): IncomingOutcome {
+    fun translateIncoming(text: String, prefs: Prefs,
+                         /** B5：历史消息专用引擎；null/空 = 跟随全局链 */
+                         engineId: String? = null): IncomingOutcome {
         val started = System.currentTimeMillis()
         val detection = Detector.detect(text)
 
@@ -215,7 +217,8 @@ object Engine {
         }
 
         val decision = Routing.route(text, "casual", prefs.longSentenceThreshold)
-        val result = translate(text, detection?.language, "zh-Hans", "casual", decision.route, prefs)
+        val result = translate(text, detection?.language, "zh-Hans", "casual",
+            decision.route, prefs, engineId)
 
         return IncomingOutcome(
             translated = result.text,
@@ -234,7 +237,8 @@ object Engine {
         target: String,
         style: String,
         route: String,
-        prefs: Prefs
+        prefs: Prefs,
+        engineId: String? = null
     ): Providers.Result {
         Providers.promptOverride = prefs.promptTemplate
         val result = Providers.translate(
@@ -245,7 +249,7 @@ object Engine {
             route = route,
             creds = prefs.allCredentials(),
             customs = prefs.customs,
-            selection = prefs.selection,
+            selection = engineId?.takeIf { it.isNotBlank() } ?: prefs.selection,
             chainOrder = prefs.serviceChainOrder,
             chainOff = prefs.serviceChainOff,
             blocked = prefs.blockedProviders()

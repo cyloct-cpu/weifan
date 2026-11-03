@@ -175,6 +175,19 @@ class Prefs(context: Context) {
         get() = sp.getFloat("src_sp", 15f)
         set(value) = sp.edit().putFloat("src_sp", value).apply()
 
+    /** B4：译文字号（sp）；13 = 默认。与原文分开可调（参考双端都支持） */
+    var translationTextSp: Float
+        get() = sp.getFloat("trans_sp", 13f)
+        set(value) = sp.edit().putFloat("trans_sp", value).apply()
+
+    /**
+     * B5：历史消息（收件自动翻译）专用引擎 id；空串 = 跟随全局优先级链。
+     * 参考文案：仅用于聊天窗口内历史消息的自动翻译，不影响消息输入框翻译。
+     */
+    var historyEngine: String
+        get() = sp.getString("history_engine", "") ?: ""
+        set(value) = sp.edit().putString("history_engine", value).apply()
+
     /**
      * 接口延时探测结果：providerId → ms（-1 = 失败）。
      * 自定义接口的 id 本身带冒号（custom:xxxx），所以用 '=' 分隔，不能用 ':'。
