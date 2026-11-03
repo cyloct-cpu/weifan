@@ -43,7 +43,9 @@ object Brand {
 
     /** 浅色（昼） */
     val LIGHT = Palette(
-        bg = Color.parseColor("#EFF2F5"),
+        // 对齐参考：它的页面底色就是纯白 wa_surface=#ffffffff（平面风，不用卡片浮在灰底）。
+        // 之前用 #EFF2F5 灰底，和白底页并排时整体发灰。
+        bg = Color.WHITE,
         surface = Color.WHITE,
         surface2 = Color.parseColor("#F5F6F6"),
         line = Color.parseColor("#E4E7EA"),

@@ -38,7 +38,25 @@ abstract class BaseActivity : Activity() {
         super.onCreate(savedInstanceState)
         prefs = Prefs(this)
         night = Brand.isNight(this, prefs)
+        applyStatusBar()
         startWatcher()
+    }
+
+    /**
+     * 状态栏跟着页面底色走（对齐参考：登录/配对页白底时状态栏也白）。
+     * 之前只有 3 个页面单独设，其余页面留着默认灰带，并排一看就突兀。
+     * 夜间用深色底 + 亮图标，白天用浅色底 + 暗图标（LIGHT_STATUS_BAR）。
+     */
+    protected fun applyStatusBar(bg: Int? = null) {
+        try {
+            val fill = bg ?: Brand.palette(night).bg
+            window.statusBarColor = fill
+            val v = window.decorView
+            var flags = v.systemUiVisibility
+            flags = if (night) flags and android.view.View.SYSTEM_UI_FLAG_LIGHT_STATUS_BAR.inv()
+                    else flags or android.view.View.SYSTEM_UI_FLAG_LIGHT_STATUS_BAR
+            v.systemUiVisibility = flags
+        } catch (_: Throwable) { }
     }
 
     override fun onResume() {
