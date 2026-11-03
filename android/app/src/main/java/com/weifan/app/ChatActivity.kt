@@ -67,6 +67,7 @@ class ChatActivity : BaseActivity() {
     private lateinit var chatSearchInput: EditText
     // A5/A6：建议面板（@ 提及 / 斜杠命令）
     private lateinit var suggestionPanel: LinearLayout
+    private lateinit var suggestScroll: android.widget.ScrollView
     private var groupMembers: List<Pair<String, String>> = emptyList()   // phone → 名字
     // 头部标签徽章（批1-c）
     private lateinit var labelBadges: HorizontalScrollView
@@ -445,6 +446,10 @@ class ChatActivity : BaseActivity() {
             bottomMargin = dp(6)
         })
         // ── A5/A6 建议面板（@ 提及 / 斜杠命令），默认隐藏，在输入胶囊上方
+        // 参考 slash_command_panel_max_height = 430dp；超出的滚动
+        suggestScroll = android.widget.ScrollView(this).apply {
+            isVerticalScrollBarEnabled = false
+        }
         suggestionPanel = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
             background = Ui.roundBg(this@ChatActivity,
@@ -452,10 +457,13 @@ class ChatActivity : BaseActivity() {
             setPadding(dp(6), dp(4), dp(6), dp(4))
             visibility = View.GONE
         }
-        bottomWrap.addView(suggestionPanel, LinearLayout.LayoutParams(
-            ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply {
+        // 装进 ScrollView 并限高 430dp（参考 slash_command_panel_max_height）
+        suggestScroll.addView(suggestionPanel)
+        bottomWrap.addView(suggestScroll, LinearLayout.LayoutParams(
+            ViewGroup.LayoutParams.MATCH_PARENT, dp(430)).apply {
             bottomMargin = dp(6)
         })
+        suggestScroll.visibility = View.GONE
         row.addView(capsule, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
 
         // 发送圆钮 48dp，左间距 4dp
@@ -1319,6 +1327,19 @@ class ChatActivity : BaseActivity() {
                                     onPick: (String, String) -> Unit) {
         if (items.isEmpty()) { hideSuggestions(); return }
         suggestionPanel.removeAllViews()
+        val isMentionEarly = items.firstOrNull()?.second?.startsWith("@") == true
+        // 对齐参考 layout_slash_command_panel：标题行 13sp BOLD，padding 14/8/14/4
+        // （斜杠面板标题「快速回复」；@提及面板无标题，直接在列表下方给空态）
+        if (!isMentionEarly) {
+            suggestionPanel.addView(TextView(this).apply {
+                text = "快速回复"
+                textSize = 13f
+                setTypeface(typeface, Typeface.BOLD)
+                setTextColor(WaSpec.textSecondary(night))
+                setPadding(dp(14), dp(8), dp(14), dp(4))
+            }, LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT))
+        }
         // 参考区分两种行：
         //   item_slash_command：padding 14/4，命令名 15sp + 描述 13sp（两列）
         //   item_group_mention_row：padding 12/8，单一 14sp
@@ -1365,12 +1386,23 @@ class ChatActivity : BaseActivity() {
             }
         }
         suggestionPanel.visibility = View.VISIBLE
+        suggestScroll.visibility = View.VISIBLE
+        // 内容不满 430dp 时不要占满整块：交给 ScrollView 的 wrap 行为
+        suggestionPanel.post {
+            val h = suggestionPanel.height
+            if (h > 0) {
+                suggestScroll.layoutParams = suggestScroll.layoutParams.apply {
+                    height = minOf(h, dp(430))
+                }
+            }
+        }
     }
 
     private fun hideSuggestions() {
         if (::suggestionPanel.isInitialized) {
             suggestionPanel.visibility = View.GONE
             suggestionPanel.removeAllViews()
+            suggestScroll.visibility = View.GONE
         }
     }
 
