@@ -206,6 +206,39 @@
 
 ## 4. iOS 版本（环境与开发）
 
-- 环境结论：见 0.1 / 0.2
-- 部署路径：`/Volumes/CY-MAC/ios-dev/`
-- 进度：_待填_
+### 4.1 环境结论（实测）
+
+| 步骤 | 结果 |
+|---|---|
+| 磁盘测算 | 系统盘可用 **30GB**；Xcode 27.2 下载约 12GB + 解包约 40GB，**峰值需 ~52GB** → 装不下 |
+| 外置盘 | `/Volumes/CY-MAC` 可用 **305GB** → 部署目标 `/Volumes/CY-MAC/ios-dev/` |
+| `swift build`（CLT） | ✗ 失败：`PackageDescription` 未定义符号 —— CLT 缺 SwiftPM 组件，连 `Package.swift` 都链不上 |
+| 现有 SDK | 只有 macOS SDK（无 iOS SDK） |
+| App Store | ✅ **已登录**（cc cyc），Xcode 27.2 在已购项目里（`mas info 497799835` 可查到） |
+| `mas`（7.0.0） | ✅ 已装，能查到 Xcode；但只能装到 `/Applications` → 空间不足 |
+| `xcodes` CLI | ✗ 安装失败：`xcbuild does not exist` —— 它自己要用 Xcode 构建（鸡生蛋） |
+| 清理缓存 | 清了 go-build / Adobe Camera Raw / astravia-updater，系统盘仍 30GB（APFS 快照占位） |
+
+**唯一可靠路径：从 developer.apple.com 下载 Xcode `.xip` 到外置盘 → `xip --expand` 直接解包到外置盘（不占系统盘）。**
+
+已备好两条脚本：
+- `ios/install-xcode-from-xip.sh <xip路径>`：解包到 `/Volumes/CY-MAC/ios-dev` → `xcode-select` → `xcodebuild -runFirstLaunch` → `xcodegen generate` → 验证 `swift build`
+- `ios/setup-xcode.sh`：App Store 路线（若哪天系统盘清出 ≥55GB 可用）
+
+### 4.2 iOS 项目现状（已有基础，非从零）
+
+| 项 | 内容 |
+|---|---|
+| 形态 | **翻译工具**：主 App + 键盘扩展 + 分享扩展（不连 WhatsApp，与 Android 定位不同） |
+| 工程生成 | XcodeGen：`ios/project.yml`（iOS 16.0，bundle `com.weifan.app`，产品名「微翻」） |
+| 源码 | 8 个 Swift 文件 / 1213 行：`WeiFanApp`、`CustomersView`、`GlossaryView`、`SendView`、`SettingsView`、`KeyboardViewController`、`ShareViewController`、`Keychain` |
+| 依赖 | Swift Package `WeiFanCore`（`weifan/core`，含 Providers/Routing/Glossary/LanguageDetector/Storage/TranslationCore + Tests） |
+| 资源配置 | 三套 Info.plist + 三套 entitlements（App/Keyboard/Share）已就位 |
+
+### 4.3 阻塞项（需人工一步）
+
+Xcode `.xip` 下载必须登录 Apple ID（浏览器会话），无法脚本化。下载存到 `/Volumes/CY-MAC/` 后，执行：
+```bash
+cd weifan && ./ios/install-xcode-from-xip.sh /Volumes/CY-MAC/Xcode_*.xip
+```
+脚本会完成解包、工具链切换、工程生成与 Core 编译验证。
