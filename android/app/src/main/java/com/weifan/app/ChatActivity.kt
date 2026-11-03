@@ -1603,10 +1603,20 @@ class ChatActivity : BaseActivity() {
         if (m.fromMe) {
             box.addView(item("撤回") {
                 dlg.dismiss()
-                engine.revokeAsync(chatJid, m.id) { ok ->
-                    Toast.makeText(this, if (ok) "已撤回" else "撤回失败", Toast.LENGTH_SHORT).show()
-                    if (ok) renderMessages()
-                }
+                // 对齐参考 dialog_revoke_message：撤回前先确认（正文 15sp + padding 20）
+                android.app.AlertDialog.Builder(this)
+                    .setTitle("撤回这条消息？")
+                    .setView(Ui.confirmBody(this, "撤回后对方也会看到「已撤回」，无法恢复。",
+                        m.text.take(60).ifBlank { null }, night))
+                    .setPositiveButton("撤回") { _, _ ->
+                        engine.revokeAsync(chatJid, m.id) { ok ->
+                            Toast.makeText(this,
+                                if (ok) "已撤回" else "撤回失败", Toast.LENGTH_SHORT).show()
+                            if (ok) renderMessages()
+                        }
+                    }
+                    .setNegativeButton("取消", null)
+                    .show()
             })
             if (m.mediaKind.isBlank()) box.addView(item("编辑") {
                 dlg.dismiss()
@@ -1791,30 +1801,82 @@ class ChatActivity : BaseActivity() {
 
     /** 转发：会话选择器（当前会话除外） */
     private fun showForwardPicker(m: MessageRow) {
-        val chats = engine.db.chats().filter { it.jid != chatJid }
-        if (chats.isEmpty()) {
+        val allChats = engine.db.chats().filter { it.jid != chatJid }
+        if (allChats.isEmpty()) {
             Toast.makeText(this, "暂无其他会话可转发", Toast.LENGTH_SHORT).show()
             return
         }
-        val names = chats.map { it.title.ifBlank { it.jid.substringBefore("@") } }.toTypedArray()
-        android.app.AlertDialog.Builder(this)
-            .setTitle("转发到")
-            .setItems(names) { _, i ->
-                val target = chats[i].jid
-                if (m.mediaKind.isNotBlank() && m.mediaMeta.isNotBlank()) {
-                    engine.forwardMediaAsync(target, m.mediaMeta) { _, err ->
-                        Toast.makeText(this, if (err != null) "转发失败：$err" else "已转发",
-                            Toast.LENGTH_SHORT).show()
-                    }
-                } else {
-                    engine.forwardTextAsync(target, m.text) { _, err ->
-                        Toast.makeText(this, if (err != null) "转发失败：$err" else "已转发",
-                            Toast.LENGTH_SHORT).show()
+        // 对齐参考 dialog_forward_chat：20sp 标题 + 15sp 搜索框 + 会话列表
+        val listBox = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
+        lateinit var dlg: android.app.AlertDialog
+
+        fun renderList(query: String) {
+            listBox.removeAllViews()
+            val hits = allChats.filter {
+                query.isBlank() || it.title.contains(query, true) || it.jid.contains(query)
+            }
+            if (hits.isEmpty()) {
+                listBox.addView(TextView(this).apply {
+                    text = "没有匹配的会话"
+                    textSize = 14f
+                    setTextColor(WaSpec.textSecondary(night))
+                    gravity = Gravity.CENTER
+                    setPadding(0, dp(24), 0, dp(24))
+                })
+                return
+            }
+            for (c in hits.take(30)) {
+                val row = LinearLayout(this).apply {
+                    orientation = LinearLayout.HORIZONTAL
+                    gravity = Gravity.CENTER_VERTICAL
+                    setPadding(dp(4), dp(10), dp(4), dp(10))
+                    isClickable = true
+                    setOnClickListener {
+                        dlg.dismiss()
+                        if (m.mediaKind.isNotBlank() && m.mediaMeta.isNotBlank()) {
+                            engine.forwardMediaAsync(c.jid, m.mediaMeta) { _, err ->
+                                Toast.makeText(this@ChatActivity,
+                                    if (err != null) "转发失败：$err" else "已转发",
+                                    Toast.LENGTH_SHORT).show()
+                            }
+                        } else {
+                            engine.forwardTextAsync(c.jid, m.text) { _, err ->
+                                Toast.makeText(this@ChatActivity,
+                                    if (err != null) "转发失败：$err" else "已转发",
+                                    Toast.LENGTH_SHORT).show()
+                            }
+                        }
                     }
                 }
+                row.addView(initialAvatar(c.title.ifBlank { c.jid.substringBefore("@") }, dp(36)))
+                row.addView(TextView(this).apply {
+                    text = c.title.ifBlank { c.jid.substringBefore("@") }
+                    textSize = 15f
+                    setTextColor(WaSpec.textPrimary(night))
+                    maxLines = 1
+                }, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f).apply {
+                    marginStart = dp(10)
+                })
+                listBox.addView(row)
             }
+        }
+
+        val shell = Ui.pickerDialogShell(this, "转发到", "搜索会话", night) { q -> renderList(q) }
+        renderList("")
+        // ScrollView 没有 maxHeight 属性，用固定高度上限（参考 slash_command_panel 430dp）
+        val scroll = android.widget.ScrollView(this).apply {
+            addView(listBox)
+        }
+        shell.addView(scroll, LinearLayout.LayoutParams(
+            ViewGroup.LayoutParams.MATCH_PARENT, dp(300)))
+
+        dlg = android.app.AlertDialog.Builder(this)
+            .setView(shell)
             .setNegativeButton("取消", null)
-            .show()
+            .create()
+        dlg.show()
+        dlg.window?.setSoftInputMode(
+            android.view.WindowManager.LayoutParams.SOFT_INPUT_ADJUST_RESIZE)
     }
 
     // MARK: - 附件面板（对齐 WATransChat 附加菜单）

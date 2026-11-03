@@ -390,6 +390,125 @@ object Ui {
         return Triple(row, input, send)
     }
 
+    // ────────────────────── 弹层规格族（对齐参考 dialog_* 五族）──────────────────────
+    // 参考的 40+ 个弹层其实只有 5 种规格，从 layout dump 归纳：
+    //   ① 普通表单：padding 20/22/20/18 + 标题 17sp
+    //   ② 大标题：  padding 20/22/20/20 + 标题 20sp
+    //   ③ 选择型：  标题 20sp + 搜索框 15sp
+    //   ④ 行式：    行高 40dp + 16sp
+    //   ⑤ 确认型：  正文 15sp + padding 20
+    // 统一走这几个工厂，避免每个弹层各写一套 padding/字号。
+
+    /** ① 普通表单弹层：padding 20/22/20/18 + 标题 17sp */
+    fun formDialogShell(context: Context, title: String, night: Boolean,
+                        content: View): LinearLayout = LinearLayout(context).apply {
+        orientation = LinearLayout.VERTICAL
+        setPadding(dp(context, 20), dp(context, 22), dp(context, 20), dp(context, 18))
+        addView(TextView(context).apply {
+            text = title
+            textSize = 17f
+            typeface = android.graphics.Typeface.DEFAULT_BOLD
+            setTextColor(WaSpec.textPrimary(night))
+        })
+        addView(content, LinearLayout.LayoutParams(
+            ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply {
+            topMargin = dp(context, 12)
+        })
+    }
+
+    /** ② 大标题弹层：padding 20/22/20/20 + 标题 20sp */
+    fun bigTitleDialogShell(context: Context, title: String, night: Boolean,
+                            content: View): LinearLayout = LinearLayout(context).apply {
+        orientation = LinearLayout.VERTICAL
+        setPadding(dp(context, 20), dp(context, 22), dp(context, 20), dp(context, 20))
+        addView(TextView(context).apply {
+            text = title
+            textSize = 20f
+            typeface = android.graphics.Typeface.DEFAULT_BOLD
+            setTextColor(WaSpec.textPrimary(night))
+        })
+        addView(content, LinearLayout.LayoutParams(
+            ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply {
+            topMargin = dp(context, 14)
+        })
+    }
+
+    /** ③ 选择型弹层：标题 20sp + 搜索框 15sp（转发/新建会话/选标签都用它） */
+    fun pickerDialogShell(context: Context, title: String, hint: String, night: Boolean,
+                          onQuery: (String) -> Unit): LinearLayout {
+        val box = LinearLayout(context).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding(dp(context, 20), dp(context, 22), dp(context, 20), dp(context, 8))
+        }
+        box.addView(TextView(context).apply {
+            text = title
+            textSize = 20f
+            typeface = android.graphics.Typeface.DEFAULT_BOLD
+            setTextColor(WaSpec.textPrimary(night))
+        })
+        box.addView(EditText(context).apply {
+            this.hint = hint
+            textSize = 15f
+            setTextColor(WaSpec.textPrimary(night))
+            setHintTextColor(WaSpec.textSecondary(night))
+            setBackground(roundBg(context,
+                if (night) WaSpec.SEARCH_BG_NIGHT else WaSpec.GRAY6, 10))
+            setPadding(dp(context, 12), dp(context, 9), dp(context, 12), dp(context, 9))
+            maxLines = 1
+            addTextChangedListener(object : android.text.TextWatcher {
+                override fun beforeTextChanged(s: CharSequence?, a: Int, b: Int, c: Int) {}
+                override fun onTextChanged(s: CharSequence?, a: Int, b: Int, c: Int) {}
+                override fun afterTextChanged(s: android.text.Editable?) {
+                    onQuery(s?.toString() ?: "")
+                }
+            })
+        }, LinearLayout.LayoutParams(
+            ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply {
+            topMargin = dp(context, 12)
+        })
+        return box
+    }
+
+    /** ④ 行式弹层的一行：行高 40dp + 16sp（poll 选项/联系人选择/商品/活动都用） */
+    fun dialogRow(context: Context, text: String, night: Boolean,
+                  hint: String? = null, onClick: (() -> Unit)? = null): TextView =
+        TextView(context).apply {
+            this.text = text
+            this.hint = hint
+            textSize = 16f
+            setTextColor(WaSpec.textPrimary(night))
+            setHintTextColor(WaSpec.textSecondary(night))
+            gravity = android.view.Gravity.CENTER_VERTICAL
+            background = roundBg(context,
+                if (night) WaSpec.SEARCH_BG_NIGHT else WaSpec.GRAY6, 10)
+            setPadding(dp(context, 12), 0, dp(context, 12), 0)
+            minHeight = dp(context, 40)
+            if (onClick != null) {
+                isClickable = true
+                setOnClickListener { onClick() }
+            }
+        }
+
+    /** ⑤ 确认弹层正文：15sp + 可带明细 */
+    fun confirmBody(context: Context, text: String, detail: String?, night: Boolean): LinearLayout =
+        LinearLayout(context).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding(dp(context, 20), dp(context, 8), dp(context, 20), dp(context, 4))
+            addView(TextView(context).apply {
+                this.text = text
+                textSize = 15f
+                setTextColor(WaSpec.textPrimary(night))
+            })
+            if (!detail.isNullOrBlank()) {
+                addView(TextView(context).apply {
+                    this.text = detail
+                    textSize = 13f
+                    setTextColor(WaSpec.textSecondary(night))
+                    setPadding(0, dp(context, 6), 0, 0)
+                })
+            }
+        }
+
     fun withMargin(context: Context, view: View, top: Int, bottom: Int = 0): View {
         val lp = LinearLayout.LayoutParams(
             ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT
