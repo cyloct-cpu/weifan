@@ -188,6 +188,44 @@ class Prefs(context: Context) {
         get() = sp.getString("history_engine", "") ?: ""
         set(value) = sp.edit().putString("history_engine", value).apply()
 
+    // ── U1 会话级客户设置（对齐参考 dialog_customer_language：目标语言 + 翻译引擎）──
+
+    /** 某个会话的客户设置：(目标语言, 引擎 id)；空串 = 不覆盖 */
+    data class ChatSetting(val lang: String = "", val engine: String = "")
+
+    private fun chatSettingsMap(): MutableMap<String, ChatSetting> {
+        val raw = sp.getString("chat_settings", "") ?: ""
+        val out = mutableMapOf<String, ChatSetting>()
+        if (raw.isBlank()) return out
+        return try {
+            val o = org.json.JSONObject(raw)
+            val keys = o.keys()
+            while (keys.hasNext()) {
+                val k = keys.next()
+                val v = o.optJSONObject(k) ?: continue
+                out[k] = ChatSetting(v.optString("lang", ""), v.optString("engine", ""))
+            }
+            out
+        } catch (_: Throwable) { out }
+    }
+
+    private fun saveChatSettings(map: Map<String, ChatSetting>) {
+        val o = org.json.JSONObject()
+        for ((k, v) in map) {
+            if (v.lang.isBlank() && v.engine.isBlank()) continue
+            o.put(k, org.json.JSONObject().put("lang", v.lang).put("engine", v.engine))
+        }
+        sp.edit().putString("chat_settings", o.toString()).apply()
+    }
+
+    fun chatSetting(jid: String): ChatSetting = chatSettingsMap()[jid] ?: ChatSetting()
+
+    fun setChatSetting(jid: String, setting: ChatSetting) {
+        val m = chatSettingsMap()
+        if (setting.lang.isBlank() && setting.engine.isBlank()) m.remove(jid) else m[jid] = setting
+        saveChatSettings(m)
+    }
+
     /**
      * 接口延时探测结果：providerId → ms（-1 = 失败）。
      * 自定义接口的 id 本身带冒号（custom:xxxx），所以用 '=' 分隔，不能用 ':'。

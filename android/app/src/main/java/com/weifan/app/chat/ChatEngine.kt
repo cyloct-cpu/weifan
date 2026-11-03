@@ -474,8 +474,12 @@ class ChatEngine private constructor(context: Context) :
                 val res = Engine.translateForSending(
                     text = text,
                     prefs = prefs,
-                    explicitTarget = prefs.waTargetLang.ifBlank { null },
-                    chatLanguage = chatLangMemory[chatJid]
+                    // U1：会话级客户设置优先（在「客户语言」弹层锁定过就用它）
+                    explicitTarget = prefs.chatSetting(chatJid).lang.ifBlank {
+                        prefs.waTargetLang
+                    }.ifBlank { null },
+                    chatLanguage = chatLangMemory[chatJid],
+                    engineId = prefs.chatSetting(chatJid).engine.ifBlank { null }
                 )
                 chatLangMemory[chatJid] = res.target
                 main.post {
@@ -501,8 +505,12 @@ class ChatEngine private constructor(context: Context) :
                 val res = Engine.translateForSending(
                     text = originalText,
                     prefs = prefs,
-                    explicitTarget = prefs.waTargetLang.ifBlank { null },
-                    chatLanguage = chatLangMemory[chatJid]
+                    // U1：会话级客户设置优先（在「客户语言」弹层锁定过就用它）
+                    explicitTarget = prefs.chatSetting(chatJid).lang.ifBlank {
+                        prefs.waTargetLang
+                    }.ifBlank { null },
+                    chatLanguage = chatLangMemory[chatJid],
+                    engineId = prefs.chatSetting(chatJid).engine.ifBlank { null }
                 )
                 if (res.translated.isBlank()) {
                     main.post { onResult(null, "翻译失败，消息未发送") }

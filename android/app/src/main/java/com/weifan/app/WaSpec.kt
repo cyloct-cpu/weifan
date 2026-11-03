@@ -106,6 +106,15 @@ object WaSpec {
     const val LIST_AVATAR_SIZE_DP = 50                 // 列表头像
     const val CHAT_AVATAR_SIZE_DP = 43                 // 会话页头头像 headerAvatarContainer
     const val SENDER_AVATAR_SIZE_DP = 25               // 群内发送者小头像
+    // U2：头像环（参考 drawable/bg_avatar_ring：OVAL + solid wa_gray5 + 1dp wa_avatar_stroke）
+    val AVATAR_RING_FILL = Color.parseColor("#E5E5EA")          // wa_gray5
+    val AVATAR_RING_FILL_NIGHT = Color.parseColor("#38383A")
+    val AVATAR_RING_STROKE = 0x0F000000                          // wa_avatar_stroke
+    val AVATAR_RING_STROKE_NIGHT = 0x33FFFFFF.toInt()
+    fun avatarRingFill(night: Boolean) = if (night) AVATAR_RING_FILL_NIGHT else AVATAR_RING_FILL
+    fun avatarRingStroke(night: Boolean) =
+        if (night) AVATAR_RING_STROKE_NIGHT else AVATAR_RING_STROKE
+    const val SENDER_AVATAR_GAP_DP = 6                           // chat_sender_avatar_gap
     const val BUBBLE_MAX_WIDTH_DP = 280
     const val BUBBLE_CORNER_DP = 10
     const val BUBBLE_SIDE_INSET_DP = 8

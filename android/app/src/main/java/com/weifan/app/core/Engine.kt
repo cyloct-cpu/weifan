@@ -142,7 +142,9 @@ object Engine {
         prefs: Prefs,
         explicitTarget: String? = null,
         chatLanguage: String? = null,
-        contextSample: String? = null
+        contextSample: String? = null,
+        /** U1：会话级指定的引擎（客户语言弹层），null = 走全局链 */
+        engineId: String? = null
     ): SendOutcome {
         val started = System.currentTimeMillis()
 
@@ -178,7 +180,7 @@ object Engine {
         val decision = Routing.route(protectedText.masked, style, prefs.longSentenceThreshold)
 
         // ④ 翻译
-        val result = translate(protectedText.masked, "zh-Hans", resolved.first, style, decision.route, prefs)
+        val result = translate(protectedText.masked, "zh-Hans", resolved.first, style, decision.route, prefs, engineId)
 
         // ⑤ 还原
         val translated = Glossary.restore(result.text, protectedText.units)

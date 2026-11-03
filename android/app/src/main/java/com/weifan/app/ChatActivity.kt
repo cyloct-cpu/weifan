@@ -142,7 +142,7 @@ class ChatActivity : BaseActivity() {
         }, LinearLayout.LayoutParams(dp(WaSpec.CHAT_BACK_BTN_DP), dp(WaSpec.CHAT_BACK_BTN_DP)))
 
         // 头像 43dp，左间距 4dp
-        top.addView(avatarView(), LinearLayout.LayoutParams(
+        top.addView(avatarWithRing(), LinearLayout.LayoutParams(
             dp(WaSpec.CHAT_AVATAR_SIZE_DP), dp(WaSpec.CHAT_AVATAR_SIZE_DP)).apply {
             marginStart = dp(4)
         })
@@ -209,6 +209,16 @@ class ChatActivity : BaseActivity() {
             marginStart = dp(8)
         })
 
+        // 客户语言（对齐参考 customerLanguageButton 40dp —— 会话级指定客户语言与引擎）
+        top.addView(TextView(this).apply {
+            text = "文"
+            textSize = 15f
+            gravity = Gravity.CENTER
+            setTextColor(WaSpec.textPrimary(night))
+            isClickable = true
+            contentDescription = "客户语言"
+            setOnClickListener { showCustomerLanguageDialog() }
+        }, LinearLayout.LayoutParams(dp(WaSpec.CHAT_BACK_BTN_DP), dp(WaSpec.CHAT_BACK_BTN_DP)))
         // 会话内搜索（对齐参考 searchButton 40dp ic_search_messages_header）
         top.addView(TextView(this).apply {
             text = "🔍"
@@ -515,6 +525,23 @@ class ChatActivity : BaseActivity() {
                     } catch (_: Throwable) { }
                 }.start()
             }
+        }
+    }
+
+    /**
+     * U2：带环的头像容器（对齐参考 headerAvatarContainer 三层：头像图 + bg_avatar_ring + 占位）。
+     * 环 = 灰底圆 + 1dp 描边；头像内缩 1dp 让描边露出来（同尺寸铺满会被盖住）。
+     */
+    private fun avatarWithRing(): View {
+        val size = dp(WaSpec.CHAT_AVATAR_SIZE_DP)
+        val ring = Ui.roundBg(this@ChatActivity, WaSpec.avatarRingFill(night),
+            size / 2, 1, WaSpec.avatarRingStroke(night))
+        return android.widget.FrameLayout(this).apply {
+            addView(android.view.View(this@ChatActivity).apply { background = ring },
+                android.widget.FrameLayout.LayoutParams(size, size))
+            addView(avatarView(), android.widget.FrameLayout.LayoutParams(size - dp(2), size - dp(2)).apply {
+                gravity = Gravity.CENTER
+            })
         }
     }
 
@@ -1389,7 +1416,8 @@ class ChatActivity : BaseActivity() {
             background = Ui.roundBg(this@ChatActivity,
                 WaSpec.bubbleSent(night).let { if (m.fromMe) it else WaSpec.bubbleReceived(night) },
                 WaSpec.BUBBLE_CORNER_DP)
-            setPadding(dp(12), dp(8), dp(12), dp(6))
+            // 内边距对齐参考 item_message_received：10/6/10/6（原来 12/8/12/6 偏大）
+            setPadding(dp(10), dp(6), dp(10), dp(6))
         }, FrameLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT,
             ViewGroup.LayoutParams.WRAP_CONTENT).apply {
             gravity = if (m.fromMe) Gravity.END else Gravity.START
@@ -1574,6 +1602,118 @@ class ChatActivity : BaseActivity() {
      * B6：选一家引擎重译这条消息。
      * 列出已配置密钥的引擎；没有则提示先去设置填。
      */
+    /**
+     * 客户语言设置弹层（对齐参考 dialog_customer_language）。
+     * 精确规格（从参考布局 dump）：容器垂直 + padding 20dp；
+     * 两个标签 14sp；两个下拉各 48dp 高 + padding 12dp；
+     * 第一个下拉 marginTop 8dp / marginBottom 16dp，第二个仅 marginTop 8dp。
+     *
+     * 内容是两个维度：目标语言（客户说什么）+ 翻译引擎（这家客户用哪家接口）。
+     * 一旦指定，该会话的发送翻译就锁定这个语言/引擎，不再靠自动检测。
+     */
+    private fun showCustomerLanguageDialog() {
+        val cur = prefs.chatSetting(chatJid)
+        var lang = cur.lang
+        var engine = cur.engine
+
+        val box = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding(dp(20), dp(20), dp(20), dp(4))
+        }
+
+        // ── 目标语言（客户说什么）
+        box.addView(TextView(this).apply {
+            text = "目标语言（该客户说什么）"
+            textSize = 14f
+            setTextColor(WaSpec.textPrimary(night))
+        })
+        val langBtn = TextView(this).apply {
+            text = ""
+            textSize = 15f
+            setTextColor(WaSpec.textPrimary(night))
+            gravity = Gravity.CENTER_VERTICAL
+            background = Ui.roundBg(this@ChatActivity,
+                if (night) WaSpec.SEARCH_BG_NIGHT else WaSpec.GRAY6, 10)
+            setPadding(dp(12), 0, dp(12), 0)
+            isClickable = true
+        }
+        box.addView(langBtn, LinearLayout.LayoutParams(
+            ViewGroup.LayoutParams.MATCH_PARENT, dp(48)).apply {
+            topMargin = dp(8); bottomMargin = dp(16)
+        })
+
+        // ── 翻译引擎（该客户用哪家）
+        box.addView(TextView(this).apply {
+            text = "翻译引擎（该客户用哪家）"
+            textSize = 14f
+            setTextColor(WaSpec.textPrimary(night))
+        })
+        val engineBtn = TextView(this).apply {
+            text = ""
+            textSize = 15f
+            setTextColor(WaSpec.textPrimary(night))
+            gravity = Gravity.CENTER_VERTICAL
+            background = Ui.roundBg(this@ChatActivity,
+                if (night) WaSpec.SEARCH_BG_NIGHT else WaSpec.GRAY6, 10)
+            setPadding(dp(12), 0, dp(12), 0)
+            isClickable = true
+        }
+        box.addView(engineBtn, LinearLayout.LayoutParams(
+            ViewGroup.LayoutParams.MATCH_PARENT, dp(48)).apply { topMargin = dp(8) })
+
+        fun refresh() {
+            langBtn.text = if (lang.isBlank()) "自动检测（跟随对方国家）"
+            else com.weifan.app.core.CountryDetect.langName(lang) + "  " + lang
+            engineBtn.text = if (engine.isBlank()) "跟随全局优先级"
+            else com.weifan.app.core.Engine.configuredEngines(prefs)
+                .firstOrNull { it.first == engine }?.second ?: "$engine（未配置）"
+        }
+        refresh()
+
+        langBtn.setOnClickListener {
+            val codes = com.weifan.app.core.Lang.sendTargets
+            val labels = listOf("自动检测（跟随对方国家）") +
+                codes.map { com.weifan.app.core.CountryDetect.langName(it) + "  " + it }
+            android.app.AlertDialog.Builder(this)
+                .setTitle("目标语言")
+                .setItems(labels.toTypedArray()) { _, which ->
+                    lang = if (which == 0) "" else codes[which - 1]
+                    refresh()
+                }
+                .setNegativeButton("取消", null)
+                .show()
+        }
+
+        engineBtn.setOnClickListener {
+            val engines = com.weifan.app.core.Engine.configuredEngines(prefs)
+            val labels = listOf("跟随全局优先级") + engines.map { it.second }
+            android.app.AlertDialog.Builder(this)
+                .setTitle("翻译引擎")
+                .setItems(labels.toTypedArray()) { _, which ->
+                    engine = if (which == 0) "" else engines[which - 1].first
+                    refresh()
+                }
+                .setNegativeButton("取消", null)
+                .show()
+        }
+
+        android.app.AlertDialog.Builder(this)
+            .setTitle("客户语言")
+            .setView(box)
+            .setPositiveButton("保存") { _, _ ->
+                prefs.setChatSetting(chatJid,
+                    Prefs.ChatSetting(lang = lang, engine = engine))
+                // 锁定的语言同步到内存，副标题与发送翻译立刻生效
+                if (lang.isNotBlank()) this@ChatActivity.engine.chatLangMemory[chatJid] = lang
+                chatLangLabel = if (lang.isNotBlank())
+                    com.weifan.app.core.CountryDetect.label(chatJid).ifBlank { chatLangLabel }
+                else chatLangLabel
+                Toast.makeText(this, "已保存该客户的设置", Toast.LENGTH_SHORT).show()
+            }
+            .setNegativeButton("取消", null)
+            .show()
+    }
+
     private fun showRetranslatePicker(m: MessageRow) {
         val engines = com.weifan.app.core.Engine.configuredEngines(prefs)
         if (engines.isEmpty()) {
