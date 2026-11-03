@@ -416,7 +416,8 @@ class ChatActivity : BaseActivity() {
             orientation = LinearLayout.HORIZONTAL
             gravity = Gravity.CENTER_VERTICAL
             background = Ui.roundBg(this@ChatActivity, WaSpec.GRAY6, 10)
-            setPadding(dp(10), dp(6), dp(10), dp(6))
+            // 对齐参考 layout_reply_bar：padding 12/8/12/8
+            setPadding(dp(12), dp(8), dp(12), dp(8))
             visibility = View.GONE
             addView(View(this@ChatActivity).apply {
                 setBackgroundColor(WaSpec.GREEN_LIGHT)
@@ -1416,16 +1417,23 @@ class ChatActivity : BaseActivity() {
             background = Ui.roundBg(this@ChatActivity,
                 WaSpec.bubbleSent(night).let { if (m.fromMe) it else WaSpec.bubbleReceived(night) },
                 WaSpec.BUBBLE_CORNER_DP)
-            // 内边距对齐参考 item_message_received：10/6/10/6（原来 12/8/12/6 偏大）
-            setPadding(dp(10), dp(6), dp(10), dp(6))
+            // 内边距按消息类型区分（对齐参考各 item_message_* 布局）：
+            //   文本 10/6/10/6；媒体 8/6/8/6；poll·event 12/10/12/0
+            when {
+                m.mediaKind == "poll" || m.mediaKind == "event" ->
+                    setPadding(dp(12), dp(10), dp(12), 0)
+                m.mediaKind.isNotBlank() ->
+                    setPadding(dp(8), dp(6), dp(8), dp(6))
+                else -> setPadding(dp(10), dp(6), dp(10), dp(6))
+            }
         }, FrameLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT,
             ViewGroup.LayoutParams.WRAP_CONTENT).apply {
             gravity = if (m.fromMe) Gravity.END else Gravity.START
             setMargins(
                 dp(if (m.fromMe) WaSpec.BUBBLE_OPPOSITE_INSET_DP else WaSpec.BUBBLE_SIDE_INSET_DP),
-                dp(3),
+                dp(4),   // 上下 4dp：对齐参考 item_message_* 的 paddingVertical
                 dp(if (m.fromMe) WaSpec.BUBBLE_SIDE_INSET_DP else WaSpec.BUBBLE_OPPOSITE_INSET_DP),
-                dp(3))
+                dp(4))
         })
         return holder
     }

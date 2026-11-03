@@ -599,7 +599,8 @@ class ChatListActivity : BaseActivity() {
         val row = LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL
             gravity = Gravity.CENTER_VERTICAL
-            setPadding(dp(14), dp(12), dp(14), dp(12))
+            // 对齐参考 item_chat：padding 12/10/12/10（原 14/12 偏大）
+            setPadding(dp(12), dp(10), dp(12), dp(10))
             // 多选模式下选中行高亮（对齐参考选择态）
             if (selectMode && chat.jid in selectedJids) {
                 setBackgroundColor(if (night) 0xFF1F2C34.toInt() else 0xFFE7F5EE.toInt())

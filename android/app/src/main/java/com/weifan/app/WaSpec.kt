@@ -103,7 +103,7 @@ object WaSpec {
     const val TOOLBAR_HEIGHT_DP = 56
     const val SEARCH_CAPSULE_HEIGHT_DP = 36
     const val SEARCH_BAR_ROW_HEIGHT_DP = 44
-    const val LIST_AVATAR_SIZE_DP = 50                 // 列表头像
+    const val LIST_AVATAR_SIZE_DP = 46                 // 列表头像（对齐参考 item_chat 46dp）
     const val CHAT_AVATAR_SIZE_DP = 43                 // 会话页头头像 headerAvatarContainer
     const val SENDER_AVATAR_SIZE_DP = 25               // 群内发送者小头像
     // U2：头像环（参考 drawable/bg_avatar_ring：OVAL + solid wa_gray5 + 1dp wa_avatar_stroke）
