@@ -1316,16 +1316,50 @@ class ChatActivity : BaseActivity() {
                                     onPick: (String, String) -> Unit) {
         if (items.isEmpty()) { hideSuggestions(); return }
         suggestionPanel.removeAllViews()
+        // 参考区分两种行：
+        //   item_slash_command：padding 14/4，命令名 15sp + 描述 13sp（两列）
+        //   item_group_mention_row：padding 12/8，单一 14sp
+        val isMention = items.firstOrNull()?.second?.startsWith("@") == true
         for ((k, label) in items.take(6)) {
-            suggestionPanel.addView(TextView(this).apply {
-                text = if (label.startsWith("@")) label else "$k   ·  $label"
-                textSize = 14f
-                setTextColor(WaSpec.textPrimary(night))
-                setPadding(dp(12), dp(10), dp(12), dp(10))
-                isClickable = true
-                setOnClickListener { onPick(k, label) }
-            }, LinearLayout.LayoutParams(
-                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT))
+            val padH = if (isMention) 12 else 14
+            val padV = if (isMention) 8 else 4
+            if (isMention) {
+                suggestionPanel.addView(TextView(this).apply {
+                    text = label
+                    textSize = 14f
+                    setTextColor(WaSpec.textPrimary(night))
+                    setPadding(dp(padH), dp(padV), dp(padH), dp(padV))
+                    isClickable = true
+                    setOnClickListener { onPick(k, label) }
+                }, LinearLayout.LayoutParams(
+                    ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT))
+            } else {
+                val row = LinearLayout(this).apply {
+                    orientation = LinearLayout.HORIZONTAL
+                    gravity = Gravity.CENTER_VERTICAL
+                    setPadding(dp(padH), dp(padV), dp(padH), dp(padV))
+                    isClickable = true
+                    setOnClickListener { onPick(k, label) }
+                }
+                row.addView(TextView(this).apply {
+                    text = k
+                    textSize = 15f
+                    setTextColor(WaSpec.primary(night))
+                    typeface = Typeface.create("sans-serif-medium", Typeface.NORMAL)
+                }, LinearLayout.LayoutParams(
+                    ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT))
+                row.addView(TextView(this).apply {
+                    text = label
+                    textSize = 13f
+                    setTextColor(WaSpec.textSecondary(night))
+                    maxLines = 1
+                    ellipsize = android.text.TextUtils.TruncateAt.END
+                }, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f).apply {
+                    marginStart = dp(10)
+                })
+                suggestionPanel.addView(row, LinearLayout.LayoutParams(
+                    ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT))
+            }
         }
         suggestionPanel.visibility = View.VISIBLE
     }
