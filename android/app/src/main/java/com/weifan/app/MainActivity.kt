@@ -475,26 +475,89 @@ class MainActivity : BaseActivity() {
     }
 
     /** 译文颜色（对齐参考「译文颜色」色块行） */
+    /**
+     * 译文颜色选择器（对齐参考 dialog_color_picker：padding 24 + 标题 20sp
+     * + 色块 60dp 高 + 按钮 40dp）。
+     * 参考用的是色块网格而非文字列表，这里按同规格做成可点色块行。
+     */
     private fun pickTranslationColor() {
         val names = arrayOf("青蓝（默认）", "深蓝", "紫罗兰", "品红", "橙", "绿", "黑")
         // 必须带 0xFF alpha：写成 0xDB2777 会被当成 alpha=0 的透明色，译文直接隐形
         val cols = intArrayOf(0xFF0A7EA4.toInt(), 0xFF1D4ED8.toInt(), 0xFF7C3AED.toInt(),
             0xFFDB2777.toInt(), 0xFFEA580C.toInt(), 0xFF128C7E.toInt(), 0xFF111111.toInt())
-        android.app.AlertDialog.Builder(this)
-            .setTitle("译文颜色")
-            .setItems(names) { _, which ->
-                prefs.translationColor = cols[which]
-                colorSwatch.background = roundBg(cols[which], 9, 1, p.line)
-                colorLabel.text = colorRowSummary()
-                Toast.makeText(this, "已改译文颜色，下次进入会话生效", Toast.LENGTH_SHORT).show()
+
+        var dlgRef: android.app.AlertDialog? = null
+        val box = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding(dp(24), dp(24), dp(24), dp(16))
+        }
+        box.addView(TextView(this).apply {
+            text = "译文颜色"
+            textSize = 20f
+            setTypeface(android.graphics.Typeface.DEFAULT_BOLD)
+            setTextColor(p.text)
+        })
+
+        // 色块网格：每行 4 个，色块 60dp 高（参考 dialog_color_picker 的色块高度）
+        var row: LinearLayout? = null
+        for ((i, c) in cols.withIndex()) {
+            if (i % 4 == 0) {
+                row = LinearLayout(this).apply {
+                    orientation = LinearLayout.HORIZONTAL
+                }
+                box.addView(row, LinearLayout.LayoutParams(
+                    ViewGroup.LayoutParams.MATCH_PARENT,
+                    ViewGroup.LayoutParams.WRAP_CONTENT).apply {
+                    topMargin = if (i == 0) dp(16) else dp(10)
+                })
             }
-            .setNeutralButton("恢复默认") { _, _ ->
+            val cell = android.widget.FrameLayout(this).apply {
+                background = roundBg(c, 12, 1, p.line)
+                isClickable = true
+                setOnClickListener {
+                    prefs.translationColor = c
+                    colorSwatch.background = roundBg(c, 9, 1, p.line)
+                    colorLabel.text = colorRowSummary()
+                    Toast.makeText(this@MainActivity, "已改译文颜色，下次进入会话生效",
+                        Toast.LENGTH_SHORT).show()
+                    dlgRef?.dismiss()
+                }
+            }
+            row?.addView(cell, LinearLayout.LayoutParams(0, dp(60), 1f).apply {
+                if (i % 4 != 0) marginStart = dp(10)
+            })
+        }
+
+        // 颜色名标注（选一个显示在下方，避免纯色块认不出）
+        box.addView(TextView(this).apply {
+            text = names.joinToString(" · ")
+            textSize = 12f
+            setTextColor(p.text3)
+            setPadding(0, dp(8), 0, 0)
+        })
+
+        val neutral = TextView(this).apply {
+            text = "恢复默认"
+            textSize = 14f
+            setTextColor(p.text)
+            gravity = Gravity.CENTER
+            minHeight = dp(40)
+            isClickable = true
+            setOnClickListener {
                 prefs.translationColor = 0
                 colorSwatch.background = roundBg(WaSpec.TRANSLATE_TEXT, 9, 1, p.line)
                 colorLabel.text = colorRowSummary()
+                dlgRef?.dismiss()
             }
+        }
+        box.addView(neutral, LinearLayout.LayoutParams(
+            ViewGroup.LayoutParams.MATCH_PARENT, dp(40)).apply { topMargin = dp(12) })
+
+        dlgRef = android.app.AlertDialog.Builder(this)
+            .setView(box)
             .setNegativeButton("取消", null)
-            .show()
+            .create()
+        dlgRef.show()
     }
 
     /** 原文字号 ±1sp，限 12–22 */

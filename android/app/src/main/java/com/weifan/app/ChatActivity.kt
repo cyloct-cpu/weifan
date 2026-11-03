@@ -658,9 +658,38 @@ class ChatActivity : BaseActivity() {
         val names = all.map { it.second }.toTypedArray()
         val checked = engine.db.chatLabelNames(chatJid).toSet()
         val states = names.map { it in checked }.toBooleanArray()
+        // 对齐参考 dialog_select_label：普通表单族（padding 20/22/20/18 + 标题 17sp）
+        // 每行 40dp 高可点切换，右侧 ✓ 表示已选
+        val listBox = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
+        fun renderRows() {
+            listBox.removeAllViews()
+            for ((i, n) in names.withIndex()) {
+                val row = LinearLayout(this).apply {
+                    orientation = LinearLayout.HORIZONTAL
+                    gravity = Gravity.CENTER_VERTICAL
+                    minimumHeight = dp(40)
+                    isClickable = true
+                    setOnClickListener {
+                        states[i] = !states[i]
+                        renderRows()
+                    }
+                }
+                row.addView(TextView(this).apply {
+                    text = n
+                    textSize = 16f
+                    setTextColor(WaSpec.textPrimary(night))
+                }, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
+                if (states[i]) row.addView(TextView(this).apply {
+                    text = "✓"; textSize = 16f
+                    setTextColor(WaSpec.primary(night))
+                })
+                listBox.addView(row)
+            }
+        }
+        renderRows()
+        val shell = Ui.formDialogShell(this, "设置标签", night, listBox)
         android.app.AlertDialog.Builder(this)
-            .setTitle("设置标签")
-            .setMultiChoiceItems(names, states) { _, which, isChecked -> states[which] = isChecked }
+            .setView(shell)
             .setPositiveButton("保存") { _, _ ->
                 engine.db.setChatLabels(chatJid,
                     all.filterIndexed { i, _ -> states[i] }.map { it.first })
