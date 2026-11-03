@@ -216,6 +216,21 @@ class ChatDb(context: Context) : SQLiteOpenHelper(context, "chats.db", null, 9) 
         "SELECT COUNT(DISTINCT voter_jid) FROM poll_votes WHERE poll_msg_id=?",
         arrayOf(pollMsgId)).use { c -> if (c.moveToFirst()) c.getInt(0) else 0 }
 
+
+    /** 某选项的投票人名单（对齐参考 item_poll_result_voter：头像 + 名字） */
+    fun pollVotersOf(pollMsgId: String, optionName: String): List<Pair<String, String>> {
+        val out = mutableListOf<Pair<String, String>>()
+        readableDatabase.rawQuery(
+            "SELECT voter_jid, voter_name FROM poll_votes WHERE poll_msg_id=? AND option_name=? " +
+            "ORDER BY ts ASC", arrayOf(pollMsgId, optionName)).use { c ->
+            while (c.moveToNext()) {
+                val jid = c.getString(0) ?: ""
+                val name = c.getString(1) ?: ""
+                out += jid to name.ifBlank { jid.substringBefore("@").takeLast(6) }
+            }
+        }
+        return out
+    }
     fun chats(): List<ChatRow> {
         return readableDatabase.rawQuery(
             "SELECT jid, title, last_message, last_ts, unread, pinned, archived, muted, blocked " +

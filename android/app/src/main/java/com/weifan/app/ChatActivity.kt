@@ -884,12 +884,15 @@ class ChatActivity : BaseActivity() {
                     }
                     col.addView(row)
                 }
+                // 点这行 = 看结果（对齐参考 dialog_poll_results）；选项行仍单独投票
                 col.addView(TextView(this).apply {
-                    text = if (hasVotes) "$voters 人已投 · 点选项可投票/改票 · 长按转发"
-                           else "点选项可投票 · 长按转发"
+                    text = if (hasVotes) "$voters 人已投 · 点选项投票/改票 · 点这里看结果"
+                           else "点选项可投票 · 点这里看结果"
                     textSize = 11.5f
                     setTextColor(WaSpec.textSecondary(night))
                     setPadding(0, dp(7), 0, 0)
+                    isClickable = true
+                    setOnClickListener { showPollResults(m) }
                 })
                 col
             }
@@ -1558,6 +1561,10 @@ class ChatActivity : BaseActivity() {
         }
         box.addView(item("回复") { dlg.dismiss(); setQuote(Triple(m.id, m.senderJid, m.text.ifBlank { "[媒体]" })) })
         // 媒体消息：菜单里也给一个「打开」入口（长按比点准，且与微信习惯一致）
+        // 投票：查看结果（对齐参考 dialog_poll_results）
+        if (m.mediaKind == "poll") {
+            box.addView(item("查看投票结果") { dlg.dismiss(); showPollResults(m) })
+        }
         if (m.mediaKind.isNotBlank()) box.addView(item(
             when (m.mediaKind) {
                 "video" -> "播放视频"
@@ -2609,6 +2616,160 @@ class ChatActivity : BaseActivity() {
             val snap = try { com.weifan.app.core.Fx.load(prefs, force) } catch (_: Throwable) { null }
             main.post { if (!isFinishing && !isDestroyed) done(snap) }
         }.start()
+    }
+
+    /**
+     * 投票结果弹层（对齐参考 dialog_poll_results + item_poll_result_option + item_poll_result_voter）。
+     *
+     * 规格：ScrollView padding 16；标题 16sp BOLD；选项容器 marginTop 12；
+     * 每个选项 marginBottom 12 —— 行内「选项名 15sp(weight=1) + 票数 14sp」，
+     * 下方比例条高 4dp（marginTop 6dp），条下方投票人列表（marginTop 8dp，
+     * 每人 28dp 头像 + 14sp 名字 + marginStart 8dp，行上下 padding 4dp）。
+     */
+    /** 投票选项存在 mediaMeta 的 waveform 字段里（\n 分隔），与气泡渲染同一来源 */
+    private fun parsePollOptions(m: MessageRow): List<String> {
+        val meta = try { JSONObject(m.mediaMeta) } catch (_: Throwable) { JSONObject() }
+        return meta.optString("waveform").split("\n").filter { it.isNotBlank() }
+    }
+
+    private fun showPollResults(m: MessageRow) {
+        val opts = parsePollOptions(m)
+        if (opts.isEmpty()) {
+            Toast.makeText(this, "这个投票没有选项数据", Toast.LENGTH_SHORT).show()
+            return
+        }
+        val counts = engine.db.pollCounts(m.id)
+        val total = engine.db.pollVoterCount(m.id)
+        val maxVotes = counts.values.maxOrNull()?.coerceAtLeast(1) ?: 1
+
+        val title = JSONObject(m.mediaMeta.ifBlank { "{}" }).optString("question")
+            .ifBlank { m.text.ifBlank { "投票" } }
+
+        val col = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+        }
+        // 标题：16sp BOLD text_primary
+        col.addView(TextView(this).apply {
+            text = title
+            textSize = 16f
+            setTypeface(typeface, Typeface.BOLD)
+            setTextColor(WaSpec.textPrimary(night))
+        })
+
+        val list = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+        }
+        for (opt in opts) {
+            val n = counts[opt] ?: 0
+            val item = LinearLayout(this).apply {
+                orientation = LinearLayout.VERTICAL
+            }
+            // 行：选项名 15sp（weight 1）+ 票数 14sp secondary
+            val row = LinearLayout(this).apply {
+                orientation = LinearLayout.HORIZONTAL
+                gravity = Gravity.CENTER_VERTICAL
+            }
+            row.addView(TextView(this).apply {
+                text = opt
+                textSize = 15f
+                setTextColor(WaSpec.textPrimary(night))
+            }, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
+            row.addView(TextView(this).apply {
+                text = "$n 票"
+                textSize = 14f
+                setTextColor(WaSpec.textSecondary(night))
+            })
+            item.addView(row)
+
+            // 比例条：轨道 4dp + 填充 4dp（宽度按 票数/最大票数）
+            val track = android.widget.FrameLayout(this).apply {
+                background = Ui.roundBg(this@ChatActivity,
+                    if (night) WaSpec.SEARCH_BG_NIGHT else WaSpec.GRAY6, 2)
+            }
+            val ratio = if (maxVotes == 0) 0f else n.toFloat() / maxVotes.toFloat()
+            track.addView(android.view.View(this).apply {
+                background = Ui.roundBg(this@ChatActivity, WaSpec.GREEN_LIGHT, 2)
+            }, android.widget.FrameLayout.LayoutParams(0, dp(4)).apply {
+                gravity = Gravity.START
+                // 用 weight 表达比例：FrameLayout 不支持 weight，改用 post 设宽
+            })
+            item.addView(track, LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, dp(4)).apply { topMargin = dp(6) })
+            track.post {
+                val w = (track.width * ratio).toInt()
+                val fill = track.getChildAt(0)
+                if (w > 0 && fill != null) {
+                    fill.layoutParams = android.widget.FrameLayout.LayoutParams(
+                        w.coerceAtLeast(dp(2)), dp(4))
+                }
+            }
+
+            // 投票人：28dp 头像 + 14sp 名字，行上下 padding 4dp（marginTop 8dp）
+            val voters = engine.db.pollVotersOf(m.id, opt)
+            if (voters.isNotEmpty()) {
+                val vBox = LinearLayout(this).apply {
+                    orientation = LinearLayout.VERTICAL
+                }
+                for ((_, name) in voters) {
+                    val vRow = LinearLayout(this).apply {
+                        orientation = LinearLayout.HORIZONTAL
+                        gravity = Gravity.CENTER_VERTICAL
+                        setPadding(0, dp(4), 0, dp(4))
+                    }
+                    vRow.addView(initialAvatar(name, dp(28)))
+                    vRow.addView(TextView(this).apply {
+                        text = name
+                        textSize = 14f
+                        setTextColor(WaSpec.textPrimary(night))
+                    }, LinearLayout.LayoutParams(
+                        ViewGroup.LayoutParams.WRAP_CONTENT,
+                        ViewGroup.LayoutParams.WRAP_CONTENT).apply { marginStart = dp(8) })
+                    vBox.addView(vRow)
+                }
+                item.addView(vBox, LinearLayout.LayoutParams(
+                    ViewGroup.LayoutParams.MATCH_PARENT,
+                    ViewGroup.LayoutParams.WRAP_CONTENT).apply { topMargin = dp(8) })
+            }
+
+            list.addView(item, LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT,
+                ViewGroup.LayoutParams.WRAP_CONTENT).apply { bottomMargin = dp(12) })
+        }
+        col.addView(list, LinearLayout.LayoutParams(
+            ViewGroup.LayoutParams.MATCH_PARENT,
+            ViewGroup.LayoutParams.WRAP_CONTENT).apply { topMargin = dp(12) })
+
+        col.addView(TextView(this).apply {
+            text = "$total 人已投 · 点选项可投票/改票"
+            textSize = 12f
+            setTextColor(WaSpec.textSecondary(night))
+            setPadding(0, dp(8), 0, 0)
+        })
+
+        val scroll = android.widget.ScrollView(this).apply {
+            setPadding(dp(16), dp(16), dp(16), dp(16))
+            addView(col)
+        }
+        android.app.AlertDialog.Builder(this)
+            .setView(scroll)
+            .setPositiveButton("关闭", null)
+            .show()
+    }
+
+    /** 圆形首字母头像（28/40dp 通用）；无头像图时用名字首字符 + 稳定色 */
+    private fun initialAvatar(name: String, size: Int): View {
+        val colors = arrayOf("#25D366", "#34B7F1", "#FFB74D", "#9575CD", "#4DB6AC", "#F06292")
+        val letter = name.trim().firstOrNull()?.toString() ?: "?"
+        return TextView(this).apply {
+            text = letter
+            textSize = if (size <= dp(30)) 13f else 16f
+            setTextColor(Color.WHITE)
+            gravity = Gravity.CENTER
+            background = Ui.roundBg(this@ChatActivity,
+                Color.parseColor(colors[(name.hashCode() and 0xff) % colors.size]), size / 2)
+        }.also {
+            it.layoutParams = LinearLayout.LayoutParams(size, size)
+        }
     }
 
     private fun showPollDialog() {
