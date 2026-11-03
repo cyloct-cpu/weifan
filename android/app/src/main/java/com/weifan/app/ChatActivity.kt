@@ -1802,17 +1802,30 @@ class ChatActivity : BaseActivity() {
             orientation = LinearLayout.VERTICAL
             background = Ui.roundBg(this@ChatActivity,
                 if (night) WaSpec.SURFACE_NIGHT else Color.WHITE, 20)
-            setPadding(dp(6), dp(6), dp(6), dp(6))
+            // 对齐参考 layout_attach_panel：padding 8/10/8/8
+            setPadding(dp(8), dp(10), dp(8), dp(8))
         }
         val dlg = android.app.AlertDialog.Builder(this).create()
         attachDialog = dlg
         dlg.setOnDismissListener { if (attachDialog === dlg) attachDialog = null }
+        // 横向图标条（对齐参考 layout_attach_panel：面板高 108dp、横向滚动、
+        // 每项图标 56dp 圆形 + 下方 12sp 文字；项内 padding 10/4/10/4）
+        val hScroll = android.widget.HorizontalScrollView(this).apply {
+            isHorizontalScrollBarEnabled = false
+        }
+        val strip = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            setPadding(dp(4), 0, dp(4), 0)
+        }
         for ((label, key) in items) {
-            box.addView(TextView(this).apply {
-                text = label
-                textSize = 16f
-                setTextColor(WaSpec.textPrimary(night))
-                setPadding(dp(20), dp(13), dp(20), dp(13))
+            // items 形如 "📄  文档"：双空格分开图标与文字
+            val cut = label.indexOf("  ")
+            val emoji = if (cut > 0) label.substring(0, cut).trim() else label
+            val name = if (cut > 0) label.substring(cut).trim() else ""
+            val cell = LinearLayout(this).apply {
+                orientation = LinearLayout.VERTICAL
+                gravity = Gravity.CENTER_HORIZONTAL
+                setPadding(dp(10), dp(4), dp(10), dp(4))
                 isClickable = true
                 setOnClickListener {
                     dlg.dismiss()
@@ -1831,8 +1844,29 @@ class ChatActivity : BaseActivity() {
                             Toast.LENGTH_SHORT).show()
                     }
                 }
+            }
+            cell.addView(TextView(this).apply {
+                this.text = emoji
+                textSize = 24f
+                gravity = Gravity.CENTER
+                background = Ui.roundBg(this@ChatActivity,
+                    if (night) WaSpec.SEARCH_BG_NIGHT else WaSpec.GRAY6, 28)
+            }, LinearLayout.LayoutParams(dp(56), dp(56)))
+            cell.addView(TextView(this).apply {
+                this.text = name
+                textSize = 12f
+                setTextColor(WaSpec.textPrimary(night))
+                gravity = Gravity.CENTER
+                maxLines = 1
+            }, LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply {
+                topMargin = dp(6)
             })
+            strip.addView(cell)
         }
+        hScroll.addView(strip)
+        box.addView(hScroll, LinearLayout.LayoutParams(
+            ViewGroup.LayoutParams.MATCH_PARENT, dp(108)))
         dlg.setView(box)
         dlg.show()
         dlg.window?.setLayout(dp(320), ViewGroup.LayoutParams.WRAP_CONTENT)
