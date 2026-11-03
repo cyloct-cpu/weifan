@@ -51,6 +51,8 @@ class ChatActivity : BaseActivity() {
     private var chatJid: String = ""
     private var chatTitle: String = ""
     private var chatLangLabel: String = ""
+    /** B1：resolvePn 解析出的对方真实号码（LID 会话靠它推货币） */
+    private var resolvedPhone: String = ""
 
     private lateinit var listBox: LinearLayout
     private lateinit var scroll: ScrollView
@@ -167,6 +169,8 @@ class ChatActivity : BaseActivity() {
         // 主动解析 LID→手机号（异步），拿到后刷新副标题与翻译目标语言
         engine.resolvePnAsync(chatJid) { pn ->
             if (isDestroyed || isFinishing) return@resolvePnAsync
+            // B1：LID 会话推不出国家码，汇率识别靠这里解析出的真实号码
+            if (pn.isNotBlank()) resolvedPhone = pn
             val lb = com.weifan.app.core.CountryDetect.label(pn.ifBlank { chatJid })
             if (lb.isNotBlank()) {
                 chatLangLabel = lb
@@ -1611,6 +1615,10 @@ class ChatActivity : BaseActivity() {
                         "location" -> showLocationDialog()
                         "contact" -> showContactDialog()
                         "poll" -> showPollDialog()
+                        "fx" -> showFxDialog()
+                        "todo" -> startActivity(
+                            Intent(this@ChatActivity, FollowupTodosActivity::class.java)
+                                .putExtra("jid", chatJid))
                         else -> Toast.makeText(this@ChatActivity, "该附件类型即将上线",
                             Toast.LENGTH_SHORT).show()
                     }
@@ -2058,6 +2066,273 @@ class ChatActivity : BaseActivity() {
             .show()
             .also { it.window?.setSoftInputMode(
                 android.view.WindowManager.LayoutParams.SOFT_INPUT_ADJUST_RESIZE) }
+    }
+
+    // MARK: - B1 汇率转换（对齐参考 fx_* 模块）
+
+    /**
+     * 汇率转换对话框。
+     * 设计三件套：① 源/目标货币可点选，对方货币自动预选；② 金额支持四则运算；
+     * ③ 改目标金额可反推源金额（报价时经常要「我要收到 5000 美元，得报多少人民币」）。
+     * 汇率 1 小时缓存，加载中/失败都有明确状态，不会白屏。
+     */
+    private fun showFxDialog() {
+        // 优先用 resolvePn 解析出的真实号码（@lid 会话推不出国家码）；
+        // 再退到 jid 直接解析，都失败则由用户手选
+        val localCurrency = com.weifan.app.core.Fx.currencyForChat(
+            resolvedPhone.ifBlank { chatJid })
+        var from = prefs.fxSourceCurrency
+        var to = localCurrency ?: "USD"
+        if (from == to) to = if (from == "CNY") "USD" else "CNY"
+
+        val box = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding(dp(22), dp(16), dp(22), dp(8))
+        }
+
+        // 汇率状态行
+        val rateText = TextView(this).apply {
+            text = "加载汇率中…"
+            textSize = 12.5f
+            setTextColor(WaSpec.textSecondary(night))
+            setPadding(0, 0, 0, dp(8))
+        }
+        box.addView(rateText)
+
+        // 源货币行
+        val fromRow = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER_VERTICAL
+            setPadding(0, dp(4), 0, dp(4))
+        }
+        val fromLabel = TextView(this).apply {
+            text = "人民币 CNY"
+            textSize = 15f
+            setTextColor(WaSpec.textPrimary(night))
+            isClickable = true
+            layoutParams = LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f)
+        }
+        fromRow.addView(fromLabel)
+        fromRow.addView(TextView(this).apply {
+            text = "▾"; textSize = 16f; setTextColor(WaSpec.textSecondary(night))
+        })
+        box.addView(fromRow)
+
+        // 源金额输入（支持算式）
+        val fromInput = EditText(this).apply {
+            hint = "金额，支持 100*0.2 / 100+50"
+            textSize = 16f
+            setTextColor(WaSpec.textPrimary(night))
+            setHintTextColor(WaSpec.textSecondary(night))
+            inputType = android.text.InputType.TYPE_CLASS_TEXT or
+                android.text.InputType.TYPE_TEXT_FLAG_NO_SUGGESTIONS
+            setBackground(Ui.roundBg(this@ChatActivity,
+                if (night) WaSpec.SEARCH_BG_NIGHT else WaSpec.GRAY6, 10))
+            setPadding(dp(12), dp(10), dp(12), dp(10))
+        }
+        box.addView(fromInput)
+
+        box.addView(TextView(this).apply {
+            text = "⇅"; textSize = 18f; gravity = Gravity.CENTER
+            setTextColor(WaSpec.primary(night))
+            setPadding(0, dp(6), 0, dp(6))
+            isClickable = true
+        }, LinearLayout.LayoutParams(
+            ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT))
+
+        // 目标货币行
+        val toRow = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER_VERTICAL
+            setPadding(0, dp(4), 0, dp(4))
+        }
+        val toLabel = TextView(this).apply {
+            text = "美元 USD"
+            textSize = 15f
+            setTextColor(WaSpec.textPrimary(night))
+            isClickable = true
+            layoutParams = LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f)
+        }
+        toRow.addView(toLabel)
+        toRow.addView(TextView(this).apply {
+            text = "▾"; textSize = 16f; setTextColor(WaSpec.textSecondary(night))
+        })
+        box.addView(toRow)
+
+        // 目标金额（可编辑，反推源金额）
+        val toInput = EditText(this).apply {
+            hint = "目标金额（也可输入，反推源金额）"
+            textSize = 16f
+            setTextColor(WaSpec.textPrimary(night))
+            setHintTextColor(WaSpec.textSecondary(night))
+            inputType = android.text.InputType.TYPE_CLASS_TEXT or
+                android.text.InputType.TYPE_TEXT_FLAG_NO_SUGGESTIONS
+            setBackground(Ui.roundBg(this@ChatActivity,
+                if (night) WaSpec.SEARCH_BG_NIGHT else WaSpec.GRAY6, 10))
+            setPadding(dp(12), dp(10), dp(12), dp(10))
+        }
+        box.addView(toInput)
+
+        val resultText = TextView(this).apply {
+            text = ""
+            textSize = 15f
+            setTextColor(WaSpec.primary(night))
+            setPadding(0, dp(10), 0, dp(2))
+        }
+        box.addView(resultText)
+        // 长按复制金额（报价时要粘到消息里，对齐参考 fx_copied）
+        resultText.setOnLongClickListener {
+            val v = resultText.text.toString().substringAfter("= ").trim()
+            if (v.isNotEmpty()) {
+                val cm = getSystemService(CLIPBOARD_SERVICE) as android.content.ClipboardManager
+                cm.setPrimaryClip(android.content.ClipData.newPlainText("weifan-fx", v))
+                Toast.makeText(this@ChatActivity, "已复制到剪贴板", Toast.LENGTH_SHORT).show()
+            }
+            true
+        }
+
+        var snapshot: com.weifan.app.core.Fx.Snapshot? = null
+        var updating = false
+
+        fun refreshLabels() {
+            fromLabel.text = "${com.weifan.app.core.Fx.nameOf(from)} $from"
+            toLabel.text = "${com.weifan.app.core.Fx.nameOf(to)} $to"
+        }
+
+        /** 换算：dir=1 源→目标；dir=-1 目标→源 */
+        fun convert(dir: Int) {
+            val snap = snapshot
+            if (snap == null) { resultText.text = "汇率未就绪"; return }
+            val src = if (dir > 0) fromInput.text.toString() else toInput.text.toString()
+            val v = com.weifan.app.core.Fx.evaluate(src)
+            if (v == null) {
+                resultText.text = if (src.isBlank()) "" else "请输入有效金额或算式"
+                return
+            }
+            val rate = snap.cross(if (dir > 0) from else to, if (dir > 0) to else from)
+            if (rate == null) { resultText.text = "无法换算该货币对"; return }
+            val out = v * rate
+            if (dir > 0) {
+                toInput.setText(com.weifan.app.core.Fx.fmt(out, to))
+                resultText.text = "= ${com.weifan.app.core.Fx.fmt(out, to)}"
+            } else {
+                fromInput.setText(com.weifan.app.core.Fx.fmt(out, from))
+                resultText.text = "= ${com.weifan.app.core.Fx.fmt(out, from)}"
+            }
+        }
+
+        // 双向联动：编辑源推目标，编辑目标推源（用 flag 防递归）
+        var busy = false
+        fromInput.addTextChangedListener(object : android.text.TextWatcher {
+            override fun beforeTextChanged(s: CharSequence?, a: Int, b: Int, c: Int) {}
+            override fun onTextChanged(s: CharSequence?, a: Int, b: Int, c: Int) {}
+            override fun afterTextChanged(s: android.text.Editable?) {
+                if (busy) return
+                busy = true; convert(1); busy = false
+            }
+        })
+        toInput.addTextChangedListener(object : android.text.TextWatcher {
+            override fun beforeTextChanged(s: CharSequence?, a: Int, b: Int, c: Int) {}
+            override fun onTextChanged(s: CharSequence?, a: Int, b: Int, c: Int) {}
+            override fun afterTextChanged(s: android.text.Editable?) {
+                if (busy) return
+                busy = true; convert(-1); busy = false
+            }
+        })
+
+        /** 刷新顶部汇率行：货币对、汇率、更新时间。切换货币后必须重算，
+         *  之前只在初始加载时算一次，换完货币这行还停在旧币对（实测发现）。 */
+        fun refreshRateLine() {
+            val snap = snapshot
+            if (snap == null) {
+                rateText.text = "汇率未就绪"
+                return
+            }
+            val when_ = java.text.SimpleDateFormat("MM-dd HH:mm", java.util.Locale.CHINA)
+                .format(java.util.Date(snap.updatedMs))
+            val rate = snap.cross(from, to)
+            rateText.text = if (rate != null)
+                "1 $from = ${com.weifan.app.core.Fx.fmt(rate, to)} · 更新于 $when_"
+            else "汇率数据不含该货币对 · 更新于 $when_"
+        }
+
+        // 货币选择器：置顶在前 + 全部货币可搜索
+        fun pickCurrency(isFrom: Boolean) {
+            val pinned = prefs.fxPinned
+            val current = if (isFrom) from else to
+            val all = com.weifan.app.core.Fx.CURRENCIES
+            val ordered = all.sortedByDescending { it.first in pinned }
+            val names = ordered.map { "${it.second}  ${it.first}" }.toTypedArray()
+            android.app.AlertDialog.Builder(this)
+                .setTitle(if (isFrom) "源货币" else "目标货币")
+                .setItems(names) { _, which ->
+                    val code = ordered[which].first
+                    if (isFrom) from = code else to = code
+                    if (from == to) {
+                        if (isFrom) to = if (from == "CNY") "USD" else "CNY"
+                        else from = if (to == "CNY") "USD" else "CNY"
+                    }
+                    // 切完币对三件套都要刷：标签、汇率行、金额
+                    refreshLabels(); refreshRateLine(); convert(1)
+                }
+                .setNeutralButton(if (current in pinned) "取消置顶当前" else "置顶当前货币") { _, _ ->
+                    val set = prefs.fxPinned.toMutableList()
+                    if (current in set) set.remove(current) else set.add(0, current)
+                    prefs.fxPinned = set.take(6)
+                    Toast.makeText(this@ChatActivity,
+                        if (current in prefs.fxPinned) "已置顶 $current" else "已取消置顶 $current",
+                        Toast.LENGTH_SHORT).show()
+                }
+                .setNegativeButton("取消", null)
+                .show()
+        }
+        fromLabel.setOnClickListener { pickCurrency(true) }
+        toLabel.setOnClickListener { pickCurrency(false) }
+        fromRow.setOnClickListener { pickCurrency(true) }
+        toRow.setOnClickListener { pickCurrency(false) }
+
+        refreshLabels()
+        loadRatesAsync(prefs, false) { snap ->
+            snapshot = snap
+            if (snap != null) {
+                refreshRateLine()
+                convert(1)
+            } else {
+                rateText.text = "汇率加载失败，请稍后重试"
+            }
+        }
+
+        android.app.AlertDialog.Builder(this)
+            .setTitle("汇率转换")
+            .setView(box)
+            .setPositiveButton("更新汇率") { _, _ ->
+                if (updating) return@setPositiveButton
+                updating = true
+                rateText.text = "正在更新…"
+                loadRatesAsync(prefs, true) { snap ->
+                    updating = false
+                    snapshot = snap
+                    if (snap != null) {
+                        refreshRateLine()
+                        convert(1)
+                    } else {
+                        rateText.text = "更新失败，检查网络后重试"
+                    }
+                }
+            }
+            .setNegativeButton("关闭", null)
+            .show()
+            .also { it.window?.setSoftInputMode(
+                android.view.WindowManager.LayoutParams.SOFT_INPUT_ADJUST_RESIZE) }
+    }
+
+    /** 后台取汇率，回调在主线程 */
+    private fun loadRatesAsync(prefs: Prefs, force: Boolean,
+                               done: (com.weifan.app.core.Fx.Snapshot?) -> Unit) {
+        Thread {
+            val snap = try { com.weifan.app.core.Fx.load(prefs, force) } catch (_: Throwable) { null }
+            main.post { if (!isFinishing && !isDestroyed) done(snap) }
+        }.start()
     }
 
     private fun showPollDialog() {

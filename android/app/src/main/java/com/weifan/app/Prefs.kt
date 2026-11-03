@@ -142,6 +142,24 @@ class Prefs(context: Context) {
 
     // ── 批2：AI 提示词 / 译文颜色 / 原文字号 / 接口延时 ──
 
+    // ── B1 汇率转换 ──
+
+    /** 汇率快照（JSON：base/ts/rates），由 Fx 读写，1 小时过期 */
+    var fxSnapshot: String
+        get() = sp.getString("fx_snapshot", "") ?: ""
+        set(value) = sp.edit().putString("fx_snapshot", value).apply()
+
+    /** 置顶的货币代码（逗号分隔，最多 6 个） */
+    var fxPinned: List<String>
+        get() = sp.getString("fx_pinned", "CNY,USD")?.split(',')?.filter { it.isNotBlank() }
+            ?: listOf("CNY", "USD")
+        set(value) = sp.edit().putString("fx_pinned", value.joinToString(",")).apply()
+
+    /** 源货币（默认人民币；用户改过一次就记住） */
+    var fxSourceCurrency: String
+        get() = sp.getString("fx_source", "CNY") ?: "CNY"
+        set(value) = sp.edit().putString("fx_source", value).apply()
+
     /** AI 翻译系统提示词；空串 = 用内置默认。可用 {TO} {TONE} 占位 */
     var promptTemplate: String
         get() = sp.getString("prompt_tpl", "") ?: ""
