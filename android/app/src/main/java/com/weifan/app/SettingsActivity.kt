@@ -126,6 +126,9 @@ class SettingsActivity : BaseActivity() {
         list.addView(row("恢复数据", "从 Download 里的备份 zip 恢复（会覆盖当前数据）") {
             showRestorePicker()
         })
+        list.addView(row("设备管理", "查看本账号有几台设备在线（仅查看，无法远程注销）") {
+            showDevicesDialog()
+        })
         list.addView(row("新建联系人", "查号是否在 WhatsApp + 存进手机通讯录") {
             startActivity(Intent(this, NewContactActivity::class.java))
         })
@@ -267,6 +270,49 @@ class SettingsActivity : BaseActivity() {
             .setPositiveButton("开始备份") { _, _ -> runBackup() }
             .setNegativeButton("取消", null)
             .show()
+    }
+
+    /**
+     * 设备管理（只读）。
+     *
+     * 为什么只能看不能注销：whatsmeow 没有导出通用 IQ 发送口（SendIQ / Send(Node) 均无），
+     * 而「注销某台设备」需要发 w:devices 私有 IQ。能用的只有 USync 的 GetUserDevices，
+     * 它返回设备 JID 列表 —— 足够回答「我账号有没有被陌生设备登着」这个安全关切。
+     */
+    private fun showDevicesDialog() {
+        val body = TextView(this).apply {
+            text = "正在查询…"
+            textSize = 15f
+            setTextColor(WaSpec.textPrimary(night))
+            minimumHeight = dp(60)
+            gravity = Gravity.CENTER_VERTICAL
+        }
+        val shell = Ui.formDialogShell(this, "设备管理", night, LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            addView(body)
+        })
+        android.app.AlertDialog.Builder(this)
+            .setView(shell)
+            .setPositiveButton("关闭", null)
+            .show()
+
+        com.weifan.app.chat.ChatEngine.get(this).listDevicesAsync { count, cur, err ->
+            if (isFinishing || isDestroyed) return@listDevicesAsync
+            body.text = when {
+                err == "NOT_CONNECTED" ->
+                    "未连接到 WhatsApp。\n请确认已配对且网络正常后重试。"
+                err == "NOT_PAIRED" -> "尚未配对设备。"
+                err != null -> "查询失败：$err"
+                count <= 0 -> "没有查到设备信息。"
+                else -> buildString {
+                    append("本账号共 $count 台设备在线。\n\n")
+                    append("当前设备 ID：$cur\n\n")
+                    append("说明：这里只能查看数量，无法远程注销其它设备——")
+                    append("注销需要 WhatsApp 未公开的管理接口。若发现陌生设备，")
+                    append("请在手机 WhatsApp 的「已连接的设备」里手动退出。")
+                }
+            }
+        }
     }
 
     /** 选备份文件（对齐 dialog_backup_restore 的文件选择） */

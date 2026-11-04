@@ -449,6 +449,27 @@ class ChatEngine private constructor(context: Context) :
         }.start()
     }
 
+    /**
+     * 列出本账号已登录设备（只读）。返回 (设备数, 当前设备id)；失败时 count=-1 并带错误。
+     * 注意：协议层只能读列表，无法注销任意设备（whatsmeow 无通用 IQ 发送口）。
+     */
+    fun listDevicesAsync(callback: (Int, Int, String?) -> Unit) {
+        Thread {
+            try {
+                val json = client.listMyDevices()
+                val arr = org.json.JSONArray(json)
+                var cur = 0
+                for (i in 0 until arr.length()) {
+                    val o = arr.optJSONObject(i) ?: continue
+                    if (o.optBoolean("current")) cur = o.optInt("device")
+                }
+                main.post { callback(arr.length(), cur, null) }
+            } catch (e: Throwable) {
+                main.post { callback(-1, 0, e.message ?: e.toString()) }
+            }
+        }.start()
+    }
+
     /** 发送商品卡片（ProductMessage）。需 Business 账号的商品目录 productID。 */
     fun sendProductAsync(chatJid: String, productId: String, title: String, desc: String,
                          currency: String, price: Double, url: String,
