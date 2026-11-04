@@ -38,15 +38,24 @@
 
 | # | 项 | 端 | 依赖 | 状态 |
 |---|---|---|---|---|
-| P1 | 待办到期通知（UNUserNotificationCenter + 保存即排 + 完成即撤） | iOS | 无 | ✅ 本轮完成 |
-| P2 | 群管理页（成员列表/加人/踢人/升降管理员/改群名） | iOS | 协议已通 | ✅ 本轮完成 |
-| P3 | 拉黑（联系人页入口 + updateBlocklist/getBlocklistJSON） | iOS | 协议已通 | ✅ 本轮完成 |
-| P4 | 视频发送（SendVideoFromPath，PhotosPicker 选视频） | 双端 | whatsmeow MediaVideo 上传（已确认可用） | ✅ 协议+双端完成 |
-| P5 | 群公告/邀请链接（SetGroupTopic/GetGroupInviteLink） | 双端 | whatsmeow 就绪 | ✅ 协议完成（Android UI 挂群信息页） |
-| P6 | AI 建议回复（最后 N 条消息 → 已配置 LLM → 3 条建议 → 点击填入） | Android | agnes 已通 | ✅ 本轮完成 |
-| P7 | 链接预览（og 元数据抓取 + 气泡卡片） | 双端 | 无（需联网） | 🟡 见 §4（做了 Android 基础版） |
-| P8 | 被踢出群提示（dialog_kicked） | 双端 | whatsmeow 事件转发（本轮确认事件类型后接） | ✅ 协议转发完成 + 双端弹层 |
-| P9 | 附件面板对齐参考 18 项（余项：视频✓P4、快速回复、GIF/贴纸） | 双端 | — | 🟡 快速回复✅；GIF/贴纸见 §4 |
+| P1 | 待办到期通知（UNUserNotificationCenter + 保存即排 + 完成即撤） | iOS | 无 | ✅ 已实现（commit 批3） |
+| P2 | 群管理页（成员列表/加人/踢人/升降管理员/改群名/群公告/邀请链接） | iOS | 协议已通 | ✅ 已实现（ChatGroupView.swift） |
+| P3 | 拉黑（联系人页入口 + updateBlocklist/getBlocklistJSON） | iOS | 协议已通 | ✅ 已实现 |
+| P4 | 视频发送（SendVideoFromPath，PhotosPicker/系统选视频） | 双端 | whatsmeow MediaVideo 上传 | ✅ 协议+双端完成 |
+| P5 | 群公告/邀请链接（SetGroupTopic/GetGroupInviteLink） | 双端 | whatsmeow 就绪 | ✅ 协议+Android UI（ChatInfoActivity）；iOS 群管理页含公告（邀请链接 iOS 也有） |
+| P6 | AI 建议回复（最后 8 条 → 已配置 LLM → 3 条候选 → 点击填入） | Android | agnes | ✅ 实机验证通过（agnes 生成 3 条贴合对话的建议） |
+| P7 | 链接预览（og 元数据抓取 + 气泡卡片） | 双端 | 无（需联网） | ⬜ 未做——见 §4.1 原因 |
+| P8 | 被踢出群提示（dialog_kicked） | 双端 | events.GroupInfo 转发 | ✅ 协议转发 + 双端弹层（Android 实机弹出链路就绪；真实触发需群环境） |
+| P9 | 附件面板对齐参考 18 项 | 双端 | — | 🟡 视频✅；快速回复（斜杠命令已有）；GIF/贴纸见 §4 |
+
+**移植过程新增修复**：showHeaderMenu 的 action 参数从未挂监听（菜单点击无反应）——实机验证时抓到并修复。这也再次印证「写完必须实机点一遍」。
+
+## 2.1 本轮回归结果
+
+- Android：BUILD SUCCESSFUL + 新 APK 装机，头部菜单/被踢/AI 建议回复实机操作通过
+- iOS：BUILD SUCCEEDED + Phase1 3 测试绿
+- 扩展：136/136
+- 协议：go build 通过；AAR/xcframework 双重建并同步三处（android libs、wa-build、ios Frameworks）
 
 ## 3. 明确不做与原因（与 docs/18 §14.6 合并）
 
