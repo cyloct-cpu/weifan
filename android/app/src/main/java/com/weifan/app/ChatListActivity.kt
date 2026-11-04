@@ -74,7 +74,7 @@ class ChatListActivity : BaseActivity() {
 
         // ── 顶栏：标题 20sp medium + 右侧菜单按钮
         val top = Ui.listHeader(this, "WeFlip", night, listOf(
-            Ui.headerIconButton(this, "⋮", night, 24f) { openSettings() }
+            Ui.headerIconButton(this, "⋮", night, 24f) { showListMenu() }
         ))
         root.addView(top, LinearLayout.LayoutParams(
             ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT))
@@ -474,6 +474,37 @@ class ChatListActivity : BaseActivity() {
             .show()
     }
 
+    /**
+     * 列表页右上角菜单。「新建会话」就是加好友入口：输入对方手机号直接开聊。
+     * 之前这两项被误放进「长按某条会话」的菜单里——必须先有会话才能新建会话，逻辑不通。
+     */
+    private fun showListMenu() {
+        val box = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            background = Ui.roundBg(this@ChatListActivity,
+                if (night) WaSpec.SURFACE_NIGHT else Color.WHITE, 20)
+            setPadding(dp(6), dp(6), dp(6), dp(6))
+        }
+        val dlg = android.app.AlertDialog.Builder(this).create()
+        fun item(label: String, action: () -> Unit): TextView = TextView(this).apply {
+            text = label
+            textSize = 16f
+            setTextColor(WaSpec.textPrimary(night))
+            setPadding(dp(20), dp(14), dp(20), dp(14))
+            isClickable = true
+            setOnClickListener { action() }
+        }
+        box.addView(item("新建会话（加好友）") { dlg.dismiss(); showNewChatDialog() })
+        box.addView(item("新建群聊") { dlg.dismiss(); showNewGroupDialog() })
+        box.addView(item("新建联系人（存手机通讯录）") {
+            dlg.dismiss()
+            startActivity(Intent(this, NewContactActivity::class.java))
+        })
+        box.addView(item("设置") { dlg.dismiss(); openSettings() })
+        dlg.setView(box)
+        dlg.show()
+    }
+
     /** 会话长按菜单：置顶/归档/静音/重命名（P1-2/3 本地实现） */
     private fun showChatMenu(chat: ChatRow) {
         val box = LinearLayout(this).apply {
@@ -491,8 +522,6 @@ class ChatListActivity : BaseActivity() {
             isClickable = true
             setOnClickListener { action() }
         }
-        box.addView(item("新建会话") { dlg.dismiss(); showNewChatDialog() })
-        box.addView(item("新建群聊") { dlg.dismiss(); showNewGroupDialog() })
         box.addView(item("设置标签") { dlg.dismiss(); showLabelPicker(chat) })
         box.addView(item("该客户的待办") {
             dlg.dismiss()
@@ -572,18 +601,15 @@ class ChatListActivity : BaseActivity() {
             minimumHeight = dp(40)
             inputType = android.text.InputType.TYPE_CLASS_PHONE
         }
-        // pickerDialogShell 自带 20sp 标题 + 搜索框；把内容(提示文案)挂在它下面
-        val shell = Ui.pickerDialogShell(this, "新建会话", "手机号（含国家码）", night) { q ->
-            input.setText(q)
-        }
-        shell.addView(input, LinearLayout.LayoutParams(
-            ViewGroup.LayoutParams.MATCH_PARENT, dp(40)).apply { topMargin = dp(8) })
+        // 用 formDialogShell + 单个输入框（pickerDialogShell 自带搜索框，再加会重复两个框）
+        val shell = Ui.formDialogShell(this, "新建会话", night, input)
         android.app.AlertDialog.Builder(this)
             .setView(shell)
             .setPositiveButton("打开") { _, _ ->
                 val digits = input.text.toString().filter { it.isDigit() }
                 if (digits.length !in 8..15) {
-                    Toast.makeText(this, "号码不完整", Toast.LENGTH_SHORT).show()
+                    Toast.makeText(this, "号码不完整（含国家码，8–15 位）",
+                        Toast.LENGTH_SHORT).show()
                     return@setPositiveButton
                 }
                 startActivity(Intent(this, ChatActivity::class.java)
