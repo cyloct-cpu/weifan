@@ -121,7 +121,8 @@ final class VoiceRecorder: NSObject, ObservableObject, AVAudioRecorderDelegate {
     @Published var seconds = 0
     private var recorder: AVAudioRecorder?
     private var ticker: Timer?
-    private var url: URL { MediaStore.dir.appendingPathComponent("voice-\(Int(Date().timeIntervalSince1970 * 1000)).m4a") }
+    // 录音目标文件在 begin 时固化；stop 里不能重新计算（时间戳变了会指到不存在的文件）
+    private var recordingURL = MediaStore.dir.appendingPathComponent("voice-0.m4a")
     var finished: ((URL, Int) -> Void)?
 
     func start() {
@@ -141,7 +142,8 @@ final class VoiceRecorder: NSObject, ObservableObject, AVAudioRecorderDelegate {
             AVNumberOfChannelsKey: 1,
             AVEncoderAudioQualityKey: AVAudioQuality.medium.rawValue
         ]
-        let r = try? AVAudioRecorder(url: url, settings: settings)
+        recordingURL = MediaStore.dir.appendingPathComponent("voice-\(Int(Date().timeIntervalSince1970 * 1000)).m4a")
+        let r = try? AVAudioRecorder(url: recordingURL, settings: settings)
         guard let r else { return }
         recorder = r
         r.record()
@@ -160,7 +162,7 @@ final class VoiceRecorder: NSObject, ObservableObject, AVAudioRecorderDelegate {
         ticker?.invalidate(); ticker = nil
         recording = false
         recorder = nil
-        let f = url
+        let f = recordingURL
         if send, dur >= 1 {
             finished?(f, dur)
         } else {

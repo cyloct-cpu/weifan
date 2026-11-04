@@ -14,6 +14,8 @@ struct ChatSettingsView: View {
     @ObservedObject var core = ProtocolCore.shared
     @AppStorage("wa_proxy") private var waProxy = ""
     @AppStorage("wa_auto_translate_incoming") private var autoTranslate = true
+    @State private var backupURL: URL?
+    @State private var exporting = false
 
     var body: some View {
         Form {
@@ -38,10 +40,22 @@ struct ChatSettingsView: View {
             }
             Section("数据") {
                 NavigationLink("跟进待办") { TodoListView() }
-                ShareLink(item: BackupExporter.exportURL(),
-                          preview: SharePreview("微翻备份")) {
-                    Label("导出备份（会话 JSON）", systemImage: "archivebox")
+                Button {
+                    exporting = true
+                    DispatchQueue.global(qos: .userInitiated).async {
+                        let url = BackupExporter.exportURL()
+                        DispatchQueue.main.async {
+                            exporting = false
+                            backupURL = url
+                        }
+                    }
+                } label: {
+                    HStack {
+                        Label("导出备份（会话 JSON）", systemImage: "archivebox")
+                        if exporting { ProgressView().scaleEffect(0.7) }
+                    }
                 }
+                .disabled(exporting)
                 Text("备份含会话与消息 JSON，不含媒体文件。恢复在阶段 3 后续补。")
                     .font(.caption2).foregroundStyle(.secondary)
             }
@@ -52,6 +66,9 @@ struct ChatSettingsView: View {
         }
         .navigationTitle("聊天设置")
         .navigationBarTitleDisplayMode(.inline)
+        .sheet(item: $backupURL) { url in
+            ShareLink(item: url, preview: SharePreview("微翻备份"))
+        }
     }
 }
 

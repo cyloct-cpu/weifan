@@ -338,6 +338,7 @@ class FollowupTodosActivity : BaseActivity() {
         dueRow.addView(dueLabel)
         box.addView(dueRow)
 
+        var pickedCal: java.util.Calendar? = null
         val quick = LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL
             setPadding(0, dp(6), 0, 0)
@@ -345,6 +346,7 @@ class FollowupTodosActivity : BaseActivity() {
         val day = 24L * 3600_000L
         for ((label, offset) in listOf("今天" to 0, "明天" to 1, "三天后" to 3, "不指定" to -1)) {
             quick.addView(Ui.chip(this, label, false, night) {
+                pickedCal = null   // 快捷 chip 与精确选择互斥：点快捷就清掉精确选择的状态
                 due = if (offset < 0) 0L
                 else {
                     val cal = java.util.Calendar.getInstance()
@@ -363,7 +365,6 @@ class FollowupTodosActivity : BaseActivity() {
         box.addView(quick)
 
         // R2 尾巴：精确到「日期 + 时间」（参考有 HH:mm 选择，原来固定 23:59）
-        var pickedCal: java.util.Calendar? = null
         val pickRow = LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL
             setPadding(0, dp(8), 0, 0)

@@ -2911,7 +2911,6 @@ class ChatActivity : BaseActivity() {
             ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply {
             topMargin = dp(20)
         })
-        recordDialog = android.app.AlertDialog.Builder(this, R.style.WeifanDialog).create()
         // U3：三件套提为字段，输入区麦克风按钮共用同一手势（见 pttTouchListener）
         dlgMic = mic; dlgHint = hint; dlgHold = hold
 

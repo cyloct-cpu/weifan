@@ -59,10 +59,15 @@ class SettingsActivity : BaseActivity() {
             try {
                 val conn = java.net.URL("https://api.github.com/repos/cyloct-cpu/weifan/releases/latest")
                     .openConnection() as java.net.HttpURLConnection
+                conn.requestMethod = "GET"
                 conn.connectTimeout = 8000; conn.readTimeout = 8000
                 conn.setRequestProperty("Accept", "application/vnd.github+json")
                 conn.setRequestProperty("User-Agent", "WeFlip")
-                val body = conn.inputStream.bufferedReader().readText()
+                val body = try {
+                    conn.inputStream.bufferedReader().use { it.readText() }
+                } finally {
+                    conn.disconnect()
+                }
                 val o = org.json.JSONObject(body)
                 latestTag = o.optString("tag_name").removePrefix("v")
                 notes = o.optString("body")

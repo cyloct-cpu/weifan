@@ -351,8 +351,8 @@ struct ChatView: View {
                 // U3 对应：空输入尾部是麦克风，有字切发送（Android 同构；iOS 版为点按开/关录音）
                 if recording {
                     Text("●\(voice.seconds)s").font(.callout.monospaced()).foregroundStyle(.red)
-                    Button("发送") { voice.stop(send: true) }.buttonStyle(.borderedProminent)
-                    Button("取消", role: .cancel) { voice.stop(send: false) }
+                    Button("发送") { voice.stop(send: true); recording = false }.buttonStyle(.borderedProminent)
+                    Button("取消", role: .cancel) { voice.stop(send: false); recording = false }
                 } else if input.trimmingCharacters(in: .whitespaces).isEmpty {
                     Button {
                         voice.finished = { url, sec in
@@ -436,20 +436,10 @@ struct ChatView: View {
         msgs.filter { $0.mediaKind == kind }
     }
 
-    @ViewBuilder private var attachSheet: some View {
-        NavigationStack {
-            List {
-                Button { showAttach = false } label: {
-                    Label("照片或视频", systemImage: "photo") }.task {}
-            }
-            .toolbar { }
-        }
-        .safeAreaInset(edge: .bottom) { EmptyView() }
-        .overlay {
-            AttachPicker(chatJid: chatJid, core: core,
-                         onDone: { showAttach = false },
-                         onError: { sendError = $0 })
-        }
+    private var attachSheet: some View {
+        AttachPicker(chatJid: chatJid, core: core,
+                     onDone: { showAttach = false },
+                     onError: { sendError = $0 })
     }
 
     @ViewBuilder private func contextMenu(_ m: MessageRow) -> some View {
@@ -691,7 +681,13 @@ struct BubbleView: View {
         }
         .task(id: m.id) {
             guard ["image", "video", "document", "audio"].contains(m.mediaKind), !m.fromMe else { return }
-            localURL = MediaStore.download(client: ProtocolCore.shared.client, m: m)
+            // 网络下载不能占主线程：后台下完回主线程刷 UI
+            let client = ProtocolCore.shared.client
+            let msg = m
+            let downloaded = await Task.detached(priority: .utility) {
+                MediaStore.download(client: client, m: msg)
+            }.value
+            if downloaded != nil { localURL = downloaded }
         }
     }
 
