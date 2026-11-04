@@ -68,6 +68,7 @@ class ChatActivity : BaseActivity() {
     // A5/A6：建议面板（@ 提及 / 斜杠命令）
     private lateinit var suggestionPanel: LinearLayout
     private lateinit var suggestScroll: android.widget.ScrollView
+    private lateinit var emojiPanel: LinearLayout
     private var groupMembers: List<Pair<String, String>> = emptyList()   // phone → 名字
     // 头部标签徽章（批1-c）
     private lateinit var labelBadges: HorizontalScrollView
@@ -364,6 +365,9 @@ class ChatActivity : BaseActivity() {
             textSize = 16f
             gravity = Gravity.CENTER
             setTextColor(WaSpec.textPrimary(night))
+            isClickable = true
+            // 之前这个按钮只有视觉没有行为（实测发现的空壳），这里接上表情面板
+            setOnClickListener { toggleEmojiPanel() }
         }, LinearLayout.LayoutParams(
             dp(WaSpec.ATTACH_BUTTON_SIZE_DP), dp(WaSpec.ATTACH_BUTTON_SIZE_DP)))
         input = EditText(this).apply {
@@ -458,6 +462,84 @@ class ChatActivity : BaseActivity() {
             visibility = View.GONE
         }
         // 装进 ScrollView 并限高 430dp（参考 slash_command_panel_max_height）
+        // 表情面板（对齐参考 layout_emoji_panel：总高 230dp = 分类条 36dp + 网格 194dp）
+        emojiPanel = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            background = Ui.roundBg(this@ChatActivity,
+                if (night) WaSpec.SURFACE_NIGHT else Color.WHITE, 12, 1, WaSpec.divider(night))
+            visibility = View.GONE
+        }
+        // 顶部 1dp 分隔线（参考 panel 里第一层就是个 1dp View）
+        emojiPanel.addView(android.view.View(this).apply {
+            setBackgroundColor(WaSpec.divider(night))
+        }, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(1)))
+        // 分类条 36dp
+        val catRow = android.widget.HorizontalScrollView(this).apply {
+            isHorizontalScrollBarEnabled = false
+        }
+        val cats = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER_VERTICAL
+            setPadding(dp(4), 0, dp(4), 0)
+        }
+        val categories = listOf("😊" to "表情", "👍" to "手势", "❤️" to "心情", "🍜" to "食物")
+        for ((i, c) in categories.withIndex()) {
+            cats.addView(TextView(this).apply {
+                text = c.first
+                textSize = 20f
+                gravity = Gravity.CENTER
+                setPadding(dp(10), 0, dp(10), 0)
+                isClickable = true
+                setTextColor(WaSpec.textPrimary(night))
+                if (i == 0) {
+                    // 选中下划线 2dp（参考 item_emoji_category_tab）
+                    background = Ui.roundBg(this@ChatActivity, 0x00000000, 0)
+                    setTextColor(WaSpec.primary(night))
+                }
+            }, LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.WRAP_CONTENT, dp(36)))
+        }
+        catRow.addView(cats)
+        emojiPanel.addView(catRow, LinearLayout.LayoutParams(
+            ViewGroup.LayoutParams.MATCH_PARENT, dp(36)))
+
+        // 网格区 194dp（230 - 36 - 1），每格 48dp 高、28sp
+        val gridScroll = android.widget.ScrollView(this).apply {
+            isVerticalScrollBarEnabled = false
+        }
+        val grid = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding(dp(4), dp(4), dp(4), dp(4))
+        }
+        val pool = listOf(
+            "😊","😂","🥰","😍","😎","🤔","😅","🙏","👍","👌","✌️","👏",
+            "❤️","💔","🔥","✨","🎉","🎁","💰","📦","🚚","⏰","✅","❌",
+            "🍜","🍚","🍺","☕","🌹","🌞","🌙","⭐")
+        var rowBox: LinearLayout? = null
+        for ((i, e) in pool.withIndex()) {
+            if (i % 8 == 0) {
+                rowBox = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL }
+                grid.addView(rowBox)
+            }
+            rowBox?.addView(TextView(this).apply {
+                text = e
+                textSize = 28f
+                gravity = Gravity.CENTER
+                isClickable = true
+                setOnClickListener {
+                    val cur = input.selectionStart.coerceAtLeast(0)
+                    input.text.insert(cur, e)
+                }
+            }, LinearLayout.LayoutParams(0, dp(48), 1f))
+        }
+        gridScroll.addView(grid)
+        emojiPanel.addView(gridScroll, LinearLayout.LayoutParams(
+            ViewGroup.LayoutParams.MATCH_PARENT, dp(194)))
+        bottomWrap.addView(emojiPanel, LinearLayout.LayoutParams(
+            ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply {
+            bottomMargin = dp(6)
+        })
+
         suggestScroll.addView(suggestionPanel)
         bottomWrap.addView(suggestScroll, LinearLayout.LayoutParams(
             ViewGroup.LayoutParams.MATCH_PARENT, dp(430)).apply {
@@ -1424,6 +1506,17 @@ class ChatActivity : BaseActivity() {
                     height = minOf(h, dp(430))
                 }
             }
+        }
+    }
+
+    /** 表情面板开关（对齐参考 layout_emoji_panel：230dp / 分类条 36dp / 格 48dp / 28sp） */
+    private fun toggleEmojiPanel() {
+        if (!::emojiPanel.isInitialized) return
+        if (emojiPanel.visibility == View.VISIBLE) {
+            emojiPanel.visibility = View.GONE
+        } else {
+            hideSuggestions()
+            emojiPanel.visibility = View.VISIBLE
         }
     }
 
