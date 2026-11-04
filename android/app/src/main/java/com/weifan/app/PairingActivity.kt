@@ -340,17 +340,20 @@ class PairingActivity : BaseActivity(), PairListener {
             topMargin = dp(10)
         })
 
+        // 二维码必须纯白底 + 留白：灰底或留白不足会让扫码器识别率骤降
         qrImageBox = FrameLayout(this).apply {
-            background = Ui.roundBg(this@PairingActivity, fieldBg, 16)
-            setPadding(dp(20), dp(20), dp(20), dp(20))
+            background = Ui.roundBg(this@PairingActivity, Color.WHITE, 16, 1,
+                if (night) Color.parseColor("#33FFFFFF") else Color.parseColor("#14000000"))
+            setPadding(dp(14), dp(14), dp(14), dp(14))
         }
         qrProgress = ProgressBar(this).apply { visibility = View.GONE }
         qrImageBox.addView(qrProgress, FrameLayout.LayoutParams(
             ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply {
             gravity = Gravity.CENTER
         })
+        val qrSide = resources.displayMetrics.widthPixels - dp(40) - dp(28)
         qrPanel.addView(qrImageBox, LinearLayout.LayoutParams(
-            ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply {
+            qrSide, qrSide).apply {
             topMargin = dp(24)
         })
 
