@@ -11,8 +11,8 @@ android {
         applicationId = "com.weifan.app"
         minSdk = 26
         targetSdk = 34
-        versionCode = 51
-        versionName = "3.7.0"
+        versionCode = 52
+        versionName = "3.8.0"
     }
 
     buildTypes {

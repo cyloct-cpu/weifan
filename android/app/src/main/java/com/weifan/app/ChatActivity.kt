@@ -76,6 +76,11 @@ class ChatActivity : BaseActivity() {
     private var callStateText: TextView? = null
     private var callTimer: android.os.Handler? = null
     private var callStartedAt = 0L
+    private var callMuted = false
+    private var callSpeaker = false
+    /** 视频渲染视图与解码器（video=true 时创建） */
+    private var videoSurface: android.view.TextureView? = null
+    private var callVideoDecoder: com.weifan.app.chat.H264Decoder? = null
     private var groupMembers: List<Pair<String, String>> = emptyList()   // phone → 名字
     // 头部标签徽章（批1-c）
     private lateinit var labelBadges: HorizontalScrollView
@@ -197,6 +202,12 @@ class ChatActivity : BaseActivity() {
             setPadding(0, dp(2), 0, 0)
         }
         titleCol.addView(subtitle)
+
+        // 调试预览：am start --es previewCall voice|video 可直接看通话界面（不需要真实配对）
+        when (intent.getStringExtra("previewCall")) {
+            "voice" -> main.postDelayed({ showCallingUI(false, "preview") }, 600)
+            "video" -> main.postDelayed({ showCallingUI(true, "preview") }, 600)
+        }
 
         // 来电监听：挂到 ChatActivity 生命周期上，收到即弹全屏来电界面
         engine.onIncomingCall = { from, callId, video ->
@@ -1975,50 +1986,125 @@ class ChatActivity : BaseActivity() {
         }
     }
 
-    /** 呼叫中界面：显示对方名 + 挂断按钮 */
+    /**
+     * 通话中界面（对齐参考 activity_call）：
+     * 深色底 #111B21 + 圆形首字母头像 96dp + 名字 20sp 白 +
+     * 状态 12sp 灰 + 底部三按钮（静音 / 免提 / 挂断 56dp 圆）。
+     * video=true 时顶部换成视频区域（TextureView，由 H264 解码器渲染）。
+     */
     private fun showCallingUI(video: Boolean, callId: String) {
-        val box = LinearLayout(this).apply {
+        val name = chatTitle.ifBlank { chatJid.substringBefore("@") }
+        val root = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
-            gravity = Gravity.CENTER
-            setPadding(dp(24), dp(30), dp(24), dp(30))
+            gravity = Gravity.CENTER_HORIZONTAL
+            setBackgroundColor(Color.parseColor("#111B21"))
+            setPadding(dp(20), dp(36), dp(20), dp(28))
+            // 必须给最小高度：内容少时 AlertDialog 会 wrap 到内容高度，
+            // 下方露出聊天页背景（实测语音通话版就是这个问题）
+            minimumHeight = (resources.displayMetrics.heightPixels * 0.70f).toInt()
         }
-        box.addView(TextView(this).apply {
-            text = if (video) "📹" else "📞"
-            textSize = 48f
-            gravity = Gravity.CENTER
+        if (video) {
+            // 视频区占剩余空间，有画面就渲染在这里（无画面时显示头像占位）
+            callVideoDecoder = com.weifan.app.chat.H264Decoder()
+            videoSurface = android.view.TextureView(this)
+            root.addView(videoSurface, LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, 0, 1f))
+            val tv = videoSurface
+            if (tv != null) callVideoDecoder?.attach(tv)
+            engine.attachVideoSink { frame -> callVideoDecoder?.feed(frame) }
+            engine.startVideoReceiveAsync()
+        }
+        root.addView(initialAvatar(name, dp(96)), LinearLayout.LayoutParams(dp(96), dp(96)).apply {
+            if (video) { topMargin = dp(12); height = dp(64); width = dp(64) }
         })
-        box.addView(TextView(this).apply {
-            text = chatTitle.ifBlank { chatJid.substringBefore("@") }
+        root.addView(TextView(this).apply {
+            text = name
             textSize = 20f
+            setTextColor(Color.WHITE)
             gravity = Gravity.CENTER
-            setTextColor(WaSpec.textPrimary(night))
-            setPadding(0, dp(12), 0, 0)
+        }, LinearLayout.LayoutParams(
+            ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply {
+            topMargin = dp(14)
         })
-        // 状态行：呼叫中 → 通话中 mm:ss（对齐参考 activity_call 的 12sp 状态文字）
         val stateText = TextView(this).apply {
             text = if (video) "视频通话呼叫中…" else "语音通话呼叫中…"
-            textSize = 14f
+            textSize = 12f
+            setTextColor(Color.parseColor("#8696A0"))
             gravity = Gravity.CENTER
-            setTextColor(WaSpec.textSecondary(night))
-            setPadding(0, dp(6), 0, 0)
         }
-        box.addView(stateText)
-        // 计时器：phase==4(active) 起每秒刷新
+        root.addView(stateText, LinearLayout.LayoutParams(
+            ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply {
+            topMargin = dp(6)
+        })
         callStateText = stateText
         callTimer = android.os.Handler(android.os.Looper.getMainLooper())
         callStartedAt = 0L
-        val dlg = android.app.AlertDialog.Builder(this, R.style.WeifanDialog).create()
-        val hangup = Ui.pillButton(this, "挂断", true, night)
-        hangup.setOnClickListener {
-            stopCallAudio()
-            engine.hangupCallAsync { }
-            dlg.dismiss()
+
+        // 底部三按钮：静音 / 免提 / 挂断（参考 56dp 圆 + 12sp 标签）
+        val btnRow = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER
         }
-        box.addView(hangup, LinearLayout.LayoutParams(
-            ViewGroup.LayoutParams.MATCH_PARENT, dp(52)).apply { topMargin = dp(24) })
-        dlg.setView(box)
+        fun roundBtn(icon: String, label: String, bg: Int, onTap: () -> Unit): LinearLayout {
+            val col = LinearLayout(this).apply {
+                orientation = LinearLayout.VERTICAL
+                gravity = Gravity.CENTER_HORIZONTAL
+            }
+            col.addView(TextView(this).apply {
+                text = icon
+                textSize = 22f
+                gravity = Gravity.CENTER
+                setTextColor(Color.WHITE)
+                background = Ui.roundBg(this@ChatActivity, bg, 28)
+                isClickable = true
+                setOnClickListener { onTap() }
+            }, LinearLayout.LayoutParams(dp(56), dp(56)))
+            col.addView(TextView(this).apply {
+                text = label
+                textSize = 12f
+                setTextColor(Color.parseColor("#8696A0"))
+                gravity = Gravity.CENTER
+            }, LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply {
+                topMargin = dp(6)
+            })
+            return col
+        }
+        val muteCol = roundBtn("🎙", "静音", Color.parseColor("#2A3942")) {
+            callMuted = !callMuted
+            engine.setMuted(callMuted)
+            Toast.makeText(this, if (callMuted) "已静音" else "已取消静音",
+                Toast.LENGTH_SHORT).show()
+        }
+        val speakerCol = roundBtn("🔊", "免提", Color.parseColor("#2A3942")) {
+            callSpeaker = !callSpeaker
+            engine.setSpeakerOn(callSpeaker)
+        }
+        val hangCol = roundBtn("📵", "挂断", Color.parseColor("#EA4335")) {
+            stopCallTimer(); stopCallAudio()
+            engine.hangupCallAsync { }
+            callDialog?.dismiss(); callDialog = null
+        }
+        btnRow.addView(muteCol)
+        btnRow.addView(speakerCol, LinearLayout.LayoutParams(
+            ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply {
+            marginStart = dp(28); marginEnd = dp(28)
+        })
+        btnRow.addView(hangCol)
+        root.addView(btnRow, LinearLayout.LayoutParams(
+            ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply {
+            topMargin = dp(28)
+        })
+
+        val dlg = android.app.AlertDialog.Builder(this, R.style.WeifanDialog)
+            .setCancelable(false).create()
+        dlg.setView(root)
         dlg.show()
         dlg.window?.setBackgroundDrawableResource(android.R.color.transparent)
+        // 高度取屏高 72%：太矮会露出下面聊天页背景（实测），太高会顶到状态栏
+        dlg.window?.setLayout(
+            (resources.displayMetrics.widthPixels * 0.96f).toInt(),
+            (resources.displayMetrics.heightPixels * 0.72f).toInt())
         callDialog = dlg
     }
 
@@ -2062,6 +2148,10 @@ class ChatActivity : BaseActivity() {
     private fun stopCallAudio() {
         callAudio?.stop()
         callAudio = null
+        engine.attachVideoSink(null)
+        callVideoDecoder?.release()
+        callVideoDecoder = null
+        videoSurface = null
     }
 
     /** 来电界面：接听 / 拒接 */

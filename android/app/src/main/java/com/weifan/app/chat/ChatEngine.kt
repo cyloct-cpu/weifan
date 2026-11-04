@@ -47,6 +47,11 @@ class ChatEngine private constructor(context: Context) :
         client.setReceiptListener(this)
         client.setTypingListener(this)
         client.setMessageEventListener(this)
+        client.setVideoListener(object : mobile.VideoListener {
+            override fun onVideoFrame(data: ByteArray?) {
+                if (data != null) videoSink?.invoke(data)
+            }
+        })
         client.setAudioListener(object : mobile.AudioListener {
             override fun onAudioFrame(data: ByteArray?) {
                 if (data != null) audioSink?.invoke(data)
@@ -473,6 +478,21 @@ class ChatEngine private constructor(context: Context) :
      */
     /** 收侧音频回调（由 CallAudioBridge 挂上，写 AudioTrack） */
     var audioSink: ((ByteArray) -> Unit)? = null
+    /** 视频帧回调（H.264 Annex-B，由 H264Decoder 解码上屏） */
+    var videoSink: ((ByteArray) -> Unit)? = null
+
+    fun attachVideoSink(sink: ((ByteArray) -> Unit)?) { videoSink = sink }
+
+    /** 订阅对端视频流 */
+    fun startVideoReceiveAsync(callback: (String?) -> Unit = {}) {
+        Thread {
+            try { client.startVideoReceive(); main.post { callback(null) } }
+            catch (e: Throwable) { main.post { callback(e.message ?: e.toString()) } }
+        }.start()
+    }
+
+    fun setMuted(m: Boolean) { try { client.setMuted(m) } catch (_: Throwable) { } }
+    fun setSpeakerOn(on: Boolean) { try { client.setSpeakerOn(on) } catch (_: Throwable) { } }
 
     fun attachAudioSink(sink: ((ByteArray) -> Unit)?) { audioSink = sink }
 
