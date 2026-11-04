@@ -449,6 +449,24 @@ class ChatEngine private constructor(context: Context) :
         }.start()
     }
 
+    /** 给消息贴表情（reaction="" 取消）。先本地写库保证 UI 立刻反映，再发协议。 */
+    fun reactAsync(chatJid: String, msgId: String, senderJid: String, fromMe: Boolean,
+                   reaction: String, callback: (String?) -> Unit) {
+        db.setReaction(chatJid, msgId, reaction)
+        Thread {
+            try {
+                client.sendReaction(chatJid, if (fromMe) "" else senderJid, msgId, reaction)
+                main.post { callback(null) }
+            } catch (e: Throwable) {
+                main.post {
+                    // 发送失败回滚本地状态，避免 UI 显示成功实际没发出去
+                    db.setReaction(chatJid, msgId, "")
+                    callback(e.message ?: e.toString())
+                }
+            }
+        }.start()
+    }
+
     /** 收件：对方语言 → 中文 */
     fun translateIncomingAsync(chatJid: String, id: String, text: String) {
         Thread {

@@ -9,7 +9,7 @@ import android.database.sqlite.SQLiteOpenHelper
  * 会话与消息存储。零依赖：直接 SQLiteOpenHelper，不引 Room。
  * 表结构对齐 Go 层 whatsmeow store（它自己存协议状态；这里只存 UI 需要的会话/消息/译文）。
  */
-class ChatDb(context: Context) : SQLiteOpenHelper(context, "chats.db", null, 9) {
+class ChatDb(context: Context) : SQLiteOpenHelper(context, "chats.db", null, 10) {
 
     override fun onCreate(db: SQLiteDatabase) {
         db.execSQL("""
@@ -44,6 +44,7 @@ class ChatDb(context: Context) : SQLiteOpenHelper(context, "chats.db", null, 9) 
               media_path TEXT NOT NULL DEFAULT '',
               media_thumb TEXT NOT NULL DEFAULT '',
               media_meta TEXT NOT NULL DEFAULT '',
+              reaction TEXT NOT NULL DEFAULT '',
               PRIMARY KEY(chat_jid, id)
             )
         """)
@@ -76,6 +77,10 @@ class ChatDb(context: Context) : SQLiteOpenHelper(context, "chats.db", null, 9) 
     }
 
     override fun onUpgrade(db: SQLiteDatabase, oldVersion: Int, newVersion: Int) {
+        // v10: 消息表情回应（reaction，单条消息只保留最新一个）
+        if (oldVersion < 10) {
+            db.execSQL("ALTER TABLE messages ADD COLUMN reaction TEXT NOT NULL DEFAULT ''")
+        }
         // v9: 跟进待办表
         if (oldVersion < 9) {
             db.execSQL("""
@@ -395,8 +400,8 @@ class ChatDb(context: Context) : SQLiteOpenHelper(context, "chats.db", null, 9) 
     fun messages(chatJid: String, limit: Int = 200): List<MessageRow> {
         return readableDatabase.rawQuery(
             "SELECT id, chat_jid, sender_jid, from_me, text, original, translated, translated_lang, ts, " +
-            "media_kind, media_mime, media_name, media_size, media_path, media_thumb, media_meta " +
-            "FROM messages WHERE chat_jid=? ORDER BY ts ASC LIMIT $limit", arrayOf(chatJid)
+            "media_kind, media_mime, media_name, media_size, media_path, media_thumb, media_meta, " +
+            "reaction FROM messages WHERE chat_jid=? ORDER BY ts ASC LIMIT $limit", arrayOf(chatJid)
         ).use { c ->
             val out = mutableListOf<MessageRow>()
             while (c.moveToNext()) {
@@ -408,7 +413,7 @@ class ChatDb(context: Context) : SQLiteOpenHelper(context, "chats.db", null, 9) 
                     mediaKind = c.getString(9), mediaMime = c.getString(10),
                     mediaName = c.getString(11), mediaSize = c.getLong(12),
                     mediaPath = c.getString(13), mediaThumb = c.getString(14),
-                    mediaMeta = c.getString(15))
+                    mediaMeta = c.getString(15), reaction = c.getString(16))
             }
             out
         }
@@ -417,8 +422,9 @@ class ChatDb(context: Context) : SQLiteOpenHelper(context, "chats.db", null, 9) 
     /** 按 ID 取单条消息（投票哈希反查选项表用）；无则 null */
     fun message(chatJid: String, id: String): MessageRow? = readableDatabase.rawQuery(
         "SELECT id, chat_jid, sender_jid, from_me, text, original, translated, translated_lang, ts, " +
-        "media_kind, media_mime, media_name, media_size, media_path, media_thumb, media_meta " +
-        "FROM messages WHERE chat_jid=? AND id=?", arrayOf(chatJid, id)).use { c ->
+        "media_kind, media_mime, media_name, media_size, media_path, media_thumb, media_meta, " +
+        "reaction FROM messages WHERE chat_jid=? AND id=?",
+        arrayOf(chatJid, id)).use { c ->
         if (!c.moveToFirst()) return null
         MessageRow(
             id = c.getString(0), chatJid = c.getString(1), senderJid = c.getString(2),
@@ -426,7 +432,7 @@ class ChatDb(context: Context) : SQLiteOpenHelper(context, "chats.db", null, 9) 
             translated = c.getString(6), translatedLang = c.getString(7), ts = c.getLong(8),
             mediaKind = c.getString(9), mediaMime = c.getString(10), mediaName = c.getString(11),
             mediaSize = c.getLong(12), mediaPath = c.getString(13),
-            mediaThumb = c.getString(14), mediaMeta = c.getString(15))
+            mediaThumb = c.getString(14), mediaMeta = c.getString(15), reaction = c.getString(16))
     }
 
     // MARK: - 跟进待办（批3-a，对齐参考 FollowupTodosActivity）
@@ -524,6 +530,12 @@ class ChatDb(context: Context) : SQLiteOpenHelper(context, "chats.db", null, 9) 
         if (c.moveToFirst()) c.getInt(0) else 0
     }
 
+    /** 设置消息的表情回应（空串 = 取消） */
+    fun setReaction(chatJid: String, msgId: String, reaction: String) {
+        writableDatabase.execSQL("UPDATE messages SET reaction=? WHERE chat_jid=? AND id=?",
+            arrayOf(reaction, chatJid, msgId))
+    }
+
     /** 恢复备份前关连接：不关会锁库，覆盖后新库读不出来 */
     fun closeForRestore() {
         try { close() } catch (_: Throwable) { }
@@ -572,5 +584,6 @@ data class MessageRow(
     val mediaSize: Long = 0,
     var mediaPath: String = "",     // 下载后落盘路径
     val mediaThumb: String = "",    // base64 JPEG 缩略图
-    val mediaMeta: String = ""      // JSON：url/directPath/mediaKey/sha… 供下载
+    val mediaMeta: String = "",     // JSON：url/directPath/mediaKey/sha… 供下载
+    val reaction: String = ""       // 表情回应（DB v10）
 )

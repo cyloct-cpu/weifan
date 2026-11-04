@@ -69,6 +69,7 @@ class ChatActivity : BaseActivity() {
     private lateinit var suggestionPanel: LinearLayout
     private lateinit var suggestScroll: android.widget.ScrollView
     private lateinit var emojiPanel: LinearLayout
+    private var rdlg: android.app.AlertDialog? = null
     private var groupMembers: List<Pair<String, String>> = emptyList()   // phone → 名字
     // 头部标签徽章（批1-c）
     private lateinit var labelBadges: HorizontalScrollView
@@ -1003,7 +1004,6 @@ class ChatActivity : BaseActivity() {
                     }
                     col.addView(row)
                 }
-                // 点这行 = 看结果（对齐参考 dialog_poll_results）；选项行仍单独投票
                 col.addView(TextView(this).apply {
                     text = if (hasVotes) "$voters 人已投 · 点选项投票/改票 · 点这里看结果"
                            else "点选项可投票 · 点这里看结果"
@@ -1598,6 +1598,17 @@ class ChatActivity : BaseActivity() {
         }, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT))
 
         val holder = FrameLayout(this)
+        // 表情回应徽章（DB v10）：有回应时在气泡内显示，点它可更换/取消
+        if (m.reaction.isNotBlank()) {
+            col.addView(TextView(this).apply {
+                text = m.reaction
+                textSize = 15f
+                setPadding(0, dp(4), 0, 0)
+                isClickable = true
+                setOnClickListener { showReactionPicker(m) }
+            })
+        }
+
         // 点击和长按都弹菜单：仅靠长按时，实测在滚动容器里经常收不到事件，
         // 点击气泡主体更稳也更易发现
         col.isClickable = true
@@ -1715,6 +1726,9 @@ class ChatActivity : BaseActivity() {
         }
         box.addView(item("回复") { dlg.dismiss(); setQuote(Triple(m.id, m.senderJid, m.text.ifBlank { "[媒体]" })) })
         // 媒体消息：菜单里也给一个「打开」入口（长按比点准，且与微信习惯一致）
+        box.addView(item(if (m.reaction.isBlank()) "添加表情" else "改表情") {
+            dlg.dismiss(); showReactionPicker(m)
+        })
         // 投票：查看结果（对齐参考 dialog_poll_results）
         if (m.mediaKind == "poll") {
             box.addView(item("查看投票结果") { dlg.dismiss(); showPollResults(m) })
@@ -2940,6 +2954,43 @@ class ChatActivity : BaseActivity() {
     private fun parsePollOptions(m: MessageRow): List<String> {
         val meta = try { JSONObject(m.mediaMeta) } catch (_: Throwable) { JSONObject() }
         return meta.optString("waveform").split("\n").filter { it.isNotBlank() }
+    }
+
+    /**
+     * 表情回应选择器（对齐参考 dialog_media_emoji：padding 8/4、每格 4dp 间距）。
+     * 点同一个表情等于取消（--reaction），这是 WhatsApp 的既有习惯。
+     */
+    private fun showReactionPicker(m: MessageRow) {
+        val emojis = listOf("👍","❤️","😂","😮","😢","🙏","🔥","🎉")
+        val box = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding(dp(8), dp(4), dp(8), dp(4))
+        }
+        val row = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL }
+        for (e in emojis) {
+            row.addView(TextView(this).apply {
+                text = e
+                textSize = 26f
+                gravity = Gravity.CENTER
+                isClickable = true
+                setOnClickListener {
+                    val next = if (m.reaction == e) "" else e
+                    engine.reactAsync(chatJid, m.id, m.senderJid, m.fromMe, next) { err ->
+                        if (err != null) Toast.makeText(this@ChatActivity,
+                            "表情发送失败：$err", Toast.LENGTH_SHORT).show()
+                        else renderMessages(false)
+                    }
+                    rdlg?.dismiss()
+                }
+            }, LinearLayout.LayoutParams(dp(48), dp(48)).apply {
+                marginStart = dp(4); marginEnd = dp(4)
+            })
+        }
+        box.addView(row)
+        rdlg = android.app.AlertDialog.Builder(this)
+            .setView(box)
+            .create()
+        rdlg?.show()
     }
 
     private fun showPollResults(m: MessageRow) {
