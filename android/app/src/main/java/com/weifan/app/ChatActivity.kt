@@ -72,6 +72,7 @@ class ChatActivity : BaseActivity() {
     private var rdlg: android.app.AlertDialog? = null
     /** 通话音频桥（采集 AudioRecord ↔ Go PCMStream，收侧 Go Sink → AudioTrack） */
     private var callAudio: com.weifan.app.chat.CallAudioBridge? = null
+    private var callDialog: android.app.AlertDialog? = null
     private var groupMembers: List<Pair<String, String>> = emptyList()   // phone → 名字
     // 头部标签徽章（批1-c）
     private lateinit var labelBadges: HorizontalScrollView
@@ -197,6 +198,20 @@ class ChatActivity : BaseActivity() {
         // 来电监听：挂到 ChatActivity 生命周期上，收到即弹全屏来电界面
         engine.onIncomingCall = { from, callId, video ->
             main.post { showIncomingCallUI(from, callId, video) }
+        }
+        // 通话阶段变化：active(4) 才开始收发音频；ended(5) 立刻停采集并关界面
+        engine.onCallPhase = { phase ->
+            main.post {
+                when (phase) {
+                    4 -> startCallAudio()
+                    5 -> {
+                        stopCallAudio()
+                        try { callDialog?.dismiss() } catch (_: Throwable) { }
+                        callDialog = null
+                        Toast.makeText(this, "通话已结束", Toast.LENGTH_SHORT).show()
+                    }
+                }
+            }
         }
 
         // 头部标签徽章行（对齐参考 headerLabelRow → headerLabelBadges，marginTop 4dp）
@@ -1990,6 +2005,7 @@ class ChatActivity : BaseActivity() {
         dlg.setView(box)
         dlg.show()
         dlg.window?.setBackgroundDrawableResource(android.R.color.transparent)
+        callDialog = dlg
     }
 
     /** 启动双向音频（需 RECORD_AUDIO 权限） */

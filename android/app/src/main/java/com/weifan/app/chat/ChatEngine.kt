@@ -60,6 +60,9 @@ class ChatEngine private constructor(context: Context) :
             override fun onCallTerminated(callID: String?, reason: String?) {
                 onCallTerminated?.invoke(callID ?: "")
             }
+            override fun onCallState(phase: Long) {
+                onCallPhase?.invoke(phase.toInt())
+            }
         })
         // pollUpdateListener 在下方属性声明后于 initPoll 注册（属性初始化顺序）
     }
@@ -484,6 +487,9 @@ class ChatEngine private constructor(context: Context) :
         Thread { try { client.stopAudio() } catch (_: Throwable) { } }.start()
     }
 
+    /** Go 侧通话统计 JSON（state/tx/rx 帧与字节数） */
+    fun callStats(): String = try { client.callStats() } catch (_: Throwable) { "{}" }
+
     /** 喂麦克风 PCM（CallAudioBridge 采集线程调用，必须在后台线程） */
     fun feedMicPcm(data: ByteArray) {
         try { client.feedMicPcm(data) } catch (_: Throwable) { }
@@ -492,6 +498,8 @@ class ChatEngine private constructor(context: Context) :
     /** 来电回调：(fromJid, callID, isVideo)。meowcaller 支持接听/拒接/发起 */
     var onIncomingCall: ((String, String, Boolean) -> Unit)? = null
     var onCallTerminated: ((String) -> Unit)? = null
+    /** 通话阶段：0 idle / 1 calling / 2 ringing / 3 connecting / 4 active / 5 ended / 6 waitingRoom */
+    var onCallPhase: ((Int) -> Unit)? = null
 
     /** 接听当前来电 */
     fun answerCallAsync(callback: (String?) -> Unit) {

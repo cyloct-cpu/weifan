@@ -37,6 +37,11 @@ class CallAudioBridge(
     private var track: AudioTrack? = null
     private var captureThread: Thread? = null
     @Volatile private var running = false
+    // 实测统计（logcat 取证：TX=采集送出的帧，RX=从对端收到的帧）
+    @Volatile private var txFrames = 0L
+    @Volatile private var txBytes = 0L
+    @Volatile private var rxFrames = 0L
+    @Volatile private var rxBytes = 0L
 
     /** 开始采集与播放。需已接听或已发起通话 */
     @SuppressLint("MissingPermission")
@@ -78,7 +83,14 @@ class CallAudioBridge(
 
             running = true
             record?.startRecording()
-            engine.attachAudioSink { bytes -> track?.write(bytes, 0, bytes.size) }
+            engine.attachAudioSink { bytes ->
+                track?.write(bytes, 0, bytes.size)
+                rxFrames++; rxBytes += bytes.size
+                if (rxFrames % 50 == 0L) {
+                    android.util.Log.i("WeFlipCall", "RX frames=$rxFrames bytes=$rxBytes")
+                    logStats()
+                }
+            }
 
             captureThread = Thread {
                 val buf = ByteArray(640)   // 20ms @16k mono s16 = 640 字节
@@ -87,7 +99,13 @@ class CallAudioBridge(
                     if (n > 0) {
                         // 截取实际长度再喂给 Go，避免把脏数据也发出去
                         engine.feedMicPcm(if (n == buf.size) buf else buf.copyOf(n))
+                        txFrames++; txBytes += n
+                        if (txFrames % 50 == 0L) {
+                            android.util.Log.i("WeFlipCall", "TX frames=$txFrames bytes=$txBytes")
+                            logStats()
+                        }
                     } else if (n < 0) {
+                        android.util.Log.w("WeFlipCall", "AudioRecord.read=$n (停止采集)")
                         break
                     }
                 }
@@ -96,6 +114,12 @@ class CallAudioBridge(
             onError(e.message ?: e.toString())
             stop()
         }
+    }
+
+    /** 打印当前统计（含 Go 侧 call 状态码，5=connected 之类由 meowcaller 定义） */
+    private fun logStats() {
+        val st = try { engine.callStats() } catch (_: Throwable) { "{}" }
+        android.util.Log.i("WeFlipCall", "STATS $st | kotlin tx=$txBytes rx=$rxBytes")
     }
 
     /** 停止并释放 */
