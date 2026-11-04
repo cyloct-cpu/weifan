@@ -521,7 +521,9 @@ struct AttachPicker: View {
         .fileImporter(isPresented: $showFiles, allowedContentTypes: [.data],
                       allowsMultipleSelection: false) { result in
             if case .success(let urls) = result, let src = urls.first {
-                let tmp = MediaStore.dir.appendingPathComponent(src.lastPathComponent)
+                // 唯一名防覆盖（同名文档连发会 copy 失败 → 静默发旧文件）
+                let tmp = MediaStore.dir.appendingPathComponent(
+                    "\(Int(Date().timeIntervalSince1970 * 1000))-\(src.lastPathComponent)")
                 try? FileManager.default.copyItem(at: src, to: tmp)
                 core.sendMediaAsync(chatJid: chatJid, kind: "document", localURL: tmp) { err in
                     if let err { onError(err) } else { onDone() }
@@ -555,9 +557,12 @@ struct PollDialog: View {
                         let opts = options.split(separator: ",").map { $0.trimmingCharacters(in: .whitespaces) }
                             .filter { !$0.isEmpty }
                         guard !question.isEmpty, opts.count >= 2 else { return }
-                        var err: NSError?
-                        _ = core.client.sendPoll(chatJid, question: question,
-                                                 optionsCSV: opts.joined(separator: ","), error: &err)
+                        let optsCSV = opts.joined(separator: ",")
+                        core.sendCardAsync(chatJid: chatJid, kind: "poll", mediaName: question,
+                            meta: MediaMeta(options: opts), text: question) { e in
+                            core.client.sendPoll(chatJid, question: question,
+                                                 optionsCSV: optsCSV, error: &e)
+                        }
                         dismiss()
                     }
                 }
@@ -588,9 +593,11 @@ struct LocationDialog: View {
                 ToolbarItem(placement: .confirmationAction) {
                     Button("发送") {
                         guard let la = Double(lat), let lo = Double(lng) else { return }
-                        var err: NSError?
-                        _ = core.client.sendLocation(chatJid, lat: la, lng: lo,
-                                                     name: name, address: "", error: &err)
+                        core.sendCardAsync(chatJid: chatJid, kind: "location", mediaName: name,
+                            meta: MediaMeta(lat: la, lng: lo, name: name, address: ""), text: name) { e in
+                            core.client.sendLocation(chatJid, lat: la, lng: lo,
+                                                     name: name, address: "", error: &e)
+                        }
                         dismiss()
                     }
                 }
@@ -621,10 +628,13 @@ struct EventDialog: View {
                 ToolbarItem(placement: .confirmationAction) {
                     Button("发送") {
                         guard !name.isEmpty else { return }
-                        var err: NSError?
-                        _ = core.client.sendEvent(chatJid, name: name, description: desc,
-                                                  startMs: Int64(start.timeIntervalSince1970 * 1000),
-                                                  endMs: 0, locationName: "", joinLink: "", error: &err)
+                        let startMs = Int64(start.timeIntervalSince1970 * 1000)
+                        core.sendCardAsync(chatJid: chatJid, kind: "event", mediaName: name,
+                            meta: MediaMeta(name: name, desc: desc, start: startMs), text: name) { e in
+                            core.client.sendEvent(chatJid, name: name, description: desc,
+                                                  startMs: startMs, endMs: 0,
+                                                  locationName: "", joinLink: "", error: &e)
+                        }
                         dismiss()
                     }
                 }

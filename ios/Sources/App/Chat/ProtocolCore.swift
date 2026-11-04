@@ -31,7 +31,12 @@ final class PairHandler: NSObject, MobilePairListenerProtocol {
         DispatchQueue.main.async { self.onError?(msg) }
     }
     func onPairSuccess(_ jid: String?) {
-        if let jid { DispatchQueue.main.async { self.onSuccess?(jid) } }
+        if let jid {
+            DispatchQueue.main.async {
+                self.onSuccess?(jid)
+                ProtocolCore.shared.qrInFlight = false
+            }
+        }
     }
 }
 
@@ -159,13 +164,20 @@ final class ProtocolCore: ObservableObject {
 
     /// 发起二维码配对。回调码经 pairHandler.onCode 抛给 UI（用 CoreImage 现场渲染 QR）。
     /// 注意：gobind 回调来自 Go 线程，UI 状态必须回主线程改。
+    var qrInFlight = false
     func startQRPiring(qrSink: @escaping (Data) -> Void) {
+        // 配对页 onAppear 会反复触发；Go 侧 PairWithQR 并发重入会双路消费同一 qrChan
+        guard !qrInFlight else { return }
+        qrInFlight = true
         pairHandler.onQR = qrSink
-        DispatchQueue.global(qos: .userInitiated).async { [client] in
+        DispatchQueue.global(qos: .userInitiated).async { [weak self, client] in
             do {
-                let r = try client.pairWithQR()
+                _ = try client.pairWithQR()
             } catch {
-                Task { @MainActor in self.pairError = error.localizedDescription }
+                Task { @MainActor in
+                    self?.pairError = error.localizedDescription
+                    self?.qrInFlight = false
+                }
             }
         }
     }
@@ -393,6 +405,37 @@ final class ProtocolCore: ObservableObject {
         try? db.updateTranslation(chatJid: m.chatJid, id: m.id, translated: "", lang: "")
         translateIncomingAsync(chatJid: m.chatJid, id: m.id, text: m.text)
         inboxTick &+= 1
+    }
+
+    /// 投票/位置/活动发送后本地落一条（本人消息即时可见，与 Android 同构）
+    func sendCardAsync(chatJid: String, kind: String, mediaName: String,
+                       meta: MediaMeta, text: String = "",
+                       send: @escaping (inout NSError?) -> String?) {
+        let client = self.client
+        Task.detached { [weak self, db] in
+            do {
+                var err: NSError?
+                let msgId = send(&err)
+                if let err { throw err }
+                guard let msgId else { return }
+                let now = Int64(Date().timeIntervalSince1970 * 1000)
+                let metaJSON = String(data: (try? JSONEncoder().encode(meta)) ?? Data(), encoding: .utf8) ?? ""
+                try db.insertMessage(MessageRow(
+                    id: msgId, chatJid: chatJid, senderJid: "", fromMe: true,
+                    text: text, original: "", translated: "", translatedLang: "",
+                    ts: now, mediaKind: kind, mediaMime: "",
+                    mediaName: mediaName, mediaSize: 0, mediaPath: "", mediaThumb: "",
+                    mediaMeta: metaJSON, reaction: ""))
+                try db.upsertChat(jid: chatJid, title: "", lastMessage: "[\(kind)]",
+                                  lastTs: now, incrementUnread: false)
+                await MainActor.run {
+                    self?.inboxTick &+= 1
+                    if let e = err { self?.pairError = e.localizedDescription }
+                }
+            } catch {
+                await MainActor.run { self?.pairError = error.localizedDescription }
+            }
+        }
     }
 
     // MARK: - 回执（蓝色 ✓✓）
