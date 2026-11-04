@@ -175,17 +175,20 @@ class PairingActivity : BaseActivity(), PairListener {
         val inputRow = LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL
         }
+        // 区号框：86 只作为灰色提示（虚的），不是实体内容；
+        // 「+」由 prefixField 固定显示，用户只需打区号数字
         countryInput = EditText(this).apply {
-            setText("+86")
+            hint = "86"
             textSize = 17f
             setTextColor(textBody)
+            setHintTextColor(textStatus)
             setBackgroundResource(0)
             setSingleLine(true)
             inputType = InputType.TYPE_CLASS_PHONE
             gravity = Gravity.CENTER_VERTICAL
-            setPadding(dp(16), 0, dp(16), 0)
+            setPadding(dp(6), 0, dp(16), 0)
         }
-        inputRow.addView(roundField(countryInput), LinearLayout.LayoutParams(dp(120),
+        inputRow.addView(prefixField("+", countryInput), LinearLayout.LayoutParams(dp(120),
             ViewGroup.LayoutParams.MATCH_PARENT))
         phoneInput = EditText(this).apply {
             hint = "请输入手机号码"
@@ -416,6 +419,22 @@ class PairingActivity : BaseActivity(), PairListener {
     private fun dp(v: Int) = Ui.dp(this, v)
 
     private val fieldBg get() = if (night) Color.parseColor("#2C2C2E") else Color.parseColor("#F2F2F7")
+
+    /** 带固定前缀的胶囊输入框：前缀（如「+」）不可编辑，输入区只填数字 */
+    private fun prefixField(prefix: String, field: EditText): LinearLayout = LinearLayout(this).apply {
+        orientation = LinearLayout.HORIZONTAL
+        gravity = Gravity.CENTER_VERTICAL
+        background = Ui.roundBg(this@PairingActivity, fieldBg, 29)
+        addView(TextView(this@PairingActivity).apply {
+            text = prefix
+            textSize = 17f
+            setTextColor(textBody)
+            gravity = Gravity.CENTER
+            setPadding(dp(16), 0, 0, 0)
+        }, LinearLayout.LayoutParams(
+            ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.MATCH_PARENT))
+        addView(field, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.MATCH_PARENT, 1f))
+    }
 
     /** 灰色胶囊输入框（bg_login_input_round）：圆角 29dp、无描边 */
     private fun roundField(field: EditText): LinearLayout = LinearLayout(this).apply {
@@ -649,7 +668,9 @@ class PairingActivity : BaseActivity(), PairListener {
             val digits = n.substring(1)
             return if (digits.length in 8..15 && digits.all { it.isDigit() }) n else null
         }
-        var cc = country.replace(Regex("[\\s\\-()]"), "")
+        var cc = country.replace(Regex("[\\s\\-()+.]"), "")
+        // 区号框留空时按 +86 处理（86 只是提示，不算真实输入）
+        if (cc.isEmpty()) cc = "86"
         if (cc.startsWith("00")) cc = "+${cc.substring(2)}"
         if (!cc.startsWith("+")) cc = "+$cc"
         if (!cc.substring(1).all { it.isDigit() }) return null
