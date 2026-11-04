@@ -162,6 +162,21 @@ object Ui {
      * 筛选 chip：选中/未选双态，圆角 = 高度一半。
      * 参考实现里 chip 高由 padding 决定，文字 13sp。
      */
+    /** 40dp 字母圆头像（跟进待办行用，与 ChatActivity.avatarView 同一套配色） */
+    fun avatarCircle(context: Context, title: String, night: Boolean, sizeDp: Int): android.view.View {
+        val colors = arrayOf("#25D366", "#34B7F1", "#FFB74D", "#9575CD", "#4DB6AC", "#F06292")
+        val letter = title.firstOrNull()?.toString() ?: "#"
+        val color = colors[(title.hashCode().let { if (it < 0) -it else it }) % colors.size]
+        return android.widget.TextView(context).apply {
+            text = letter
+            textSize = 15f
+            gravity = android.view.Gravity.CENTER
+            setTextColor(android.graphics.Color.WHITE)
+            setTypeface(typeface, android.graphics.Typeface.BOLD)
+            background = roundBg(context, android.graphics.Color.parseColor(color), sizeDp / 2)
+        }
+    }
+
     fun chip(context: Context, text: String, selected: Boolean, night: Boolean, onClick: () -> Unit): TextView =
         TextView(context).apply {
             this.text = text

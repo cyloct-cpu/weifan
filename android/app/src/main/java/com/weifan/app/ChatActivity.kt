@@ -296,10 +296,7 @@ class ChatActivity : BaseActivity() {
             gravity = Gravity.CENTER
             setTextColor(WaSpec.textPrimary(night))
             isClickable = true
-            setOnClickListener {
-                startActivity(Intent(this@ChatActivity, ChatInfoActivity::class.java)
-                    .putExtra("jid", chatJid).putExtra("title", chatTitle))
-            }
+            setOnClickListener { showHeaderMenu() }
         }, LinearLayout.LayoutParams(dp(WaSpec.CHAT_BACK_BTN_DP), dp(WaSpec.CHAT_BACK_BTN_DP)))
 
         root.addView(top)
@@ -1648,6 +1645,8 @@ class ChatActivity : BaseActivity() {
         // ---- 媒体区（在文字上方）----
         if (m.mediaKind.isNotBlank()) {
             val mv = mediaView(m)
+            // #48：媒体内容包一层圆角描边（参考 bg_media_bubble_stroke：1dp 边 + 圆角）
+            mv.foreground = Ui.roundBg(this, Color.TRANSPARENT, 10, 1, WaSpec.divider(night))
             // 媒体行自身可点击（播放/下载），长按也必须弹菜单
             mv.isLongClickable = true
             mv.setOnLongClickListener { showActionMenu(m); true }
@@ -1827,6 +1826,99 @@ class ChatActivity : BaseActivity() {
     }
 
     // MARK: - 长按菜单（回复/转发/复制/下载，对齐 WATransChat）
+
+    /**
+     * #37：头部菜单弹层（对齐 item_chat_header_popup_menu：行 minHeight 44dp、
+     * 图标 18dp、文字 14sp、padding 14/10）。⋮ 原来直接跳资料页，参考是先弹菜单。
+     */
+    private fun showHeaderMenu() {
+        val box = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
+        val archivedNow = try {
+            engine.db.chats().firstOrNull { it.jid == chatJid }?.archived == true
+        } catch (_: Throwable) { false }
+        fun row(emoji: String, label: String, action: () -> Unit) {
+            val r = LinearLayout(this).apply {
+                orientation = LinearLayout.HORIZONTAL
+                gravity = Gravity.CENTER_VERTICAL
+                minimumHeight = dp(44)
+                setPadding(dp(14), dp(10), dp(14), dp(10))
+                isClickable = true
+                val tv = android.util.TypedValue()
+                theme.resolveAttribute(android.R.attr.selectableItemBackground, tv, true)
+                background = getDrawable(tv.resourceId)
+            }
+            r.addView(TextView(this).apply {
+                text = emoji; textSize = 14f; gravity = Gravity.CENTER
+                isClickable = false
+            }, LinearLayout.LayoutParams(dp(18), dp(18)))
+            r.addView(TextView(this).apply {
+                text = label; textSize = 14f
+                setTextColor(WaSpec.textPrimary(night))
+            }, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f).apply {
+                marginStart = dp(12)
+            })
+            box.addView(r)
+        }
+        row("👤", "查看资料") {
+            startActivity(Intent(this@ChatActivity, ChatInfoActivity::class.java)
+                .putExtra("jid", chatJid).putExtra("title", chatTitle))
+        }
+        row("🔍", "会话内搜索") { toggleChatSearch() }
+        row("📦", if (archivedNow) "取消归档" else "归档聊天") {
+            engine.db.setChatFlags(chatJid, archived = !archivedNow)
+            Toast.makeText(this, if (archivedNow) "已取消归档" else "已归档", Toast.LENGTH_SHORT).show()
+        }
+        android.app.AlertDialog.Builder(this, R.style.WeifanDialog)
+            .setView(box)
+            .show()
+    }
+
+    /** C 类 #9：活动详情弹层（对齐 dialog_event_details：padding 16、标题 18sp bold、描述 13sp、时间/地点 14sp） */
+    private fun showEventDetailsDialog(m: MessageRow) {
+        val o = try { JSONObject(m.mediaMeta) } catch (_: Throwable) { JSONObject() }
+        val nm = o.optString("name").ifBlank { m.text }
+        val start = o.optLong("start", 0L)
+        val end = o.optLong("end", 0L)
+        val loc = o.optString("location")
+        val desc = o.optString("desc")
+        val link = o.optString("link")
+        val fmt = java.text.SimpleDateFormat("M月d日 HH:mm", java.util.Locale.CHINA)
+        val box = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; setPadding(dp(16), dp(16), dp(16), dp(8)) }
+        box.addView(TextView(this).apply {
+            text = nm; textSize = 18f; setTypeface(typeface, Typeface.BOLD)
+            setTextColor(WaSpec.textPrimary(night))
+        })
+        if (desc.isNotBlank()) box.addView(TextView(this).apply {
+            text = desc; textSize = 13f
+            setTextColor(WaSpec.textSecondary(night))
+            setPadding(0, dp(8), 0, 0)
+        })
+        if (start > 0) {
+            val hhmm = java.text.SimpleDateFormat("HH:mm", java.util.Locale.CHINA)
+            val t = if (end > start) "${fmt.format(java.util.Date(start))} – ${hhmm.format(java.util.Date(end))}"
+                    else fmt.format(java.util.Date(start))
+            box.addView(TextView(this).apply {
+                text = "🕒 $t"; textSize = 14f
+                setTextColor(WaSpec.textPrimary(night)); setPadding(0, dp(10), 0, 0)
+            })
+        }
+        if (loc.isNotBlank()) box.addView(TextView(this).apply {
+            text = "📍 $loc"; textSize = 14f
+            setTextColor(WaSpec.textPrimary(night)); setPadding(0, dp(6), 0, 0)
+        })
+        if (link.isNotBlank()) box.addView(TextView(this).apply {
+            text = "🔗 $link"; textSize = 14f
+            setTextColor(WaSpec.primary(night)); setPadding(0, dp(6), 0, 0)
+            isClickable = true
+            setOnClickListener {
+                try { startActivity(Intent(Intent.ACTION_VIEW, android.net.Uri.parse(link))) } catch (_: Throwable) {}
+            }
+        })
+        android.app.AlertDialog.Builder(this, R.style.WeifanDialog)
+            .setView(box)
+            .setPositiveButton("关闭", null)
+            .show()
+    }
 
     private fun showActionMenu(m: MessageRow) {
         android.util.Log.i("WeFlipMenu", "showActionMenu id=${m.id} fromMe=${m.fromMe}")

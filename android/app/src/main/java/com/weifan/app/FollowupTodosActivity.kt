@@ -37,6 +37,8 @@ class FollowupTodosActivity : BaseActivity() {
     private val dayFmt = SimpleDateFormat("M月d日", Locale.CHINA)
 
     override fun onCreate(savedInstanceState: Bundle?) {
+        com.weifan.app.notify.TodoNotifications.ensureChannel(this)
+        com.weifan.app.notify.TodoNotifications.requestPermissionIfNeeded(this)
         super.onCreate(savedInstanceState)
 
         val root = LinearLayout(this).apply {
@@ -227,9 +229,19 @@ class FollowupTodosActivity : BaseActivity() {
             isChecked = t.done
             setOnCheckedChangeListener { _, checked ->
                 engine().db.setTodoDone(t.id, checked)
+                // 完成即撤提醒；反悔取消完成且未过期则重排
+                if (checked) com.weifan.app.notify.TodoNotifications.cancel(this@FollowupTodosActivity, t.id, t.content)
+                else if (t.dueTs > System.currentTimeMillis())
+                    com.weifan.app.notify.TodoNotifications.schedule(this@FollowupTodosActivity, t.id, t.content, t.dueTs)
                 renderTodos()
             }
         }, LinearLayout.LayoutParams(dp(34), dp(34)))
+
+        // R2 尾巴：40dp 发送者头像（参考 item_followup_todo 的 40dp avatar；字母圆 = 沿用会话页规则）
+        if (t.customerTitle.isNotBlank()) {
+            box.addView(Ui.avatarCircle(this, t.customerTitle, night, 40), LinearLayout.LayoutParams(
+                dp(40), dp(40)).apply { marginStart = dp(2) })
+        }
 
         val col = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
@@ -242,7 +254,7 @@ class FollowupTodosActivity : BaseActivity() {
             maxLines = 3
         })
         val meta = StringBuilder()
-        if (t.customerTitle.isNotBlank()) meta.append("👤 ${t.customerTitle}")
+        if (t.customerTitle.isNotBlank()) meta.append(t.customerTitle)
         if (t.dueTs > 0) {
             if (meta.isNotEmpty()) meta.append(" · ")
             meta.append(if (overdue) "⚠ 已过期 " else "到期 ")
@@ -267,6 +279,7 @@ class FollowupTodosActivity : BaseActivity() {
                     .setTitle("删除这条待办？")
                     .setMessage(t.content)
                     .setPositiveButton("删除") { _, _ ->
+                        com.weifan.app.notify.TodoNotifications.cancel(this@FollowupTodosActivity, t.id, t.content)
                         engine().db.deleteTodo(t.id); renderTodos()
                     }
                     .setNegativeButton("取消", null)
@@ -349,6 +362,52 @@ class FollowupTodosActivity : BaseActivity() {
         }
         box.addView(quick)
 
+        // R2 尾巴：精确到「日期 + 时间」（参考有 HH:mm 选择，原来固定 23:59）
+        var pickedCal: java.util.Calendar? = null
+        val pickRow = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            setPadding(0, dp(8), 0, 0)
+        }
+        fun refreshPickLabel() {
+            val c = pickedCal
+            if (c == null) {
+                if (due == 0L) dueLabel.text = "到期：不指定"
+            } else {
+                val day = java.text.SimpleDateFormat("M月d日", java.util.Locale.CHINESE).format(c.time)
+                val hm = java.text.SimpleDateFormat("HH:mm", java.util.Locale.CHINESE).format(c.time)
+                dueLabel.text = "到期：$day $hm"
+            }
+        }
+        pickRow.addView(Ui.chip(this, "📅 选日期", false, night) {
+            val init = pickedCal ?: java.util.Calendar.getInstance().apply { if (due > 0) timeInMillis = due }
+            android.app.DatePickerDialog(this, { _, y, mth, d ->
+                val base = pickedCal ?: java.util.Calendar.getInstance()
+                pickedCal = (base.clone() as java.util.Calendar).apply {
+                    set(java.util.Calendar.YEAR, y); set(java.util.Calendar.MONTH, mth); set(java.util.Calendar.DAY_OF_MONTH, d)
+                }
+                pickedCal?.let {
+                    due = it.timeInMillis
+                    refreshPickLabel()
+                }
+            }, init.get(java.util.Calendar.YEAR), init.get(java.util.Calendar.MONTH), init.get(java.util.Calendar.DAY_OF_MONTH)).show()
+        }, LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT))
+        pickRow.addView(Ui.chip(this, "⏰ 选时间", false, night) {
+            val init = pickedCal ?: java.util.Calendar.getInstance().apply {
+                if (due > 0) timeInMillis = due else set(java.util.Calendar.HOUR_OF_DAY, 9)
+            }
+            android.app.TimePickerDialog(this, { _, hh, mm ->
+                val base = (pickedCal ?: java.util.Calendar.getInstance()).clone() as java.util.Calendar
+                pickedCal = base.apply {
+                    set(java.util.Calendar.HOUR_OF_DAY, hh); set(java.util.Calendar.MINUTE, mm)
+                }
+                due = pickedCal!!.timeInMillis
+                refreshPickLabel()
+            }, init.get(java.util.Calendar.HOUR_OF_DAY), init.get(java.util.Calendar.MINUTE), true).show()
+        }, LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply {
+            marginStart = dp(8)
+        })
+        box.addView(pickRow)
+
         android.app.AlertDialog.Builder(this, R.style.WeifanDialog)
             .setTitle(if (onlyJid.isBlank()) "新建待办" else "给该客户新建待办")
             .setView(box)
@@ -358,7 +417,10 @@ class FollowupTodosActivity : BaseActivity() {
                 if (text.isEmpty()) {
                     Toast.makeText(this, "内容不能为空", Toast.LENGTH_SHORT).show()
                 } else {
-                    engine().db.addTodo(onlyJid, text, due)
+                    val id = engine().db.addTodo(onlyJid, text, due)
+                    if (due > System.currentTimeMillis()) {
+                        com.weifan.app.notify.TodoNotifications.schedule(this, id, text, due)
+                    }
                     renderTodos()
                 }
             }

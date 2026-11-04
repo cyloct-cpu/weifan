@@ -414,7 +414,62 @@ class ChatListActivity : BaseActivity() {
         emptyBox.visibility = View.GONE
         val timeFmt = SimpleDateFormat("HH:mm", Locale.getDefault())
         val dayFmt = SimpleDateFormat("M月d日", Locale.getDefault())
+        // #39：归档入口行（参考 item_chat_list_archived_entry：padding 12/10、minHeight 68、
+        // 46dp 图标槽 + 「已归档 · N 条」）——只在非归档视图顶部出现，点一下切到归档面板
+        if (filter == "所有") {
+            val archivedCount = all.count { it.archived }
+            if (archivedCount > 0) listBox.addView(archivedEntryRow(archivedCount))
+        }
         for (chat in filtered) listBox.addView(chatRow(chat, timeFmt, dayFmt))
+    }
+
+    /** #39/#40：归档入口行 + 归档面板入口（panel_archived_chats 的 padding 8 由 chips 行对齐承接） */
+    private fun archivedEntryRow(count: Int): View {
+        val row = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER_VERTICAL
+            setPadding(dp(12), dp(10), dp(12), dp(10))
+            minimumHeight = dp(68)
+            isClickable = true
+            // 参考用 ?selectableItemBackground（自带涟漪）
+            val tv = android.util.TypedValue()
+            theme.resolveAttribute(android.R.attr.selectableItemBackground, tv, true)
+            background = getDrawable(tv.resourceId)
+            setOnClickListener {
+                filter = "已归档"
+                renderChips()
+                renderChats()
+            }
+        }
+        val icon = TextView(this).apply {
+            text = "📦"
+            textSize = 20f
+            gravity = Gravity.CENTER
+            background = Ui.roundBg(this@ChatListActivity,
+                if (night) 0xFF202C33.toInt() else WaSpec.GRAY6, 23)
+        }
+        row.addView(icon, LinearLayout.LayoutParams(dp(46), dp(46)))
+        row.addView(LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            addView(TextView(this@ChatListActivity).apply {
+                text = "已归档"
+                textSize = 16f
+                setTextColor(WaSpec.textPrimary(night))
+            })
+            addView(TextView(this@ChatListActivity).apply {
+                text = "$count 条会话已归档"
+                textSize = 13f
+                setTextColor(WaSpec.textSecondary(night))
+            })
+        }, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f).apply {
+            marginStart = dp(12)
+        })
+        row.addView(TextView(this).apply {
+            text = "›"
+            textSize = 20f
+            setTextColor(WaSpec.textSecondary(night))
+        })
+        return row
     }
 
     // MARK: - A3 多选 + 批量指派（对齐参考 selectionBar）

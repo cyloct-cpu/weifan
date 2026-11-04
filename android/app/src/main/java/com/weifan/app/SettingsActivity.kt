@@ -45,6 +45,80 @@ class SettingsActivity : BaseActivity() {
         "—"
     }
 
+    /**
+     * C 类 #13：版本更新提示（对齐 dialog_update：padding 24、标题 20sp bold 主色居中）。
+     * 数据源 = GitHub Releases（仓库公开，无自建服务）。
+     */
+    private fun checkAppUpdate() {
+        val here = packageManager.getPackageInfo(packageName, 0).versionName ?: ""
+        val ctx = this
+        Thread {
+            var latestTag = ""
+            var notes = ""
+            var url = "https://github.com/cyloct-cpu/weifan/releases"
+            try {
+                val conn = java.net.URL("https://api.github.com/repos/cyloct-cpu/weifan/releases/latest")
+                    .openConnection() as java.net.HttpURLConnection
+                conn.connectTimeout = 8000; conn.readTimeout = 8000
+                conn.setRequestProperty("Accept", "application/vnd.github+json")
+                conn.setRequestProperty("User-Agent", "WeFlip")
+                val body = conn.inputStream.bufferedReader().readText()
+                val o = org.json.JSONObject(body)
+                latestTag = o.optString("tag_name").removePrefix("v")
+                notes = o.optString("body")
+                url = o.optString("html_url").ifBlank { url }
+            } catch (_: Throwable) { }
+            runOnUiThread {
+                val hasNew = latestTag.isNotBlank() && latestTag != here &&
+                    compareVersions(latestTag, here) > 0
+                val box = android.widget.LinearLayout(this).apply {
+                    orientation = android.widget.LinearLayout.VERTICAL
+                    setPadding(dp(24), dp(20), dp(24), dp(8))
+                }
+                box.addView(android.widget.TextView(this).apply {
+                    text = if (hasNew) "有新版本 v$latestTag" else "已是最新版本"
+                    textSize = 20f
+                    setTypeface(typeface, android.graphics.Typeface.BOLD)
+                    setTextColor(if (hasNew) WaSpec.primary(night) else WaSpec.textPrimary(night))
+                    gravity = android.view.Gravity.CENTER_HORIZONTAL
+                })
+                box.addView(android.widget.TextView(this).apply {
+                    text = if (hasNew) "当前 v$here\n\n" + notes.take(300).ifBlank { "性能修复与体验优化。" }
+                           else "当前 v$here，已经是最新版"
+                    textSize = 15f
+                    setTextColor(WaSpec.textPrimary(night))
+                    setPadding(0, dp(16), 0, 0)
+                })
+                val dlg = android.app.AlertDialog.Builder(this, R.style.WeifanDialog)
+                    .setView(box)
+                    .setPositiveButton("知道了", null)
+                    .show()
+                if (hasNew) {
+                    dlg.getButton(android.app.AlertDialog.BUTTON_POSITIVE)?.text = "打开下载页"
+                    dlg.getButton(android.app.AlertDialog.BUTTON_POSITIVE)?.setOnClickListener {
+                        dlg.dismiss()
+                        try {
+                            startActivity(android.content.Intent(
+                                android.content.Intent.ACTION_VIEW, android.net.Uri.parse(url)))
+                        } catch (_: Throwable) {}
+                    }
+                }
+            }
+        }.start()
+    }
+
+    /** 语义化版本比较：>0 表示 a 更新 */
+    private fun compareVersions(a: String, b: String): Int {
+        fun parts(v: String) = v.removePrefix("v").split('.', '-').mapNotNull { it.toIntOrNull() }
+        val pa = parts(a); val pb = parts(b)
+        for (i in 0 until maxOf(pa.size, pb.size)) {
+            val x = pa.getOrElse(i) { 0 }; val y = pb.getOrElse(i) { 0 }
+            if (x != y) return x - y
+        }
+        return 0
+    }
+
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         val prefs = Prefs(this)
@@ -99,6 +173,10 @@ class SettingsActivity : BaseActivity() {
             prefs.themeMode = com.weifan.app.core.Theme.nextMode(prefs.themeMode)
             recreate()
             true
+        })
+
+        list.addView(row("检查更新", "当前 v${appVersion()} · 对比 GitHub Releases") {
+            checkAppUpdate()
         })
 
         // ---- WhatsApp 连接 ----
