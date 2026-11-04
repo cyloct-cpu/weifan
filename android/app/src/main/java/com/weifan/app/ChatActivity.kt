@@ -212,6 +212,23 @@ class ChatActivity : BaseActivity() {
             marginStart = dp(8)
         })
 
+        // 通话入口（对齐参考 chatHeader 的 callButton / videoCallButton）
+        // 能力边界：whatsmeow 无法发起/接听通话，这里只做入口与说明，点击引导到手机 WhatsApp
+        top.addView(TextView(this).apply {
+            text = "📞"
+            textSize = 17f
+            gravity = Gravity.CENTER
+            isClickable = true
+            setOnClickListener { showCallSheet(false) }
+        }, LinearLayout.LayoutParams(dp(WaSpec.CHAT_BACK_BTN_DP), dp(WaSpec.CHAT_BACK_BTN_DP)))
+        top.addView(TextView(this).apply {
+            text = "📹"
+            textSize = 17f
+            gravity = Gravity.CENTER
+            isClickable = true
+            setOnClickListener { showCallSheet(true) }
+        }, LinearLayout.LayoutParams(dp(WaSpec.CHAT_BACK_BTN_DP), dp(WaSpec.CHAT_BACK_BTN_DP)))
+
         // 客户语言（对齐参考 customerLanguageButton 40dp —— 会话级指定客户语言与引擎）
         top.addView(TextView(this).apply {
             text = "文"
@@ -372,7 +389,8 @@ class ChatActivity : BaseActivity() {
         }, LinearLayout.LayoutParams(
             dp(WaSpec.ATTACH_BUTTON_SIZE_DP), dp(WaSpec.ATTACH_BUTTON_SIZE_DP)))
         input = EditText(this).apply {
-            hint = "输入消息"
+            // 对齐参考：「引擎 > 目标语言」显示在输入框内（空态提示，输入即消失）
+            hint = composerHint()
             textSize = WaSpec.MESSAGE_INPUT_SP.toFloat()
             setTextColor(WaSpec.textPrimary(night))
             setHintTextColor(WaSpec.textSecondary(night))
@@ -400,20 +418,22 @@ class ChatActivity : BaseActivity() {
             textSize = WaSpec.TRANSLATE_BUTTON_TEXT_SP.toFloat()
             setTextColor(Color.WHITE)
             gravity = Gravity.CENTER
-            background = Ui.roundBg(this@ChatActivity, WaSpec.GREEN_LIGHT, 10)
-            setPadding(dp(WaSpec.TRANSLATE_BUTTON_PADDING_H_DP), 0,
-                dp(WaSpec.TRANSLATE_BUTTON_PADDING_H_DP), 0)
+            // 对齐参考 translateButton：圆形（36dp 直径，圆角取高度一半）
+            background = Ui.roundBg(this@ChatActivity, WaSpec.GREEN_LIGHT,
+                WaSpec.TRANSLATE_BUTTON_HEIGHT_DP / 2)
             isClickable = true
             setOnClickListener {
                 translateOn = !translateOn
                 text = if (translateOn) "开" else "关"
                 background = Ui.roundBg(this@ChatActivity,
-                    if (translateOn) WaSpec.GREEN_LIGHT else WaSpec.GRAY6, 10)
+                    if (translateOn) WaSpec.GREEN_LIGHT else WaSpec.GRAY6,
+                    WaSpec.TRANSLATE_BUTTON_HEIGHT_DP / 2)
                 setTextColor(if (translateOn) Color.WHITE else WaSpec.textSecondary(night))
             }
         }
         capsule.addView(translateBtn, LinearLayout.LayoutParams(
-            ViewGroup.LayoutParams.WRAP_CONTENT, dp(WaSpec.TRANSLATE_BUTTON_HEIGHT_DP)).apply {
+            dp(WaSpec.TRANSLATE_BUTTON_HEIGHT_DP),
+            dp(WaSpec.TRANSLATE_BUTTON_HEIGHT_DP)).apply {
             marginStart = dp(6)
             })
 
@@ -771,7 +791,7 @@ class ChatActivity : BaseActivity() {
         }
         renderRows()
         val shell = Ui.formDialogShell(this, "设置标签", night, listBox)
-        android.app.AlertDialog.Builder(this)
+        android.app.AlertDialog.Builder(this, R.style.WeifanDialog)
             .setView(shell)
             .setPositiveButton("保存") { _, _ ->
                 engine.db.setChatLabels(chatJid,
@@ -1080,7 +1100,7 @@ class ChatActivity : BaseActivity() {
                     ViewGroup.LayoutParams.WRAP_CONTENT, 1f).apply { marginStart = dp(10) })
                 row.isClickable = true
                 row.setOnClickListener {
-                    android.app.AlertDialog.Builder(this)
+                    android.app.AlertDialog.Builder(this, R.style.WeifanDialog)
                         .setTitle(m.mediaName.ifBlank { "联系人" })
                         .setMessage(vcard.ifBlank { "（无 vCard 内容）" })
                         .setPositiveButton("关闭", null)
@@ -1346,7 +1366,7 @@ class ChatActivity : BaseActivity() {
             addView(tv)
             setPadding(dp(8), dp(8), dp(8), dp(8))
         }
-        android.app.AlertDialog.Builder(this)
+        android.app.AlertDialog.Builder(this, R.style.WeifanDialog)
             .setTitle(name)
             .setView(sv)
             .setPositiveButton("关闭", null)
@@ -1720,7 +1740,7 @@ class ChatActivity : BaseActivity() {
                 if (night) WaSpec.SURFACE_NIGHT else Color.WHITE, 20)
             setPadding(dp(6), dp(6), dp(6), dp(6))
         }
-        val dlg = android.app.AlertDialog.Builder(this).create()
+        val dlg = android.app.AlertDialog.Builder(this, R.style.WeifanDialog).create()
         fun item(label: String, action: () -> Unit): TextView = TextView(this).apply {
             text = label
             textSize = 16f
@@ -1777,7 +1797,7 @@ class ChatActivity : BaseActivity() {
             box.addView(item("撤回") {
                 dlg.dismiss()
                 // 对齐参考 dialog_revoke_message：撤回前先确认（正文 15sp + padding 20）
-                android.app.AlertDialog.Builder(this)
+                android.app.AlertDialog.Builder(this, R.style.WeifanDialog)
                     .setTitle("撤回这条消息？")
                     .setView(Ui.confirmBody(this, "撤回后对方也会看到「已撤回」，无法恢复。",
                         m.text.take(60).ifBlank { null }, night))
@@ -1814,7 +1834,7 @@ class ChatActivity : BaseActivity() {
             setText(m.text)
             setSelection(text.length)
         }
-        android.app.AlertDialog.Builder(this)
+        android.app.AlertDialog.Builder(this, R.style.WeifanDialog)
             .setTitle("编辑消息")
             .setView(input)
             .setPositiveButton("保存") { _, _ ->
@@ -1843,6 +1863,65 @@ class ChatActivity : BaseActivity() {
      * 内容是两个维度：目标语言（客户说什么）+ 翻译引擎（这家客户用哪家接口）。
      * 一旦指定，该会话的发送翻译就锁定这个语言/引擎，不再靠自动检测。
      */
+    /**
+     * 通话说明弹层。
+     *
+     * 为什么不做真正的通话：WhatsApp 通话要完整 VoIP 栈（信令协商、SRTP 加密音频、
+     * Opus 编解码、抖动缓冲、NAT 穿透），whatsmeow 只实现了「收到来电通知 + 拒接」，
+     * 没有发起/接听/传输音频的能力。硬做等于自己写一个 VoIP 客户端并逆向私有信令，
+     * 不现实。
+     *
+     * 能给的：来电通知 + 拒接（协议层已实现）、引导用户到手机 WhatsApp 里拨打。
+     */
+    /** 输入框空态提示：当前翻译引擎 > 目标语言（对齐参考「OpenAI自定义 > 英语」） */
+    private fun composerHint(): String {
+        val st = prefs.chatSetting(chatJid)
+        val engineId = st.engine.ifBlank { prefs.selection.substringBefore(',') }
+        val engineName = com.weifan.app.core.Engine.configuredEngines(prefs)
+            .firstOrNull { it.first == engineId }?.second
+            ?: "未配引擎"
+        val langCode = st.lang.ifBlank { prefs.waTargetLang }
+        val langName = if (langCode.isBlank()) {
+            com.weifan.app.core.CountryDetect.label(chatJid).ifBlank { "自动" }
+        } else com.weifan.app.core.CountryDetect.langName(langCode)
+        return "$engineName > $langName"
+    }
+
+    private fun showCallSheet(video: Boolean) {
+        val who = chatTitle.ifBlank { chatJid.substringBefore("@") }
+        android.app.AlertDialog.Builder(this, R.style.WeifanDialog)
+            .setView(Ui.formDialogShell(this, if (video) "视频通话" else "语音通话", night,
+                LinearLayout(this).apply {
+                    orientation = LinearLayout.VERTICAL
+                    addView(TextView(this@ChatActivity).apply {
+                        text = "本应用无法在内部发起${if (video) "视频" else "语音"}通话。"
+                        textSize = 15f
+                        setTextColor(WaSpec.textPrimary(night))
+                    })
+                    addView(TextView(this@ChatActivity).apply {
+                        text = "WhatsApp 的通话需要完整的 VoIP 音频栈与私有信令，" +
+                            "现有协议库只支持「收到来电通知 + 拒接」。\n\n" +
+                            "可以在手机 WhatsApp 里给 $who 发起通话；" +
+                            "对方来电时本应用会提醒并允许拒接。"
+                        textSize = 13f
+                        setTextColor(WaSpec.textSecondary(night))
+                        setPadding(0, dp(8), 0, 0)
+                    })
+                }))
+            .setPositiveButton("打开 WhatsApp") { _, _ ->
+                try {
+                    val digits = resolvedPhone.ifBlank { chatJid.substringBefore("@") }
+                        .filter { it.isDigit() }
+                    startActivity(Intent(Intent.ACTION_VIEW,
+                        android.net.Uri.parse("https://wa.me/$digits")))
+                } catch (_: Throwable) {
+                    Toast.makeText(this, "无法打开 WhatsApp", Toast.LENGTH_SHORT).show()
+                }
+            }
+            .setNegativeButton("关闭", null)
+            .show()
+    }
+
     private fun showCustomerLanguageDialog() {
         val cur = prefs.chatSetting(chatJid)
         var lang = cur.lang
@@ -1906,7 +1985,7 @@ class ChatActivity : BaseActivity() {
             val codes = com.weifan.app.core.Lang.sendTargets
             val labels = listOf("自动检测（跟随对方国家）") +
                 codes.map { com.weifan.app.core.CountryDetect.langName(it) + "  " + it }
-            android.app.AlertDialog.Builder(this)
+            android.app.AlertDialog.Builder(this, R.style.WeifanDialog)
                 .setTitle("目标语言")
                 .setItems(labels.toTypedArray()) { _, which ->
                     lang = if (which == 0) "" else codes[which - 1]
@@ -1919,7 +1998,7 @@ class ChatActivity : BaseActivity() {
         engineBtn.setOnClickListener {
             val engines = com.weifan.app.core.Engine.configuredEngines(prefs)
             val labels = listOf("跟随全局优先级") + engines.map { it.second }
-            android.app.AlertDialog.Builder(this)
+            android.app.AlertDialog.Builder(this, R.style.WeifanDialog)
                 .setTitle("翻译引擎")
                 .setItems(labels.toTypedArray()) { _, which ->
                     engine = if (which == 0) "" else engines[which - 1].first
@@ -1929,7 +2008,7 @@ class ChatActivity : BaseActivity() {
                 .show()
         }
 
-        android.app.AlertDialog.Builder(this)
+        android.app.AlertDialog.Builder(this, R.style.WeifanDialog)
             .setTitle("客户语言")
             .setView(box)
             .setPositiveButton("保存") { _, _ ->
@@ -1954,7 +2033,7 @@ class ChatActivity : BaseActivity() {
             return
         }
         val names = engines.map { it.second }.toTypedArray()
-        android.app.AlertDialog.Builder(this)
+        android.app.AlertDialog.Builder(this, R.style.WeifanDialog)
             .setTitle("用哪个接口重译")
             .setItems(names) { _, which ->
                 val (id, label) = engines[which]
@@ -2043,7 +2122,7 @@ class ChatActivity : BaseActivity() {
         shell.addView(scroll, LinearLayout.LayoutParams(
             ViewGroup.LayoutParams.MATCH_PARENT, dp(300)))
 
-        dlg = android.app.AlertDialog.Builder(this)
+        dlg = android.app.AlertDialog.Builder(this, R.style.WeifanDialog)
             .setView(shell)
             .setNegativeButton("取消", null)
             .create()
@@ -2081,7 +2160,7 @@ class ChatActivity : BaseActivity() {
             // 对齐参考 layout_attach_panel：padding 8/10/8/8
             setPadding(dp(8), dp(10), dp(8), dp(8))
         }
-        val dlg = android.app.AlertDialog.Builder(this).create()
+        val dlg = android.app.AlertDialog.Builder(this, R.style.WeifanDialog).create()
         attachDialog = dlg
         dlg.setOnDismissListener { if (attachDialog === dlg) attachDialog = null }
         // 横向图标条（对齐参考 layout_attach_panel：面板高 108dp、横向滚动、
@@ -2262,7 +2341,7 @@ class ChatActivity : BaseActivity() {
 
     /** 点选项投票/改票；确认后走协议，成功本地先落一笔（本人票即时反馈） */
     private fun voteOnPoll(m: MessageRow, opts: List<String>, choice: String) {
-        android.app.AlertDialog.Builder(this)
+        android.app.AlertDialog.Builder(this, R.style.WeifanDialog)
             .setTitle("投票")
             .setMessage("选择「$choice」？再次点其他选项可改票")
             .setPositiveButton("投这一票") { _, _ ->
@@ -2322,7 +2401,7 @@ class ChatActivity : BaseActivity() {
             ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply {
             topMargin = dp(20)
         })
-        recordDialog = android.app.AlertDialog.Builder(this).create()
+        recordDialog = android.app.AlertDialog.Builder(this, R.style.WeifanDialog).create()
 
         var downY = 0f
         // 三个区间（dp）：>取消阀值=松手取消；>锁定阀值=松手后锁定（进入草稿态继续录）
@@ -2433,7 +2512,7 @@ class ChatActivity : BaseActivity() {
             ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply {
             topMargin = dp(12)
         })
-        android.app.AlertDialog.Builder(this)
+        android.app.AlertDialog.Builder(this, R.style.WeifanDialog)
             .setView(box)
             .setNegativeButton("取消", null)
             .show()
@@ -2452,7 +2531,7 @@ class ChatActivity : BaseActivity() {
         val name = EditText(this).apply {
             hint = "地点名称（可选）"; setSingleLine(true) }
         box.addView(lat); box.addView(lng); box.addView(name)
-        val dlg = android.app.AlertDialog.Builder(this)
+        val dlg = android.app.AlertDialog.Builder(this, R.style.WeifanDialog)
             .setTitle("发送位置")
             .setView(box)
             .setPositiveButton("发送") { _, _ ->
@@ -2556,7 +2635,7 @@ class ChatActivity : BaseActivity() {
                 val scroll = android.widget.ScrollView(this).apply { addView(listBox) }
                 shell.addView(scroll, LinearLayout.LayoutParams(
                     ViewGroup.LayoutParams.MATCH_PARENT, dp(300)))
-                cd = android.app.AlertDialog.Builder(this)
+                cd = android.app.AlertDialog.Builder(this, R.style.WeifanDialog)
                     .setView(shell)
                     .setPositiveButton("手动输入") { _, _ -> showContactInputDialog() }
                     .setNegativeButton("取消", null)
@@ -2616,7 +2695,7 @@ class ChatActivity : BaseActivity() {
         val ph = EditText(this).apply {
             hint = "手机号，如 +5218120398050"; setSingleLine(true) }
         box.addView(nm); box.addView(ph)
-        android.app.AlertDialog.Builder(this)
+        android.app.AlertDialog.Builder(this, R.style.WeifanDialog)
             .setTitle("发送联系人卡片")
             .setView(box)
             .setPositiveButton("发送") { _, _ ->
@@ -2859,7 +2938,7 @@ class ChatActivity : BaseActivity() {
             val all = com.weifan.app.core.Fx.CURRENCIES
             val ordered = all.sortedByDescending { it.first in pinned }
             val names = ordered.map { "${it.second}  ${it.first}" }.toTypedArray()
-            android.app.AlertDialog.Builder(this)
+            android.app.AlertDialog.Builder(this, R.style.WeifanDialog)
                 .setTitle(if (isFrom) "源货币" else "目标货币")
                 .setItems(names) { _, which ->
                     val code = ordered[which].first
@@ -2917,7 +2996,7 @@ class ChatActivity : BaseActivity() {
         var dlgRef: android.app.AlertDialog? = null
         closeBtn.setOnClickListener { dlgRef?.dismiss() }
 
-        dlgRef = android.app.AlertDialog.Builder(this)
+        dlgRef = android.app.AlertDialog.Builder(this, R.style.WeifanDialog)
             .setView(rootBox)
             .setPositiveButton("更新汇率") { _, _ ->
                 if (updating) return@setPositiveButton
@@ -2994,7 +3073,7 @@ class ChatActivity : BaseActivity() {
             })
         }
         box.addView(row)
-        rdlg = android.app.AlertDialog.Builder(this)
+        rdlg = android.app.AlertDialog.Builder(this, R.style.WeifanDialog)
             .setView(box)
             .create()
         rdlg?.show()
@@ -3118,7 +3197,7 @@ class ChatActivity : BaseActivity() {
             setPadding(dp(16), dp(16), dp(16), dp(16))
             addView(col)
         }
-        android.app.AlertDialog.Builder(this)
+        android.app.AlertDialog.Builder(this, R.style.WeifanDialog)
             .setView(scroll)
             .setPositiveButton("关闭", null)
             .show()
@@ -3276,7 +3355,7 @@ class ChatActivity : BaseActivity() {
         }
         curLabel.setOnClickListener {
             val codes = com.weifan.app.core.Fx.CURRENCIES.map { it.first }.toTypedArray()
-            android.app.AlertDialog.Builder(this)
+            android.app.AlertDialog.Builder(this, R.style.WeifanDialog)
                 .setTitle("币种")
                 .setItems(codes) { _, i ->
                     currency = codes[i]
@@ -3307,7 +3386,7 @@ class ChatActivity : BaseActivity() {
                 setPadding(0, dp(10), 0, 0)
             })
         }
-        android.app.AlertDialog.Builder(this)
+        android.app.AlertDialog.Builder(this, R.style.WeifanDialog)
             .setView(Ui.formDialogShell(this, "发送商品", night, content))
             .setPositiveButton("发送") { _, _ ->
                 val pid = idIn.text.toString().trim()
@@ -3375,7 +3454,7 @@ class ChatActivity : BaseActivity() {
             val labels = days.indices.map { i ->
                 if (days[i] == 1) "明天 ${hours[i]}:00" else "${days[i]} 天后 ${hours[i]}:00"
             }.toTypedArray()
-            android.app.AlertDialog.Builder(this)
+            android.app.AlertDialog.Builder(this, R.style.WeifanDialog)
                 .setTitle("开始时间")
                 .setItems(labels) { _, i ->
                     startMs = java.util.Calendar.getInstance().apply {
@@ -3402,7 +3481,7 @@ class ChatActivity : BaseActivity() {
                 ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply {
                 topMargin = dp(4) })
         }
-        android.app.AlertDialog.Builder(this)
+        android.app.AlertDialog.Builder(this, R.style.WeifanDialog)
             .setView(Ui.formDialogShell(this, "创建活动", night, content))
             .setPositiveButton("发送") { _, _ ->
                 val nm = nameIn.text.toString().trim()
@@ -3458,7 +3537,7 @@ class ChatActivity : BaseActivity() {
                 topMargin = dp(10)
             })
         }
-        val dlg = android.app.AlertDialog.Builder(this)
+        val dlg = android.app.AlertDialog.Builder(this, R.style.WeifanDialog)
             .setView(Ui.formDialogShell(this, "发起投票", night, content))
             .setPositiveButton("发送") { _, _ ->
                 if (qInput.text.isBlank() || optsInput.text.isBlank()) {

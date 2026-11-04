@@ -265,7 +265,7 @@ class ChatListActivity : BaseActivity() {
             }
         }
         renderRows()
-        android.app.AlertDialog.Builder(this)
+        android.app.AlertDialog.Builder(this, R.style.WeifanDialog)
             .setView(Ui.formDialogShell(this,
                 "设置标签", night, listBox))
             .setPositiveButton("保存") { _, _ ->
@@ -282,7 +282,7 @@ class ChatListActivity : BaseActivity() {
         // 对齐参考 dialog_create_label：formDialogShell（padding 20/22/20/18 + 标题 17sp）
         val input = Ui.dialogRow(this, "", night, hint = "标签名，如 高意向客户")
         val shell = Ui.formDialogShell(this, "新建标签", night, input)
-        android.app.AlertDialog.Builder(this)
+        android.app.AlertDialog.Builder(this, R.style.WeifanDialog)
             .setView(shell)
             .setPositiveButton("创建") { _, _ ->
                 val n = input.text.toString().trim()
@@ -321,7 +321,7 @@ class ChatListActivity : BaseActivity() {
             setTextColor(WaSpec.textSecondary(night))
             setPadding(0, dp(8), 0, 0)
         })
-        android.app.AlertDialog.Builder(this)
+        android.app.AlertDialog.Builder(this, R.style.WeifanDialog)
             .setView(Ui.formDialogShell(this, "管理标签", night, content))
             .setPositiveButton("保存") { _, _ ->
                 val n = input.text.toString().trim()
@@ -332,7 +332,7 @@ class ChatListActivity : BaseActivity() {
                 }
             }
             .setNeutralButton("删除") { _, _ ->
-                android.app.AlertDialog.Builder(this)
+                android.app.AlertDialog.Builder(this, R.style.WeifanDialog)
                     .setView(Ui.confirmBody(this, "删除标签「$name」？",
                         "会从所有会话上移除", night))
                     .setPositiveButton("删除") { _, _ ->
@@ -460,7 +460,7 @@ class ChatListActivity : BaseActivity() {
         val common = selectedJids.map { engine.db.chatLabelNames(it).toSet() }
             .reduceOrNull { a, b -> a intersect b } ?: emptySet()
         val states = names.map { it in common }.toBooleanArray()
-        android.app.AlertDialog.Builder(this)
+        android.app.AlertDialog.Builder(this, R.style.WeifanDialog)
             .setTitle("批量设置标签（${selectedJids.size} 个会话）")
             .setMultiChoiceItems(names, states) { _, which, isChecked -> states[which] = isChecked }
             .setPositiveButton("应用") { _, _ ->
@@ -485,7 +485,7 @@ class ChatListActivity : BaseActivity() {
                 if (night) WaSpec.SURFACE_NIGHT else Color.WHITE, 20)
             setPadding(dp(6), dp(6), dp(6), dp(6))
         }
-        val dlg = android.app.AlertDialog.Builder(this).create()
+        val dlg = android.app.AlertDialog.Builder(this, R.style.WeifanDialog).create()
         fun item(label: String, action: () -> Unit): TextView = TextView(this).apply {
             text = label
             textSize = 16f
@@ -513,7 +513,7 @@ class ChatListActivity : BaseActivity() {
                 if (night) WaSpec.SURFACE_NIGHT else Color.WHITE, 20)
             setPadding(dp(6), dp(6), dp(6), dp(6))
         }
-        val dlg = android.app.AlertDialog.Builder(this).create()
+        val dlg = android.app.AlertDialog.Builder(this, R.style.WeifanDialog).create()
         fun item(label: String, action: () -> Unit): TextView = TextView(this).apply {
             text = label
             textSize = 16f
@@ -544,7 +544,7 @@ class ChatListActivity : BaseActivity() {
         })
         box.addView(item("拉黑") {
             dlg.dismiss()
-            android.app.AlertDialog.Builder(this@ChatListActivity)
+            android.app.AlertDialog.Builder(this@ChatListActivity, R.style.WeifanDialog)
                 .setTitle("拉黑此会话？")
                 .setMessage("拉黑后对方消息不再出现在应用内，并同步拉黑到 WhatsApp 官方端（官方客户端也收不到）。可在 设置 → 已拉黑联系人 中恢复。")
                 .setPositiveButton("拉黑") { _, _ ->
@@ -566,7 +566,7 @@ class ChatListActivity : BaseActivity() {
         box.addView(item("重命名") {
             dlg.dismiss()
             val input = EditText(this).apply { setText(chat.title) }
-            android.app.AlertDialog.Builder(this@ChatListActivity)
+            android.app.AlertDialog.Builder(this@ChatListActivity, R.style.WeifanDialog)
                 .setTitle("重命名会话")
                 .setView(input)
                 .setPositiveButton("保存") { _, _ ->
@@ -639,7 +639,7 @@ class ChatListActivity : BaseActivity() {
             })
         }
         val shell = Ui.bigTitleDialogShell(this, "新建群聊", night, content)
-        android.app.AlertDialog.Builder(this)
+        android.app.AlertDialog.Builder(this, R.style.WeifanDialog)
             .setView(shell)
             .setPositiveButton("创建") { _, _ ->
                 val n = name.text.toString().trim()

@@ -457,7 +457,7 @@ object Ui {
      */
     fun showCardDialog(context: android.app.Activity, content: View,
                        widthRatio: Float = 0.92f): android.app.AlertDialog {
-        val dlg = android.app.AlertDialog.Builder(context).setView(content).create()
+        val dlg = android.app.AlertDialog.Builder(context, R.style.WeifanDialog).setView(content).create()
         dlg.show()
         dlg.window?.setBackgroundDrawableResource(android.R.color.transparent)
         dlg.window?.setLayout(

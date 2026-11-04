@@ -2,4 +2,18 @@
 <resources>
     <!-- 浅色：Material.Light 无 ActionBar（页面顶部有自己的品牌行，不需要系统标题栏） -->
     <style name="AppTheme" parent="@android:style/Theme.Material.Light.NoActionBar" />
+
+    <!--
+      弹层主题：对齐参考 dialog_* 的视觉（16dp 圆角卡片 + 紧凑内边距）。
+      为什么用主题而不是逐个改代码：全应用 47 个 AlertDialog，
+      改主题一次生效，逐个改既慢又容易漏。
+      windowBackground 换成 16dp 圆角 shape（见 drawable/bg_dialog_card.xml）。
+    -->
+    <style name="WeifanDialog" parent="@android:style/Theme.Material.Light.Dialog.Alert">
+        <item name="android:windowBackground">@drawable/bg_dialog_card</item>
+        <item name="android:windowIsFloating">true</item>
+        <item name="android:windowMinWidthMajor">88%</item>
+        <item name="android:windowMinWidthMinor">88%</item>
+        <item name="android:backgroundDimAmount">0.4</item>
+    </style>
 </resources>

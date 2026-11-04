@@ -149,7 +149,7 @@ class SettingsActivity : BaseActivity() {
             Toast.makeText(this, "暂无拉黑联系人", Toast.LENGTH_SHORT).show(); return
         }
         val names = rows.map { it.title.ifBlank { it.jid } }.toTypedArray()
-        android.app.AlertDialog.Builder(this)
+        android.app.AlertDialog.Builder(this, R.style.WeifanDialog)
             .setTitle("已拉黑联系人")
             .setItems(names) { _, i ->
                 engine().db.setChatFlags(rows[i].jid, blocked = false)
@@ -194,7 +194,7 @@ class SettingsActivity : BaseActivity() {
             ViewGroup.LayoutParams.MATCH_PARENT, dp(46)).apply {
             topMargin = dp(12)
         })
-        android.app.AlertDialog.Builder(this)
+        android.app.AlertDialog.Builder(this, R.style.WeifanDialog)
             .setView(box)
             .setPositiveButton("关闭", null)
             .show()
@@ -265,7 +265,7 @@ class SettingsActivity : BaseActivity() {
             setPadding(0, dp(10), 0, 0)
         })
 
-        android.app.AlertDialog.Builder(this)
+        android.app.AlertDialog.Builder(this, R.style.WeifanDialog)
             .setView(Ui.formDialogShell(this, "备份数据", night, content))
             .setPositiveButton("开始备份") { _, _ -> runBackup() }
             .setNegativeButton("取消", null)
@@ -291,7 +291,7 @@ class SettingsActivity : BaseActivity() {
             orientation = LinearLayout.VERTICAL
             addView(body)
         })
-        android.app.AlertDialog.Builder(this)
+        android.app.AlertDialog.Builder(this, R.style.WeifanDialog)
             .setView(shell)
             .setPositiveButton("关闭", null)
             .show()
@@ -326,7 +326,7 @@ class SettingsActivity : BaseActivity() {
         val labels = files.map {
             "${it.name}\n${fmt.format(java.util.Date(it.lastModified()))} · ${it.length() / 1024} KB"
         }.toTypedArray()
-        android.app.AlertDialog.Builder(this)
+        android.app.AlertDialog.Builder(this, R.style.WeifanDialog)
             .setTitle("选择备份")
             .setItems(labels) { _, i -> showRestoreOptions(files[i]) }
             .setNegativeButton("取消", null)
@@ -339,7 +339,7 @@ class SettingsActivity : BaseActivity() {
             "chats" to "会话与消息", "creds" to "设备凭据与联系人",
             "media" to "媒体文件", "avatars" to "头像缓存", "prefs" to "翻译设置与偏好")
         val checked = booleanArrayOf(true, true, false, false, true)
-        android.app.AlertDialog.Builder(this)
+        android.app.AlertDialog.Builder(this, R.style.WeifanDialog)
             .setTitle("恢复选项")
             .setMultiChoiceItems(choices.map { it.second }.toTypedArray(), checked) { _, w, v ->
                 checked[w] = v
@@ -358,7 +358,7 @@ class SettingsActivity : BaseActivity() {
 
     /** 覆盖警告（对齐 dialog_confirm_restore：15sp + 左右 20dp） */
     private fun confirmRestore(zip: java.io.File, opts: Set<String>) {
-        android.app.AlertDialog.Builder(this)
+        android.app.AlertDialog.Builder(this, R.style.WeifanDialog)
             .setView(Ui.confirmBody(this, "确定从这份备份恢复？",
                 "恢复会话与消息将覆盖当前所有聊天记录，且无法撤销。恢复完成后应用会自动重启。",
                 night))
@@ -388,7 +388,7 @@ class SettingsActivity : BaseActivity() {
                 topMargin = dp(12)
             })
         }
-        val dlg = android.app.AlertDialog.Builder(this)
+        val dlg = android.app.AlertDialog.Builder(this, R.style.WeifanDialog)
             .setView(box)
             .setCancelable(false)
             .create()
@@ -410,13 +410,13 @@ class SettingsActivity : BaseActivity() {
             runOnUiThread {
                 try { dlg.dismiss() } catch (_: Throwable) { }
                 if (err != null) {
-                    android.app.AlertDialog.Builder(this)
+                    android.app.AlertDialog.Builder(this, R.style.WeifanDialog)
                         .setTitle("恢复失败")
                         .setMessage("$err\n\n原有数据已保留（未成功写入的文件已回滚）。")
                         .setPositiveButton("知道了") { _, _ -> recreate() }
                         .show()
                 } else {
-                    android.app.AlertDialog.Builder(this)
+                    android.app.AlertDialog.Builder(this, R.style.WeifanDialog)
                         .setTitle("恢复完成")
                         .setMessage("应用即将重启以加载新数据。")
                         .setCancelable(false)
@@ -465,7 +465,7 @@ class SettingsActivity : BaseActivity() {
             addView(bar, LinearLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT, dp(6)).apply { topMargin = dp(10) })
         }
-        val dlg = android.app.AlertDialog.Builder(this)
+        val dlg = android.app.AlertDialog.Builder(this, R.style.WeifanDialog)
             .setView(box)
             .setCancelable(false)
             .create()
@@ -491,13 +491,13 @@ class SettingsActivity : BaseActivity() {
                 try { dlg.dismiss() } catch (_: Throwable) { }
                 if (err == null) {
                     val kb = target.length() / 1024
-                    android.app.AlertDialog.Builder(this)
+                    android.app.AlertDialog.Builder(this, R.style.WeifanDialog)
                         .setTitle("备份完成")
                         .setMessage("已保存：\nDownload/${target.name}\n共 $kb KB")
                         .setPositiveButton("知道了", null)
                         .show()
                 } else {
-                    android.app.AlertDialog.Builder(this)
+                    android.app.AlertDialog.Builder(this, R.style.WeifanDialog)
                         .setTitle("备份失败")
                         .setMessage(err)
                         .setPositiveButton("知道了", null)

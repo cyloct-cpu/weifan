@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- 对齐参考 bg_dialog_card：圆角 16dp 实心卡片（日间 #FFFFFF）
+     全应用 AlertDialog 共用此背景，避免每个弹层各写一套 -->
+<shape xmlns:android="http://schemas.android.com/apk/res/android" android:shape="rectangle">
+    <solid android:color="#FFFFFF" />
+    <corners android:radius="16dp" />
+</shape>

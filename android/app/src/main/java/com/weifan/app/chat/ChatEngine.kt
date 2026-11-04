@@ -8,6 +8,7 @@ import com.weifan.app.WeiFanApplication
 import com.weifan.app.core.Engine
 import com.weifan.app.data.ChatDb
 import com.weifan.app.data.MessageRow
+import mobile.CallListener
 import mobile.ConnectionListener
 import mobile.MessageListener
 import mobile.MessageEventListener
@@ -46,6 +47,13 @@ class ChatEngine private constructor(context: Context) :
         client.setReceiptListener(this)
         client.setTypingListener(this)
         client.setMessageEventListener(this)
+        client.setCallListener(object : mobile.CallListener {
+            override fun onIncomingCall(from: String?, callID: String?, callCreator: String?,
+                                        timestampMs: Long) {
+                onIncomingCall?.invoke(from ?: "", callID ?: "")
+            }
+            override fun onCallTerminated(callID: String?, reason: String?) { }
+        })
         // pollUpdateListener 在下方属性声明后于 initPoll 注册（属性初始化顺序）
     }
 
@@ -453,6 +461,17 @@ class ChatEngine private constructor(context: Context) :
      * 列出本账号已登录设备（只读）。返回 (设备数, 当前设备id)；失败时 count=-1 并带错误。
      * 注意：协议层只能读列表，无法注销任意设备（whatsmeow 无通用 IQ 发送口）。
      */
+    /** 来电回调：(fromJid, callID)；whatsmeow 只能收来电+拒接，无法接听 */
+    var onIncomingCall: ((String, String) -> Unit)? = null
+
+    /** 拒接来电 */
+    fun rejectCallAsync(callFrom: String, callID: String, callback: (String?) -> Unit) {
+        Thread {
+            try { client.rejectCall(callFrom, callID); main.post { callback(null) } }
+            catch (e: Throwable) { main.post { callback(e.message ?: e.toString()) } }
+        }.start()
+    }
+
     fun listDevicesAsync(callback: (Int, Int, String?) -> Unit) {
         Thread {
             try {

@@ -263,7 +263,7 @@ class FollowupTodosActivity : BaseActivity() {
             setPadding(dp(10), dp(6), dp(6), dp(6))
             isClickable = true
             setOnClickListener {
-                android.app.AlertDialog.Builder(this@FollowupTodosActivity)
+                android.app.AlertDialog.Builder(this@FollowupTodosActivity, R.style.WeifanDialog)
                     .setTitle("删除这条待办？")
                     .setMessage(t.content)
                     .setPositiveButton("删除") { _, _ ->
@@ -349,7 +349,7 @@ class FollowupTodosActivity : BaseActivity() {
         }
         box.addView(quick)
 
-        android.app.AlertDialog.Builder(this)
+        android.app.AlertDialog.Builder(this, R.style.WeifanDialog)
             .setTitle(if (onlyJid.isBlank()) "新建待办" else "给该客户新建待办")
             .setView(box)
             .setPositiveButton("保存") { _, _ ->

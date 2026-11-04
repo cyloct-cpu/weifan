@@ -175,7 +175,7 @@ class ChatInfoActivity : BaseActivity() {
                     minLines = 4
                     gravity = Gravity.TOP
                 }
-                android.app.AlertDialog.Builder(this)
+                android.app.AlertDialog.Builder(this, R.style.WeifanDialog)
                     .setView(Ui.formDialogShell(this, "客户备注", night, input))
                     .setPositiveButton("保存") { _, _ ->
                         val v = input.text.toString()
@@ -213,7 +213,7 @@ class ChatInfoActivity : BaseActivity() {
                     setPadding(dp(12), dp(10), dp(12), dp(10))
                     minimumHeight = dp(40)
                 }
-                android.app.AlertDialog.Builder(this)
+                android.app.AlertDialog.Builder(this, R.style.WeifanDialog)
                     .setView(Ui.bigTitleDialogShell(this, "修改群名", night, input))
                     .setPositiveButton("保存") { _, _ ->
                         val n = input.text.toString().trim()
@@ -340,7 +340,7 @@ class ChatInfoActivity : BaseActivity() {
                     "移除成员" to { removeMember(phone) },
                     if (admin) ("降为普通成员" to { changeAdminRole(phone, false) })
                     else ("升为管理员" to { changeAdminRole(phone, true) }))
-                android.app.AlertDialog.Builder(this@ChatInfoActivity)
+                android.app.AlertDialog.Builder(this@ChatInfoActivity, R.style.WeifanDialog)
                     .setTitle(phone.substringBefore("@"))
                     .setItems(opts.map { it.first }.toTypedArray()) { _, i -> opts[i].second() }
                     .setNegativeButton("取消", null)

@@ -453,7 +453,7 @@ class MainActivity : BaseActivity() {
             "口语短句（节拍聊天）",
             "严格直译（合同报价）"
         )
-        android.app.AlertDialog.Builder(this)
+        android.app.AlertDialog.Builder(this, R.style.WeifanDialog)
             .setTitle("选择提示词模板")
             .setItems(names) { _, which ->
                 promptInput.setText(when (which) {
@@ -553,7 +553,7 @@ class MainActivity : BaseActivity() {
         box.addView(neutral, LinearLayout.LayoutParams(
             ViewGroup.LayoutParams.MATCH_PARENT, dp(40)).apply { topMargin = dp(12) })
 
-        dlgRef = android.app.AlertDialog.Builder(this)
+        dlgRef = android.app.AlertDialog.Builder(this, R.style.WeifanDialog)
             .setView(box)
             .setNegativeButton("取消", null)
             .create()
@@ -587,7 +587,7 @@ class MainActivity : BaseActivity() {
     private fun pickHistoryEngine() {
         val engines = com.weifan.app.core.Engine.configuredEngines(prefs)
         val labels = listOf("跟随全局优先级") + engines.map { it.second }
-        android.app.AlertDialog.Builder(this)
+        android.app.AlertDialog.Builder(this, R.style.WeifanDialog)
             .setTitle("历史消息用哪个接口")
             .setItems(labels.toTypedArray()) { _, which ->
                 prefs.historyEngine = if (which == 0) "" else engines[which - 1].first

@@ -2,4 +2,13 @@
 <resources>
     <!-- 深色：跟随系统夜间模式。系统弹出的 Spinner 下拉、Toast 也会跟着变深 -->
     <style name="AppTheme" parent="@android:style/Theme.Material.NoActionBar" />
+
+    <!-- 夜间弹层主题：深色 16dp 圆角卡片 -->
+    <style name="WeifanDialog" parent="@android:style/Theme.Material.Dialog.Alert">
+        <item name="android:windowBackground">@drawable/bg_dialog_card</item>
+        <item name="android:windowIsFloating">true</item>
+        <item name="android:windowMinWidthMajor">88%</item>
+        <item name="android:windowMinWidthMinor">88%</item>
+        <item name="android:backgroundDimAmount">0.4</item>
+    </style>
 </resources>
