@@ -47,6 +47,11 @@ class ChatEngine private constructor(context: Context) :
         client.setReceiptListener(this)
         client.setTypingListener(this)
         client.setMessageEventListener(this)
+        client.setAudioListener(object : mobile.AudioListener {
+            override fun onAudioFrame(data: ByteArray?) {
+                if (data != null) audioSink?.invoke(data)
+            }
+        })
         client.setCallListener(object : mobile.CallListener {
             override fun onIncomingCall(from: String?, callID: String?, video: Boolean,
                                         timestampMs: Long) {
@@ -463,6 +468,27 @@ class ChatEngine private constructor(context: Context) :
      * 列出本账号已登录设备（只读）。返回 (设备数, 当前设备id)；失败时 count=-1 并带错误。
      * 注意：协议层只能读列表，无法注销任意设备（whatsmeow 无通用 IQ 发送口）。
      */
+    /** 收侧音频回调（由 CallAudioBridge 挂上，写 AudioTrack） */
+    var audioSink: ((ByteArray) -> Unit)? = null
+
+    fun attachAudioSink(sink: ((ByteArray) -> Unit)?) { audioSink = sink }
+
+    /** 启动 Go 侧双向音频（接听/发起成功后调用） */
+    fun startAudioEngine() {
+        Thread {
+            try { client.startAudio() } catch (_: Throwable) { }
+        }.start()
+    }
+
+    fun stopAudioEngine() {
+        Thread { try { client.stopAudio() } catch (_: Throwable) { } }.start()
+    }
+
+    /** 喂麦克风 PCM（CallAudioBridge 采集线程调用，必须在后台线程） */
+    fun feedMicPcm(data: ByteArray) {
+        try { client.feedMicPcm(data) } catch (_: Throwable) { }
+    }
+
     /** 来电回调：(fromJid, callID, isVideo)。meowcaller 支持接听/拒接/发起 */
     var onIncomingCall: ((String, String, Boolean) -> Unit)? = null
     var onCallTerminated: ((String) -> Unit)? = null

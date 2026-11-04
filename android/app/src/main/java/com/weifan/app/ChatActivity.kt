@@ -70,6 +70,8 @@ class ChatActivity : BaseActivity() {
     private lateinit var suggestScroll: android.widget.ScrollView
     private lateinit var emojiPanel: LinearLayout
     private var rdlg: android.app.AlertDialog? = null
+    /** 通话音频桥（采集 AudioRecord ↔ Go PCMStream，收侧 Go Sink → AudioTrack） */
+    private var callAudio: com.weifan.app.chat.CallAudioBridge? = null
     private var groupMembers: List<Pair<String, String>> = emptyList()   // phone → 名字
     // 头部标签徽章（批1-c）
     private lateinit var labelBadges: HorizontalScrollView
@@ -1945,6 +1947,7 @@ class ChatActivity : BaseActivity() {
                 Toast.makeText(this, "发起通话失败：$err", Toast.LENGTH_LONG).show()
             } else {
                 showCallingUI(video, callId ?: "")
+                startCallAudio()
             }
         }
     }
@@ -1978,6 +1981,7 @@ class ChatActivity : BaseActivity() {
         val dlg = android.app.AlertDialog.Builder(this, R.style.WeifanDialog).create()
         val hangup = Ui.pillButton(this, "挂断", true, night)
         hangup.setOnClickListener {
+            stopCallAudio()
             engine.hangupCallAsync { }
             dlg.dismiss()
         }
@@ -1986,6 +1990,24 @@ class ChatActivity : BaseActivity() {
         dlg.setView(box)
         dlg.show()
         dlg.window?.setBackgroundDrawableResource(android.R.color.transparent)
+    }
+
+    /** 启动双向音频（需 RECORD_AUDIO 权限） */
+    private fun startCallAudio() {
+        if (checkSelfPermission(android.Manifest.permission.RECORD_AUDIO)
+                != android.content.pm.PackageManager.PERMISSION_GRANTED) {
+            requestPermissions(arrayOf(android.Manifest.permission.RECORD_AUDIO), 4104)
+            return
+        }
+        engine.startAudioEngine()
+        callAudio = com.weifan.app.chat.CallAudioBridge(engine) { err ->
+            Toast.makeText(this, "音频异常：$err", Toast.LENGTH_SHORT).show()
+        }.also { it.start() }
+    }
+
+    private fun stopCallAudio() {
+        callAudio?.stop()
+        callAudio = null
     }
 
     /** 来电界面：接听 / 拒接 */
@@ -2027,12 +2049,17 @@ class ChatActivity : BaseActivity() {
         val reject = Ui.pillButton(this, "拒接", false, night)
         val answer = Ui.pillButton(this, "接听", true, night)
         reject.setOnClickListener {
+            stopCallAudio()
             engine.rejectCallAsync { }
             dlg.dismiss()
         }
         answer.setOnClickListener {
             engine.answerCallAsync { err ->
-                if (err != null) Toast.makeText(this, "接听失败：$err", Toast.LENGTH_LONG).show()
+                if (err != null) {
+                    Toast.makeText(this, "接听失败：$err", Toast.LENGTH_LONG).show()
+                } else {
+                    startCallAudio()
+                }
             }
             dlg.dismiss()
             showCallingUI(video, callId)
