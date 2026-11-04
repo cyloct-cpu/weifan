@@ -69,6 +69,8 @@ class PairingActivity : BaseActivity(), PairListener {
     private lateinit var qrProgress: ProgressBar
     /** 二维码只发起一次（重复发起会拿到新的 QR 通道，旧的作废） */
     private var qrRequested = false
+    /** 429 限流冷却剩余秒数（>0 时禁止重发） */
+    private var coolLeft = 0
 
     private val main = Handler(Looper.getMainLooper())
     private var phone = ""
@@ -540,6 +542,10 @@ class PairingActivity : BaseActivity(), PairListener {
     }
 
     private fun onRequestCode() {
+        if (coolLeft > 0) {
+            Toast.makeText(this, "请等 ${coolLeft} 秒再试（WhatsApp 限流中）", Toast.LENGTH_SHORT).show()
+            return
+        }
         val raw = phoneInput.text.toString().trim()
         val country = countryInput.text.toString().trim()
         val normalized = normalizePhone(country, raw)
@@ -656,9 +662,42 @@ class PairingActivity : BaseActivity(), PairListener {
     override fun onPairError(message: String?) = main.post {
         progress.visibility = View.GONE
         nextBtn.isEnabled = true
-        statusText.text = "配对失败：${message ?: "未知错误"}"
+        // 去掉上游已带的「配对失败: 」前缀，避免出现「配对失败: 配对失败: ...」
+        var raw = (message ?: "未知错误").replace(Regex("^(配对失败[:：]\\s*)+"), "")
+        val friendly = when {
+            // WhatsApp 对短时间内多次请求配对码会限流（429 rate-overlimit）
+            raw.contains("429") || raw.contains("rate-overlimit", true) ->
+                "WhatsApp 暂时限制了请求频率。请等 1–2 分钟再点「下一步」，不要连续重试。"
+            raw.contains("ALREADY_PAIRED") -> "本机已配对，需先在设置里注销后再配对。"
+            else -> raw
+        }
+        statusText.text = "配对失败：$friendly"
         statusText.setTextColor(WaSpec.LOGOUT_BANNER_TEXT)
+        // 429 之后进入 90 秒冷却，按钮置灰并倒计时，防止用户继续点导致更长封禁
+        if (raw.contains("429") || raw.contains("rate-overlimit", true)) {
+            startRateCooldown(90)
+        }
     }.let {}
+
+    /** 限流冷却：倒计时期间禁用「下一步」，到期自动恢复 */
+    private fun startRateCooldown(seconds: Int) {
+        coolLeft = seconds
+        nextBtn.isEnabled = false
+        val t = object : android.os.CountDownTimer(seconds * 1000L, 1000L) {
+            override fun onTick(ms: Long) {
+                coolLeft = (ms / 1000).toInt()
+                nextBtn.text = "请等待 ${coolLeft}s"
+            }
+            override fun onFinish() {
+                coolLeft = 0
+                nextBtn.isEnabled = true
+                nextBtn.text = "下一步"
+                statusText.text = "可以重试了"
+                statusText.setTextColor(textStatus)
+            }
+        }
+        t.start()
+    }
 
     /** 国家码 + 号码拼成 E.164；号码里带 + 时以号码自身为准 */
     private fun normalizePhone(country: String, raw: String): String? {
