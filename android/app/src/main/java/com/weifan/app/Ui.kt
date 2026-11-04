@@ -399,6 +399,128 @@ object Ui {
     //   ⑤ 确认型：  正文 15sp + padding 20
     // 统一走这几个工厂，避免每个弹层各写一套 padding/字号。
 
+    // ────────────────── 真正的弹层基座（对齐参考视觉，不用系统按钮）──────────────────
+    // 之前所有弹层用 AlertDialog.setPositiveButton，那是系统右下角文字按钮，
+    // 跟参考的「大胶囊按钮」完全不同。这里改成：setView(整块自定义布局)，按钮自己画。
+
+    /**
+     * 居中标题弹层：标题 20sp BOLD 居中 + 内容 + 底部按钮行。
+     * 对齐参考 dialog_new_chat / dialog_create_label 的视觉结构。
+     * @param buttons 底部按钮：从右往左排，最后一个为主按钮（实心）
+     */
+    fun dialogShellCentered(context: Context, title: String, night: Boolean,
+                            content: View, buttons: List<Pair<String, Boolean>>,
+                            onButton: (Int) -> Unit): LinearLayout {
+        val root = LinearLayout(context).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding(dp(context, 20), dp(context, 22), dp(context, 20), dp(context, 20))
+            // 参考 bg_dialog_card：圆角 16dp 实心卡片（不再用系统弹层默认背景）
+            background = roundBg(context,
+                if (night) WaSpec.SURFACE_NIGHT else android.graphics.Color.WHITE,
+                WaSpec.DIALOG_CARD_RADIUS_DP.toInt())
+        }
+        root.addView(TextView(context).apply {
+            text = title
+            textSize = 20f
+            gravity = android.view.Gravity.CENTER
+            typeface = android.graphics.Typeface.DEFAULT_BOLD
+            setTextColor(WaSpec.textPrimary(night))
+        })
+        root.addView(content, LinearLayout.LayoutParams(
+            ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply {
+            topMargin = dp(context, 18)
+        })
+        // 按钮行：主按钮在右且更宽（参考 取消:开始聊天 ≈ 1:1.6）
+        val row = LinearLayout(context).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = android.view.Gravity.CENTER_VERTICAL
+        }
+        for ((i, spec) in buttons.withIndex()) {
+            val (label, primary) = spec
+            val btn = pillButton(context, label, primary, night)
+            btn.setOnClickListener { onButton(i) }
+            row.addView(btn, LinearLayout.LayoutParams(
+                0, dp(context, 52), if (primary) 1.6f else 1f).apply {
+                if (i > 0) marginStart = dp(context, 10)
+            })
+        }
+        root.addView(row, LinearLayout.LayoutParams(
+            ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply {
+            topMargin = dp(context, 20)
+        })
+        return root
+    }
+
+    /**
+     * 显示一个「参考样式」弹层：内容已是 16dp 卡片，所以把系统弹层背景设透明，
+     * 否则会出现系统白底 + 我们卡片两层边（这是之前视觉差的主因之一）。
+     */
+    fun showCardDialog(context: android.app.Activity, content: View,
+                       widthRatio: Float = 0.92f): android.app.AlertDialog {
+        val dlg = android.app.AlertDialog.Builder(context).setView(content).create()
+        dlg.show()
+        dlg.window?.setBackgroundDrawableResource(android.R.color.transparent)
+        dlg.window?.setLayout(
+            (context.resources.displayMetrics.widthPixels * widthRatio).toInt(),
+            android.view.ViewGroup.LayoutParams.WRAP_CONTENT)
+        return dlg
+    }
+
+    /** 胶囊按钮：高 52dp、圆角 26dp。主按钮实心主色白字，次按钮白底 1dp 描边 */
+    fun pillButton(context: Context, label: String, primary: Boolean, night: Boolean): TextView =
+        TextView(context).apply {
+            text = label
+            textSize = 16f
+            gravity = android.view.Gravity.CENTER
+            if (primary) {
+                setTextColor(android.graphics.Color.WHITE)
+                background = roundBg(context, WaSpec.primary(night), 26)
+            } else {
+                setTextColor(WaSpec.textPrimary(night))
+                background = roundBg(context,
+                    if (night) WaSpec.SURFACE_NIGHT else android.graphics.Color.WHITE,
+                    26, 1, WaSpec.divider(night))
+            }
+            isClickable = true
+            minimumHeight = dp(context, 52)
+        }
+
+    /** 带左侧图标的输入框（对齐参考「📞 号码或@账号」那种样式） */
+    fun iconInput(context: Context, icon: String, hint: String, night: Boolean,
+                  inputType: Int = android.text.InputType.TYPE_CLASS_TEXT): EditText {
+        val wrap = android.widget.FrameLayout(context).apply {
+            background = roundBg(context,
+                if (night) WaSpec.SEARCH_BG_NIGHT else WaSpec.GRAY6, 12)
+            minimumHeight = dp(context, 50)
+        }
+        wrap.addView(TextView(context).apply {
+            text = icon
+            textSize = 16f
+            gravity = android.view.Gravity.CENTER
+            setTextColor(WaSpec.textSecondary(night))
+            layoutParams = android.widget.FrameLayout.LayoutParams(dp(context, 44), dp(context, 44)).apply {
+                gravity = android.view.Gravity.START or android.view.Gravity.CENTER_VERTICAL
+                marginStart = dp(context, 6)
+            }
+        })
+        val et = EditText(context).apply {
+            this.hint = hint
+            textSize = 15f
+            setTextColor(WaSpec.textPrimary(night))
+            setHintTextColor(WaSpec.textSecondary(night))
+            setBackgroundColor(android.graphics.Color.TRANSPARENT)
+            setPadding(0, 0, dp(context, 12), 0)
+            maxLines = 1
+            this.inputType = inputType
+            tag = "iconInputEdit"
+        }
+        wrap.addView(et, android.widget.FrameLayout.LayoutParams(
+            ViewGroup.LayoutParams.MATCH_PARENT, dp(context, 50)).apply {
+            marginStart = dp(context, 48)
+        })
+        return et
+    }
+
     /** ① 普通表单弹层：padding 20/22/20/18 + 标题 17sp */
     fun formDialogShell(context: Context, title: String, night: Boolean,
                         content: View): LinearLayout = LinearLayout(context).apply {

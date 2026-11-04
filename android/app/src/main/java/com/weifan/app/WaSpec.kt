@@ -106,6 +106,29 @@ object WaSpec {
     const val LIST_AVATAR_SIZE_DP = 46                 // 列表头像（对齐参考 item_chat 46dp）
     const val CHAT_AVATAR_SIZE_DP = 43                 // 会话页头头像 headerAvatarContainer
     const val SENDER_AVATAR_SIZE_DP = 25               // 群内发送者小头像
+    // ────── 形状常量：全部来自参考 drawable 的实测值（aapt2 dump xmltree）──────
+    // 之前只抄了 padding/字号，没抄背景形状，这是视觉差距的主要来源。
+    // 参考：bg_dialog_card = 圆角 16dp、无描边
+    const val DIALOG_CARD_RADIUS_DP = 16f
+    // bg_dialog_input = 圆角 12dp + 1dp 描边
+    const val DIALOG_INPUT_RADIUS_DP = 12f
+    const val DIALOG_INPUT_STROKE_DP = 1f
+    // bg_bubble_sent / bg_bubble_received = 圆角 10dp（与我们原值一致）
+    const val BUBBLE_RADIUS_DP = 10f
+    // bg_chip_selected = 圆角 100dp（全圆）+ 1dp 描边
+    const val CHIP_SELECTED_RADIUS_DP = 100f
+    const val CHIP_SELECTED_STROKE_DP = 1f
+    // bg_filter_chip_selected = 圆角 999dp（全圆，无描边）
+    const val FILTER_CHIP_RADIUS_DP = 999f
+    // bg_followup_stat_card / bg_followup_todo_card = 圆角 14dp
+    const val STAT_CARD_RADIUS_DP = 14f
+    const val TODO_CARD_RADIUS_DP = 14f
+    // bg_fx_card = 圆角 12dp
+    const val FX_CARD_RADIUS_DP = 12f
+    // bg_card_simple = 圆角 12dp + 1dp 描边
+    const val CARD_SIMPLE_RADIUS_DP = 12f
+    const val CARD_SIMPLE_STROKE_DP = 1f
+
     // U2：头像环（参考 drawable/bg_avatar_ring：OVAL + solid wa_gray5 + 1dp wa_avatar_stroke）
     val AVATAR_RING_FILL = Color.parseColor("#E5E5EA")          // wa_gray5
     val AVATAR_RING_FILL_NIGHT = Color.parseColor("#38383A")

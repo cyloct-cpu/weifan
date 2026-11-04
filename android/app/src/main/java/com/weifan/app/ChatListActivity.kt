@@ -589,35 +589,30 @@ class ChatListActivity : BaseActivity() {
      * 输入完整号码后直接开聊——会话在首次发消息时才真正建立，这里只负责跳转。
      */
     private fun showNewChatDialog() {
-        val input = EditText(this).apply {
-            hint = "手机号（含国家码），如 +31612345678"
-            textSize = 15f
-            setTextColor(WaSpec.textPrimary(night))
-            setHintTextColor(WaSpec.textSecondary(night))
-            setBackground(Ui.roundBg(this@ChatListActivity,
-                if (night) WaSpec.SEARCH_BG_NIGHT else WaSpec.GRAY6, 10))
-            setPadding(dp(12), dp(9), dp(12), dp(9))
-            minHeight = 0
-            minimumHeight = dp(40)
-            inputType = android.text.InputType.TYPE_CLASS_PHONE
-        }
-        // 用 formDialogShell + 单个输入框（pickerDialogShell 自带搜索框，再加会重复两个框）
-        val shell = Ui.formDialogShell(this, "新建会话", night, input)
-        android.app.AlertDialog.Builder(this)
-            .setView(shell)
-            .setPositiveButton("打开") { _, _ ->
-                val digits = input.text.toString().filter { it.isDigit() }
-                if (digits.length !in 8..15) {
-                    Toast.makeText(this, "号码不完整（含国家码，8–15 位）",
-                        Toast.LENGTH_SHORT).show()
-                    return@setPositiveButton
-                }
-                startActivity(Intent(this, ChatActivity::class.java)
-                    .putExtra("jid", "$digits@s.whatsapp.net")
-                    .putExtra("title", "+$digits"))
+        // 对齐参考 dialog_new_chat：标题 20sp 居中 + 带📞图标的胶囊输入框 +
+        // 底部两个大胶囊按钮（取消 / 开始聊天，主动作更宽）
+        val input = Ui.iconInput(this, "📞", "号码或@账号，如 +31612345678", night,
+            android.text.InputType.TYPE_CLASS_PHONE)
+        val wrap = input.parent as View
+
+        var dlg: android.app.AlertDialog? = null
+        val shell = Ui.dialogShellCentered(this, "新聊天", night, wrap,
+            listOf("取消" to false, "开始聊天" to true)) { idx ->
+            if (idx == 0) { dlg?.dismiss(); return@dialogShellCentered }
+            val raw = input.text.toString().trim()
+            val digits = raw.filter { it.isDigit() }
+            if (digits.length !in 8..15) {
+                Toast.makeText(this, "号码不完整（含国家码，8–15 位）", Toast.LENGTH_SHORT).show()
+                return@dialogShellCentered
             }
-            .setNegativeButton("取消", null)
-            .show()
+            dlg?.dismiss()
+            startActivity(Intent(this, ChatActivity::class.java)
+                .putExtra("jid", "$digits@s.whatsapp.net")
+                .putExtra("title", "+$digits"))
+        }
+        // 用统一入口：窗口背景透明 + 16dp 圆角卡片（对齐 bg_dialog_card）
+        dlg = Ui.showCardDialog(this, shell)
+        input.requestFocus()
     }
 
     /** 建群：群名 + 成员手机号（逗号分隔），先校验后创建 */
