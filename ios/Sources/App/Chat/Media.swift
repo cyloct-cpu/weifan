@@ -226,3 +226,71 @@ struct QuickLookView: UIViewControllerRepresentable {
         }
     }
 }
+
+
+// MARK: - P7 链接预览（og 元数据抓取；对齐参考 view_link_preview）
+
+struct LinkPreview: Codable {
+    var url: String
+    var title: String
+    var description: String
+    var imageURL: String?
+    var siteName: String?
+}
+
+enum LinkPreviewFetcher {
+    private static let session: URLSession = {
+        let config = URLSessionConfiguration.default
+        config.timeoutIntervalForRequest = 8
+        return URLSession(configuration: config)
+    }()
+
+    static func firstURL(_ text: String) -> String? {
+        guard let m = text.range(of: "https?://[^\\s<>\"']+", options: .regularExpression) else { return nil }
+        return String(text[m])
+    }
+
+    /// 抓取 og 元数据（阻塞调用——调用方放后台）
+    static func fetch(_ urlString: String) -> LinkPreview? {
+        guard let url = URL(string: urlString) else { return nil }
+        var req = URLRequest(url: url)
+        req.setValue("Mozilla/5.0 (iPhone; CPU iPhone OS 16_0 like Mac OS X)", forHTTPHeaderField: "User-Agent")
+                // 同步抓取（调用方已在后台线程）
+        let sem = DispatchSemaphore(value: 0)
+        var box: (Data, URLResponse?)?
+        URLSession.shared.dataTask(with: req) { d, r, _ in box = (d ?? Data(), r); sem.signal() }.resume()
+        sem.wait()
+        guard let (data, resp0) = box,
+              let resp = resp0 as? HTTPURLResponse, resp.statusCode == 200,
+              let html = String(data: data.prefix(300_000), encoding: .utf8) else { return nil }
+        func meta(_ prop: String) -> String? {
+            for pattern in ["<meta[^>]*property=\"og:\\(prop)\"[^>]*content=\"([^\"]*)\"",
+                            "<meta[^>]*content=\"([^\"]*)\"[^>]*property=\"og:\\(prop)\"",
+                            "<title[^>]*>([^<]*)</title>"] where prop != "site_name" || pattern.contains("og:") {
+                if let m = html.range(of: pattern, options: .regularExpression) {
+                    let tag = String(html[m])
+                    if let c = tag.range(of: "content=\"([^\"]*)\"", options: .regularExpression) {
+                        let v = String(tag[c]).replacingOccurrences(of: "content=\"", with: "")
+                            .replacingOccurrences(of: "\"", with: "")
+                        if !v.isEmpty { return v }
+                    }
+                    if prop == "title", let t = tag.range(of: ">([^<]*)<", options: .regularExpression) {
+                        let v = String(tag[t]).trimmingCharacters(in: CharacterSet(charactersIn: "<>"))
+                        if !v.isEmpty { return v }
+                    }
+                }
+            }
+            return nil
+        }
+        let title = meta("title") ?? url.host ?? urlString
+        let desc = meta("description") ?? ""
+        var img = meta("image") ?? ""
+        if !img.isEmpty, !img.hasPrefix("http"), let base = URL(string: urlString) {
+            img = URL(string: img, relativeTo: base)?.absoluteString ?? img
+        }
+        return LinkPreview(url: urlString, title: title.prefix(120).description,
+                           description: desc.prefix(160).description,
+                           imageURL: img.isEmpty ? nil : img,
+                           siteName: meta("site_name") ?? url.host)
+    }
+}

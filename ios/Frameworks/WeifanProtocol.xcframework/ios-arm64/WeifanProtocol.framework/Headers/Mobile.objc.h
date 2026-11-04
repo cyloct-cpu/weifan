@@ -353,6 +353,10 @@ price 单位是「元」，协议里要乘 1000（priceAmount1000）。
  */
 - (NSString* _Nonnull)sendReply:(NSString* _Nullable)chatJid quoteID:(NSString* _Nullable)quoteID quoteParticipant:(NSString* _Nullable)quoteParticipant quoteText:(NSString* _Nullable)quoteText body:(NSString* _Nullable)body error:(NSError* _Nullable* _Nullable)error;
 /**
+ * SendStickerFromPath 发送贴纸（whatsmeow MediaImage 上传 + StickerMessage 结构；对齐参考 sendSticker）
+ */
+- (NSString* _Nonnull)sendStickerFromPath:(NSString* _Nullable)chatJid path:(NSString* _Nullable)path error:(NSError* _Nullable* _Nullable)error;
+/**
  * SendVideoFrame 发送一帧已编码的 H.264 Annex-B 数据到对端。
 必须已在 StartCall(video=true) 或 StartVideo 之后调用，否则服务端会丢弃。
  */

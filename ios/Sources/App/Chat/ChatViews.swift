@@ -201,6 +201,15 @@ struct ChatListView: View {
                     NavigationLink { ChatSettingsView() } label: { Image(systemName: "gearshape") }
                 }
             }
+            .onAppear { CallEngine.shared.wire(client: core.client) }
+            .overlay {
+                if CallEngine.shared.phase != .idle {
+                    CallOverlayView(client: core.client) { jid in
+                        core.chats().first(where: { $0.jid == jid })?.title
+                            ?? core.messages(chatJid: jid).last.map { _ in jid } ?? jid
+                    }
+                }
+            }
             .searchable(text: $query, prompt: "搜索或开始新聊天")
             .onAppear { core.connectAsync() }
         }
@@ -380,7 +389,13 @@ struct ChatView: View {
         .navigationTitle(title.isEmpty ? chatJid : title)
         .navigationBarTitleDisplayMode(.inline)
         .toolbar {
-            ToolbarItem(placement: .topBarTrailing) {
+            ToolbarItemGroup(placement: .topBarTrailing) {
+                if !chatJid.contains("@g.us") {
+                    Button {
+                        CallEngine.shared.wire(client: core.client)
+                        CallEngine.shared.startCall(client: core.client, jid: chatJid, video: false)
+                    } label: { Image(systemName: "phone") }
+                }
                 if chatJid.contains("@g.us") {
                     NavigationLink { GroupInfoView(chatJid: chatJid, title: title) } label: {
                         Image(systemName: "info.circle")
@@ -484,7 +499,7 @@ struct ChatView: View {
                 }
             } label: { Label("下载", systemImage: "arrow.down.circle") }
         }
-        Button { core.sendForwardAsync(chatJid: chatJid, m: m) { err in sendError = err } } label: {
+        Button { core.forwardAsync(chatJid: chatJid, m: m) { err in sendError = err } } label: {
             Label("转发", systemImage: "arrowshape.turn.up.right")
         }
     }
@@ -506,6 +521,7 @@ struct AttachPicker: View {
     var onError: (String) -> Void
     @State private var photoItem: PhotosPickerItem?
     @State private var videoItem: PhotosPickerItem?
+    @State private var stickerItem: PhotosPickerItem?
     @State private var showFiles = false
 
     var body: some View {
@@ -515,6 +531,9 @@ struct AttachPicker: View {
             }
             PhotosPicker(selection: $videoItem, matching: .videos) {
                 Label("视频", systemImage: "video")
+            }
+            PhotosPicker(selection: $stickerItem, matching: .images) {
+                Label("贴纸（webp/png 图）", systemImage: "face.smiling")
             }
             Button {
                 showFiles = true
@@ -532,6 +551,18 @@ struct AttachPicker: View {
                 let tmp = MediaStore.dir.appendingPathComponent("photo-\(Int(Date().timeIntervalSince1970 * 1000)).jpg")
                 try? data.write(to: tmp)
                 core.sendMediaAsync(chatJid: chatJid, kind: "image", localURL: tmp) { err in
+                    if let err { onError(err) } else { onDone() }
+                }
+            }
+        }
+        .onChange(of: stickerItem) { item in
+            guard let item else { return }
+            Task {
+                guard let data = try? await item.loadTransferable(type: Data.self) else { return }
+                let tmp = MediaStore.dir.appendingPathComponent("sticker-\(Int(Date().timeIntervalSince1970 * 1000)).webp")
+                try? data.write(to: tmp)
+                // P9：贴纸发送（协议 SendStickerFromPath；whatsmeow StickerMessage）
+                core.sendStickerAsync(chatJid: chatJid, localURL: tmp) { err in
                     if let err { onError(err) } else { onDone() }
                 }
             }
@@ -686,12 +717,17 @@ struct BubbleView: View {
     @State private var localURL: URL?
     @State private var playing = false
     @State private var player: AVAudioPlayer?
+    // P7：链接预览（og 元数据）
+    @State private var linkPreview: LinkPreview?
 
     var body: some View {
         HStack {
             if m.fromMe { Spacer(minLength: 48) }
             VStack(alignment: .leading, spacing: 3) {
                 media
+                if let lp = linkPreview {
+                    LinkPreviewCard(lp: lp)
+                }
                 if !m.text.isEmpty, !isCardKind {
                     Text(m.text).foregroundStyle(.primary)
                 }
@@ -721,6 +757,20 @@ struct BubbleView: View {
             if !m.fromMe { Spacer(minLength: 48) }
         }
         .task(id: m.id) {
+            // P7：链接预览（有 URL、无媒体、未抓过 → 后台抓 og）
+            if m.mediaKind.isEmpty, !m.fromMe, let u = LinkPreviewFetcher.firstURL(m.text) {
+                if let cached = ProtocolCore.linkPreviewCache[u] {
+                    linkPreview = cached
+                } else {
+                    let fetched = await Task.detached(priority: .utility) {
+                        LinkPreviewFetcher.fetch(u)
+                    }.value
+                    if let fetched {
+                        ProtocolCore.linkPreviewCache[u] = fetched
+                        linkPreview = fetched
+                    }
+                }
+            }
             guard ["image", "video", "document", "audio"].contains(m.mediaKind), !m.fromMe else { return }
             // 网络下载不能占主线程：后台下完回主线程刷 UI
             let client = ProtocolCore.shared.client
@@ -959,6 +1009,38 @@ struct ContactInfoView: View {
         .alert("拉黑失败", isPresented: .init(get: { blockError != nil }, set: { if !$0 { blockError = nil } })) {
             Button("好", role: .cancel) {}
         } message: { Text(blockError ?? "") }
+    }
+}
+
+// MARK: - P7 链接预览卡片（对齐参考 view_link_preview：图 120dp + 标题 + 描述 + 域名）
+
+struct LinkPreviewCard: View {
+    let lp: LinkPreview
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            if let imgStr = lp.imageURL, let url = URL(string: imgStr) {
+                AsyncImage(url: url) { phase in
+                    if let img = phase.image {
+                        img.resizable().scaledToFill().frame(height: 110).clipped()
+                    } else {
+                        Rectangle().fill(Color.teal.opacity(0.12)).frame(height: 110)
+                    }
+                }
+            }
+            VStack(alignment: .leading, spacing: 3) {
+                Text(lp.title).font(.callout.weight(.medium)).lineLimit(2)
+                if !lp.description.isEmpty {
+                    Text(lp.description).font(.caption).foregroundStyle(.secondary).lineLimit(2)
+                }
+                if let host = URL(string: lp.url)?.host {
+                    Text(host).font(.caption2).foregroundStyle(.teal)
+                }
+            }
+            .padding(8)
+        }
+        .background(Color.teal.opacity(0.06))
+        .clipShape(RoundedRectangle(cornerRadius: 8))
     }
 }
 

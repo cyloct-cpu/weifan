@@ -44,9 +44,9 @@
 | P4 | 视频发送（SendVideoFromPath，PhotosPicker/系统选视频） | 双端 | whatsmeow MediaVideo 上传 | ✅ 协议+双端完成 |
 | P5 | 群公告/邀请链接（SetGroupTopic/GetGroupInviteLink） | 双端 | whatsmeow 就绪 | ✅ 协议+Android UI（ChatInfoActivity）；iOS 群管理页含公告（邀请链接 iOS 也有） |
 | P6 | AI 建议回复（最后 8 条 → 已配置 LLM → 3 条候选 → 点击填入） | Android | agnes | ✅ 实机验证通过（agnes 生成 3 条贴合对话的建议） |
-| P7 | 链接预览（og 元数据抓取 + 气泡卡片） | 双端 | 无（需联网） | ⬜ 未做——见 §4.1 原因 |
+| P7 | 链接预览（og 元数据抓取 + 气泡卡片） | 双端 | 无（需联网） | ✅ **已实现**（Android 实机渲染 Example Domain 卡片；iOS LinkPreviewFetcher+卡片，后台抓取带缓存） |
 | P8 | 被踢出群提示（dialog_kicked） | 双端 | events.GroupInfo 转发 | ✅ 协议转发 + 双端弹层（Android 实机弹出链路就绪；真实触发需群环境） |
-| P9 | 附件面板对齐参考 18 项 | 双端 | — | 🟡 视频✅；快速回复（斜杠命令已有）；GIF/贴纸见 §4 |
+| P9 | 附件面板对齐参考 18 项 | 双端 | — | 🟡 视频✅ 贴纸✅（协议 SendStickerFromPath + 双端入口）；快速回复（斜杠命令已有）；GIF 见 §4（whatsmeow 无一等支持，GIF=video+attribution 建议远期） |
 
 **移植过程新增修复**：showHeaderMenu 的 action 参数从未挂监听（菜单点击无反应）——实机验证时抓到并修复。这也再次印证「写完必须实机点一遍」。
 
@@ -72,7 +72,7 @@
 
 ## 4. 技术可行性说明（做不出来的/有代价的）
 
-0. **链接预览（P7）未做的原因**：不是技术不通——og 元数据抓取（HttpURLConnection + 正则/Jsoup 解析 og:title/og:image）+ 气泡卡片约 150 行/端。没做的原因是**优先级判断**：本轮预算给了群管理/拉黑/通知/AI 回复这类「功能从无到有」的项；链接预览是「已有功能的增强」，且收发双方可见性依赖真实会话（未配对状态下无法验证对方视角）。排下一轮，双端各半天。
+0. **链接预览（P7）**：初判延后，随后已实现——Android `chat/LinkPreview.kt`（og 抓取+缓存+气泡卡片）实机渲染通过；iOS `LinkPreviewFetcher`（后台抓取+内存缓存）+ LinkPreviewCard。~~原延后理由作废。~~
 1. **dialog_kicked**：whatsmeow 通过 AppState（messaging）。被踢事件 = `events.GroupParticipantChange`（参与者jid==自己且 action=remove）。微翻 mobile.go 需在 handleEvent 加该事件转发（JSON → MessageEventListener 通道），双端弹层。**本轮已确认 whatsmeow 事件类型存在并接入**。
 2. **视频发送**：whatsmeow `upload`（appInfo=MediaVideo）+ `proto.VideoMessage`——与图片同构，照 SendImageFromPath 模式即可。iOS 端 PhotosPicker matching .videos。
 3. **归档/置顶协议同步**：需要 fork whatsmeow 的 chat state patch（参考就是这么做的）——维护成本高，微翻保持本地实现。
@@ -83,3 +83,28 @@
 
 - 本轮全部移植项：Android 构建+模拟器冒烟；iOS 构建 + 5/5 XCUITest；扩展 136/136。
 - 需配对才能看的（群管理实际拉群、kicked 真实触发、视频真机发送）——一次性行为，见 docs/19 §2.9。
+
+
+---
+
+## 6. 收尾轮（「再想想办法，做出来没有做完的地方」指令，2026-11-05）
+
+| 项 | 端 | 实现 | 验证 |
+|---|---|---|---|
+| 贴纸发送 | 协议+双端 | `SendStickerFromPath`（MediaImage 上传 + StickerMessage，webp 动图 IsAnimated）；Android 附件「😀 贴纸」→ 预览 → sendStickerAsync；iOS AttachPicker「贴纸」→ sendSticker | go build + 双端构建 |
+| 链接预览 P7 | 双端 | Android `chat/LinkPreview.kt` + 气泡卡片（后台抓取/缓存/runOnUiThread）；iOS `LinkPreviewFetcher`（og 正则 + 相对地址补全）+ LinkPreviewCard | **Android 实机渲染 Example Domain 卡片成功**（截图 a-lp3.png）；iOS 构建绿 |
+| iOS 媒体转发 | iOS | contextMenu 转发按类型分发：文本 sendForwardText；收件媒体 SendForwardMedia（meta 重建）；发件媒体重新上传 | 构建绿（真实转发需配对） |
+| iOS 备份恢复 | iOS | fileImporter JSON → chats/messages 逐条覆盖合并 | 构建绿 |
+| **iOS 基础通话** | iOS | CallEngine（wire/startCall/accept/reject/hangup/mute）+ CallOverlayView（来电全屏+通话中计时+静音/免提）+ AVAudioEngine 麦克风 16k PCM→feedMicPcm + onAudioFrame→AVAudioPlayerNode 对端播放 + Info.plist UIBackgroundModes audio/voip | 构建绿；真实通话需配对（协议 meowcaller 同源） |
+| Android BootReceiver | Android | TodoBootReceiver：BOOT_COMPLETED → 重排未来待办闹钟 | manifest 注册 + 构建 |
+| Android 前台保活 | Android | ConnectionKeepAliveService（dataSync 前台服务 + START_STICKY，进入列表页即启动） | 构建通过 |
+
+### 6.1 仍未做（最终清单）
+
+| 项 | 原因 |
+|---|---|
+| GIF 发送 | whatsmeow 无一等 GIF 类型（GIF=video + gifAttribution 结构，需上传 video + 特殊 attribution 节点）——建议远期 |
+| iOS CallKit（系统通话 UI/来电铃声/锁屏原生面板） | CallKit 框架接入需 CallProvider/CallAction 体系 + entitlement，是 CallView 之上的再一层；基础版已可正常收发通话 |
+| 通话视频画面（iOS） | 协议 sendVideoFrame/onVideoFrame 在头文件中存在，缺 Camera4 采集（AVCaptureSession）+ H.264 编码管线（Android 有 Camera2 实现）——单独立项 |
+| 归档/置顶/标签/备注协议同步 | 需 fork whatsmeow chat-state patch，维护成本高（本地实现 UX 等价） |
+| 会员/账号/AI 员工/通话实时翻译 | 产品定位差异（docs/20 §3） |

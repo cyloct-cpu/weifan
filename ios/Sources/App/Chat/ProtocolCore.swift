@@ -376,6 +376,86 @@ final class ProtocolCore: ObservableObject {
         }
     }
 
+    /// P7：链接预览缓存（内存级；og 抓取在 Media.swift LinkPreview）
+    static var linkPreviewCache: [String: LinkPreview] = [:]
+
+    /// 转发：文本 sendForwardText；收件媒体 SendForwardMedia（存档元数据重建）；发件媒体重新上传发送
+    func forwardAsync(chatJid: String, m: MessageRow, completion: ((String?) -> Void)? = nil) {
+        if m.mediaKind.isEmpty {
+            sendForwardAsync(chatJid: chatJid, m: m, completion: completion)
+            return
+        }
+        let client = self.client
+        Task.detached { [weak self, db] in
+            do {
+                var err: NSError?
+                var msgId: String?
+                if m.fromMe, !m.mediaPath.isEmpty {
+                    // 发件媒体：本机文件重发（等价转发，无 IsForwarded 标）
+                    msgId = try MediaStore.sendFile(client: client, chatJid: chatJid,
+                                                    kind: m.mediaKind, localURL: URL(fileURLWithPath: m.mediaPath))
+                } else {
+                    // 收件媒体：下载元数据重建（SendForwardMedia 原生支持 image/video/audio/document/sticker）
+                    guard let meta = try? JSONDecoder().decode(MediaMeta.self, from: Data(m.mediaMeta.utf8)) else {
+                        throw NSError(domain: "weifan", code: 6,
+                                      userInfo: [NSLocalizedDescriptionKey: "无媒体元数据，无法转发"])
+                    }
+                    let params: [String: Any] = [
+                        "kind": m.mediaKind, "url": meta.url ?? "", "directPath": meta.directPath ?? "",
+                        "mediaKeyB64": meta.mediaKey ?? "", "shaB64": meta.fileSha256 ?? "",
+                        "encShaB64": meta.fileEncSha256 ?? "", "mime": m.mediaMime,
+                        "fileName": m.mediaName, "fileLength": meta.fileLength ?? 0]
+                    let json = String(data: (try? JSONSerialization.data(withJSONObject: params)) ?? Data(), encoding: .utf8) ?? "{}"
+                    msgId = client.sendForwardMedia(chatJid, paramsJSON: json, error: &err)
+                    if let err { throw err }
+                }
+                guard let msgId else { return }
+                let now = Int64(Date().timeIntervalSince1970 * 1000)
+                try db.insertMessage(MessageRow(
+                    id: msgId, chatJid: chatJid, senderJid: "", fromMe: true,
+                    text: m.text, original: "", translated: "", translatedLang: "",
+                    ts: now, mediaKind: m.mediaKind, mediaMime: m.mediaMime,
+                    mediaName: m.mediaName, mediaSize: 0, mediaPath: "", mediaThumb: "",
+                    mediaMeta: m.mediaMeta, reaction: ""))
+                try db.upsertChat(jid: chatJid, title: "", lastMessage: "[转发]",
+                                  lastTs: now, incrementUnread: false)
+                await MainActor.run {
+                    self?.inboxTick &+= 1
+                    completion?(nil)
+                }
+            } catch {
+                await MainActor.run { completion?(error.localizedDescription) }
+            }
+        }
+    }
+
+    /// P9：贴纸发送（协议 SendStickerFromPath）+ 本地落库
+    func sendStickerAsync(chatJid: String, localURL: URL, completion: ((String?) -> Void)? = nil) {
+        let client = self.client
+        Task.detached { [weak self, db] in
+            do {
+                var err: NSError?
+                let msgId = client.sendSticker(fromPath: chatJid, path: localURL.path, error: &err)
+                if let err { throw err }
+                let now = Int64(Date().timeIntervalSince1970 * 1000)
+                try db.insertMessage(MessageRow(
+                    id: msgId, chatJid: chatJid, senderJid: "", fromMe: true,
+                    text: "", original: "", translated: "", translatedLang: "",
+                    ts: now, mediaKind: "sticker", mediaMime: "image/webp",
+                    mediaName: localURL.lastPathComponent, mediaSize: Int64((try? Data(contentsOf: localURL))?.count ?? 0),
+                    mediaPath: localURL.path, mediaThumb: "", mediaMeta: "", reaction: ""))
+                try db.upsertChat(jid: chatJid, title: "", lastMessage: "[贴纸]",
+                                  lastTs: now, incrementUnread: false)
+                await MainActor.run {
+                    self?.inboxTick &+= 1
+                    completion?(nil)
+                }
+            } catch {
+                await MainActor.run { completion?(error.localizedDescription) }
+            }
+        }
+    }
+
     /// 转发：文本走 sendForwardText；媒体转发需要 paramsJSON（源消息媒体字段），阶段 2 先支持文本
     func sendForwardAsync(chatJid: String, m: MessageRow, completion: ((String?) -> Void)? = nil) {
         let client = self.client

@@ -9,6 +9,9 @@
     <uses-permission android:name="android.permission.CAMERA" />
     <!-- R2 尾巴：跟进待办到期本地提醒 -->
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+    <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_DATA_SYNC" />
     <uses-permission android:name="android.permission.VIBRATE" />
     <uses-permission android:name="android.permission.WRITE_CONTACTS" />
     <uses-permission android:name="android.permission.WRITE_EXTERNAL_STORAGE"
@@ -24,6 +27,15 @@
 
         <!-- 待办到期提醒（AlarmManager → 本地通知，纯本地不上传） -->
         <receiver android:name=".notify.TodoAlarmReceiver" android:exported="false" />
+        <!-- 开机重排未来待办（参考 BOOT_COMPLETED 同源） -->
+        <receiver android:name=".notify.TodoBootReceiver" android:exported="false">
+            <intent-filter>
+                <action android:name="android.intent.action.BOOT_COMPLETED" />
+            </intent-filter>
+        </receiver>
+        <!-- 连接保活前台服务（dataSync；对齐参考 ConnectionKeepAliveService） -->
+        <service android:name=".service.ConnectionKeepAliveService"
+            android:foregroundServiceType="dataSync" android:exported="false" />
 
         <!-- 主页：聊天列表（含配对入口） -->
         <activity

@@ -954,6 +954,28 @@ class ChatEngine private constructor(context: Context) :
         }.start()
     }
 
+    /** P9：贴纸发送（协议 SendStickerFromPath；whatsmeow StickerMessage） */
+    fun sendStickerAsync(jid: String, path: String,
+                         onResult: (String?, String?) -> Unit) {
+        Thread {
+            try {
+                val msgId = client.sendStickerFromPath(jid, path)
+                val now = System.currentTimeMillis()
+                db.insertMessage(MessageRow(
+                    id = msgId, chatJid = jid, senderJid = "", fromMe = true,
+                    text = "", original = "", translated = "", translatedLang = "",
+                    ts = now, mediaKind = "sticker", mediaMime = "image/webp",
+                    mediaName = java.io.File(path).name,
+                    mediaSize = java.io.File(path).length(), mediaPath = path,
+                    mediaThumb = "", mediaMeta = "", reaction = ""))
+                db.upsertChat(jid, "", "[贴纸]", now, incrementUnread = false)
+                main.post { onResult(msgId, null) }
+            } catch (e: Throwable) {
+                main.post { onResult(null, e.message ?: e.toString()) }
+            }
+        }.start()
+    }
+
     /** P4：视频发送（协议 SendVideoFromPath；whatsmeow MediaVideo 上传） */
     fun sendVideoAsync(jid: String, path: String, caption: String,
                        onResult: (String?, String?) -> Unit) {

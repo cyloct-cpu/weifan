@@ -31,7 +31,7 @@ import java.io.File
 class MediaSendPreviewActivity : BaseActivity() {
 
     private var path: String = ""
-    private var kind: String = "image"          // image | video | document
+    private var kind: String = "image"          // image | video | sticker | document
     private var fileName: String = ""
     private lateinit var captionInput: EditText
     private lateinit var sendBtn: TextView
@@ -219,6 +219,7 @@ class MediaSendPreviewActivity : BaseActivity() {
             "image" -> engine.sendImageAsync(jid, path, caption) { _, err -> done(err) }
             // P4：视频发送（协议 SendVideoFromPath；whatsmeow MediaVideo 上传）
             "video" -> engine.sendVideoAsync(jid, path, caption) { _, err -> done(err) }
+            "sticker" -> engine.sendStickerAsync(jid, path) { _, err -> done(err) }
             else -> engine.sendDocumentAsync(jid, path, fileName, caption) { _, err -> done(err) }
         }
     }

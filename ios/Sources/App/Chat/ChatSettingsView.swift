@@ -16,6 +16,8 @@ struct ChatSettingsView: View {
     @AppStorage("wa_auto_translate_incoming") private var autoTranslate = true
     @State private var backupURL: URL?
     @State private var exporting = false
+    @State private var showRestore = false
+    @State private var restoreMsg: String?
 
     var body: some View {
         Form {
@@ -56,7 +58,12 @@ struct ChatSettingsView: View {
                     }
                 }
                 .disabled(exporting)
-                Text("备份含会话与消息 JSON，不含媒体文件。恢复在阶段 3 后续补。")
+                Button {
+                    showRestore = true
+                } label: {
+                    Label("从 JSON 恢复", systemImage: "arrow.down.doc")
+                }
+                Text("备份含会话与消息 JSON，不含媒体文件；恢复按主键覆盖合并。")
                     .font(.caption2).foregroundStyle(.secondary)
             }
             Section("关于") {
@@ -69,6 +76,18 @@ struct ChatSettingsView: View {
         .sheet(item: $backupURL) { url in
             ShareLink(item: url, preview: SharePreview("微翻备份"))
         }
+        .fileImporter(isPresented: $showRestore, allowedContentTypes: [.json],
+                      allowsMultipleSelection: false) { result in
+            if case .success(let urls) = result, let src = urls.first {
+                let sec = src.startAccessingSecurityScopedResource()
+                let msg = BackupExporter.restore(from: src)
+                if sec { src.stopAccessingSecurityScopedResource() }
+                restoreMsg = msg
+            }
+        }
+        .alert("恢复结果", isPresented: .init(get: { restoreMsg != nil }, set: { if !$0 { restoreMsg = nil } })) {
+            Button("好", role: .cancel) {}
+        } message: { Text(restoreMsg ?? "") }
     }
 }
 
@@ -177,6 +196,39 @@ func dbText(_ stmt: OpaquePointer?, _ col: Int32) -> String {
 // MARK: - 备份导出（会话/消息/待办 → JSON → 「文件」分享面板）
 
 enum BackupExporter {
+    /// 恢复：JSON → chats/messages 逐条覆盖合并（主键冲突以文件为准）
+    static func restore(from url: URL) -> String {
+        guard let data = try? Data(contentsOf: url),
+              let o = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else {
+            return "读取失败：不是有效的备份文件"
+        }
+        var chats = 0, msgs = 0
+        let core = ProtocolCore.shared
+        if let arr = o["chats"] as? [[String: Any]] {
+            for c in arr {
+                guard let jid = c["jid"] as? String else { continue }
+                core.db.exec("INSERT OR REPLACE INTO chats(jid,title,last_message,last_ts,unread,pinned,archived) VALUES(?,?,?,?,?,?,?)",
+                    args: [jid, c["title"] ?? "", c["last_message"] ?? "",
+                           c["last_ts"] ?? 0, c["unread"] ?? 0,
+                           (c["pinned"] as? Bool) == true ? 1 : 0,
+                           (c["archived"] as? Bool) == true ? 1 : 0])
+                chats += 1
+            }
+        }
+        if let arr = o["messages"] as? [[String: Any]] {
+            for m in arr {
+                guard let id = m["id"] as? String, let jid = m["chat_jid"] as? String else { continue }
+                core.db.exec("INSERT OR REPLACE INTO messages(id,chat_jid,sender_jid,from_me,text,original,translated,translated_lang,ts,media_kind,reaction) VALUES(?,?,?,?,?,?,?,?,?,?,?)",
+                    args: [id, jid, m["sender_jid"] ?? "", (m["from_me"] as? Bool) == true ? 1 : 0,
+                           m["text"] ?? "", m["original"] ?? "", m["translated"] ?? "",
+                           m["translated_lang"] ?? "", m["ts"] ?? 0, m["media_kind"] ?? "",
+                           m["reaction"] ?? ""])
+                msgs += 1
+            }
+        }
+        return "已恢复 \(chats) 个会话、\(msgs) 条消息"
+    }
+
     static func exportURL() -> URL {
         let core = ProtocolCore.shared
         var payload: [String: Any] = [:]

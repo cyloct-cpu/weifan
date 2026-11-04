@@ -59,6 +59,8 @@ class ChatListActivity : BaseActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         engine = ChatEngine.get(this)
+        // 保活：进入列表页就启动前台服务（参考 ConnectionKeepAliveService 同策略）
+        com.weifan.app.service.ConnectionKeepAliveService.start(this)
         // P8：被移出群 → dialog_kicked（引擎层分发 groupInfo.kicked）
         engine.onKickedFromGroup = { group ->
             runOnUiThread {

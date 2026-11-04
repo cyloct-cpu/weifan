@@ -93,6 +93,7 @@ class ChatActivity : BaseActivity() {
     companion object {
         private const val REQ_PICK_IMAGE = 11
         private const val REQ_PICK_VIDEO = 14
+        private const val REQ_PICK_STICKER = 15
         private const val REQ_PICK_DOC = 12
     }
 
@@ -1655,6 +1656,48 @@ class ChatActivity : BaseActivity() {
         }
         // 文本行（有文字或有 caption 才显示）；
         // poll/location/contact 三类卡片已在媒体区完整渲染，跳过重复文字行
+        // P7：链接预览（文本含 URL 且无媒体 → 后台抓 og → 卡片上屏，缓存去重）
+        if (m.text.isNotBlank() && m.mediaKind.isBlank()) {
+            val u = com.weifan.app.chat.LinkPreview.firstURL(m.text)
+            if (u != null) {
+                val card = LinearLayout(this).apply {
+                    orientation = LinearLayout.VERTICAL
+                    background = Ui.roundBg(this@ChatActivity,
+                        if (night) 0x142FB6FF.toInt() else 0x142FB6FF.toInt(), 8, 1,
+                        if (night) 0xFF2C6172.toInt() else 0xFFBFE3EF.toInt())
+                    setPadding(dp(8), dp(6), dp(8), dp(8))
+                }
+                val titleV = TextView(this).apply {
+                    text = "🔗 正在获取预览…"
+                    textSize = 14f
+                    setTextColor(WaSpec.textPrimary(night))
+                }
+                card.addView(titleV)
+                Thread {
+                    val lp = com.weifan.app.chat.LinkPreview.fetch(u)
+                    if (lp != null) {
+                        runOnUiThread {
+                            titleV.text = lp.title
+                            val sub = StringBuilder()
+                            if (lp.description.isNotBlank()) sub.appendLine(lp.description)
+                            sub.append(lp.siteName ?: "")
+                            if (sub.isNotBlank()) {
+                                card.addView(TextView(this@ChatActivity).apply {
+                                    text = sub.toString()
+                                    textSize = 12f
+                                    setTextColor(WaSpec.textSecondary(night))
+                                    setPadding(0, dp(3), 0, 0)
+                                })
+                            }
+                        }
+                    }
+                }.start()
+                col.addView(card, LinearLayout.LayoutParams(
+                    ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply {
+                    bottomMargin = dp(4)
+                })
+            }
+        }
         if (m.text.isNotBlank() && m.mediaKind !in setOf("poll", "location", "contact", "event", "product", "call")) {
         col.addView(TextView(this).apply {
             text = m.text
@@ -2702,6 +2745,7 @@ class ChatActivity : BaseActivity() {
             "📄  文档" to "doc",
             "🖼️  照片" to "media",
             "🎬  视频" to "video",
+            "😀  贴纸" to "sticker",
             "📷  相机" to "camera",
             "🎤  音频" to "audio",
             "👤  联系人" to "contact",
@@ -2749,6 +2793,7 @@ class ChatActivity : BaseActivity() {
                         "doc" -> pickDocument()
                         "media" -> pickImage()
                         "video" -> pickVideo()
+                        "sticker" -> pickSticker()
                         "audio" -> showRecordDialog()
                         "location" -> showLocationDialog()
                         "contact" -> showContactDialog()
@@ -4158,6 +4203,12 @@ class ChatActivity : BaseActivity() {
         startActivityForResult(i, REQ_PICK_IMAGE)
     }
 
+    private fun pickSticker() {
+        val i = android.content.Intent(android.content.Intent.ACTION_PICK,
+            android.provider.MediaStore.Images.Media.EXTERNAL_CONTENT_URI)
+        startActivityForResult(i, REQ_PICK_STICKER)
+    }
+
     private fun pickVideo() {
         val i = android.content.Intent(android.content.Intent.ACTION_PICK,
             android.provider.MediaStore.Video.Media.EXTERNAL_CONTENT_URI)
@@ -4186,6 +4237,7 @@ class ChatActivity : BaseActivity() {
             .putExtra("kind", when (requestCode) {
                 REQ_PICK_IMAGE -> "image"
                 REQ_PICK_VIDEO -> "video"
+                REQ_PICK_STICKER -> "sticker"
                 else -> "document"
             })
             .putExtra("name", queryDisplayName(uri) ?: java.io.File(path).name)
@@ -4198,6 +4250,7 @@ class ChatActivity : BaseActivity() {
             when (req) {
                 REQ_PICK_IMAGE -> ".jpg"
                 REQ_PICK_VIDEO -> ".mp4"
+                REQ_PICK_STICKER -> ".webp"
                 else -> ""
             })
         val f = java.io.File(dir, name)
