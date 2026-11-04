@@ -81,6 +81,7 @@ class ChatActivity : BaseActivity() {
     /** 视频渲染视图与解码器（video=true 时创建） */
     private var videoSurface: android.view.TextureView? = null
     private var callVideoDecoder: com.weifan.app.chat.H264Decoder? = null
+    private var callVideoEncoder: com.weifan.app.chat.H264Encoder? = null
     private var groupMembers: List<Pair<String, String>> = emptyList()   // phone → 名字
     // 头部标签徽章（批1-c）
     private lateinit var labelBadges: HorizontalScrollView
@@ -2013,6 +2014,8 @@ class ChatActivity : BaseActivity() {
             if (tv != null) callVideoDecoder?.attach(tv)
             engine.attachVideoSink { frame -> callVideoDecoder?.feed(frame) }
             engine.startVideoReceiveAsync()
+            // 发送侧：摄像头 → H.264 编码 → Go SendVideo（需 CAMERA 权限）
+            startVideoSend()
         }
         root.addView(initialAvatar(name, dp(96)), LinearLayout.LayoutParams(dp(96), dp(96)).apply {
             if (video) { topMargin = dp(12); height = dp(64); width = dp(64) }
@@ -2108,6 +2111,27 @@ class ChatActivity : BaseActivity() {
         callDialog = dlg
     }
 
+    /** 启动视频发送（摄像头采集 + 编码推流） */
+    private fun startVideoSend() {
+        if (callVideoEncoder != null) return
+        if (checkSelfPermission(android.Manifest.permission.CAMERA)
+                != android.content.pm.PackageManager.PERMISSION_GRANTED) {
+            requestPermissions(arrayOf(android.Manifest.permission.CAMERA), 4105)
+            return
+        }
+        engine.enableSendVideoAsync { err ->
+            if (err != null) {
+                Toast.makeText(this, "视频发送启动失败：$err", Toast.LENGTH_SHORT).show()
+                return@enableSendVideoAsync
+            }
+            callVideoEncoder = com.weifan.app.chat.H264Encoder(
+                this,
+                onFrame = { frame -> engine.sendVideoFrame(frame) },
+                onError = { e -> Toast.makeText(this, "摄像头异常：$e", Toast.LENGTH_SHORT).show() }
+            ).also { it.start() }
+        }
+    }
+
     /** 通话计时：每秒把 通话中 mm:ss 写进状态行 */
     private fun startCallTimer() {
         callTimer?.removeCallbacksAndMessages(null)
@@ -2149,6 +2173,8 @@ class ChatActivity : BaseActivity() {
         callAudio?.stop()
         callAudio = null
         engine.attachVideoSink(null)
+        callVideoEncoder?.stop()
+        callVideoEncoder = null
         callVideoDecoder?.release()
         callVideoDecoder = null
         videoSurface = null

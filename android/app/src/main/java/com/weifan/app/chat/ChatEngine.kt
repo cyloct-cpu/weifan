@@ -491,6 +491,19 @@ class ChatEngine private constructor(context: Context) :
         }.start()
     }
 
+    /** 发送一帧已编码的 H.264 Annex-B */
+    fun sendVideoFrame(data: ByteArray) {
+        try { client.sendVideoFrame(data) } catch (_: Throwable) { }
+    }
+
+    /** 升级为视频通话并允许发本地画面 */
+    fun enableSendVideoAsync(callback: (String?) -> Unit = {}) {
+        Thread {
+            try { client.enableSendVideo(); main.post { callback(null) } }
+            catch (e: Throwable) { main.post { callback(e.message ?: e.toString()) } }
+        }.start()
+    }
+
     fun setMuted(m: Boolean) { try { client.setMuted(m) } catch (_: Throwable) { } }
     fun setSpeakerOn(on: Boolean) { try { client.setSpeakerOn(on) } catch (_: Throwable) { } }
 
