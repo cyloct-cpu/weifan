@@ -110,4 +110,101 @@ object Backup {
             "翻译设置与偏好" to size(File(ctx.filesDir.parentFile, "shared_prefs/weifan.xml"))
         )
     }
+
+    /**
+     * 从备份 zip 恢复。options 指定要恢复哪些类别（对齐参考 dialog_restore_options 逐项勾选）。
+     *
+     * 关键纪律（这是恢复最容易出事的地方）：
+     *  1) 覆盖前必须先关数据库连接，否则 SQLite 会锁库导致写入失败或库损坏
+     *  2) 先把 zip 解到临时目录，全部解完再逐个复制 —— 避免解一半失败把现有数据搞坏
+     *  3) 覆盖前把原文件改名成 .bak，复制成功才删；失败则回滚
+     *  4) 完成后果断杀进程：DB 与 Go 层的连接状态都已不可信，重启最干净
+     */
+    fun restore(ctx: Context, zipFile: File, options: Set<String>,
+                progress: (String) -> Unit = {}): Int {
+        val tmp = File(ctx.cacheDir, "restore-tmp")
+        try { tmp.deleteRecursively() } catch (_: Throwable) { }
+        tmp.mkdirs()
+
+        // 1) 全部解压到临时目录
+        progress("正在读取备份…")
+        java.util.zip.ZipInputStream(java.io.FileInputStream(zipFile).buffered()).use { zis ->
+            while (true) {
+                val entry = zis.nextEntry ?: break
+                if (entry.isDirectory) continue
+                val out = File(tmp, entry.name)
+                out.parentFile?.mkdirs()
+                java.io.FileOutputStream(out).use { fos ->
+                    val buf = ByteArray(8 * 1024)
+                    while (true) {
+                        val n = zis.read(buf)
+                        if (n <= 0) break
+                        fos.write(buf, 0, n)
+                    }
+                }
+                zis.closeEntry()
+            }
+        }
+
+        // 2) 逐项覆盖（带 .bak 回滚）
+        var restored = 0
+        fun put(src: File, dst: File) {
+            if (!src.exists()) return
+            dst.parentFile?.mkdirs()
+            val bak = File(dst.absolutePath + ".bak")
+            if (dst.exists()) {
+                try { bak.delete() } catch (_: Throwable) { }
+                dst.renameTo(bak)
+            }
+            val ok = try {
+                src.copyTo(dst, overwrite = true); true
+            } catch (_: Throwable) { false }
+            if (ok) {
+                try { bak.delete() } catch (_: Throwable) { }
+                restored++
+            } else {
+                // 回滚
+                try { bak.renameTo(dst) } catch (_: Throwable) { }
+            }
+        }
+
+        if ("chats" in options) {
+            progress("恢复会话与消息…")
+            put(File(tmp, "db/chats.db"),
+                File(ctx.filesDir.parentFile, "databases/chats.db"))
+        }
+        if ("creds" in options) {
+            progress("恢复设备凭据…")
+            put(File(tmp, "db/weifan.db"), File(ctx.filesDir, "weifan.db"))
+        }
+        if ("media" in options) {
+            progress("恢复媒体文件…")
+            File(tmp, "media").listFiles()?.forEach {
+                put(it, File(ctx.filesDir, "media/${it.name}"))
+            }
+        }
+        if ("avatars" in options) {
+            progress("恢复头像缓存…")
+            File(tmp, "avatars").listFiles()?.forEach {
+                put(it, File(ctx.filesDir, "avatars/${it.name}"))
+            }
+        }
+        if ("prefs" in options) {
+            progress("恢复翻译设置…")
+            put(File(tmp, "prefs/weifan.xml"),
+                File(ctx.filesDir.parentFile, "shared_prefs/weifan.xml"))
+        }
+
+        try { tmp.deleteRecursively() } catch (_: Throwable) { }
+        return restored
+    }
+
+    /** 列出 Download 目录下的备份 zip（按时间倒序） */
+    fun availableBackups(): List<File> {
+        val dir = android.os.Environment.getExternalStoragePublicDirectory(
+            android.os.Environment.DIRECTORY_DOWNLOADS)
+        return (dir.listFiles { f -> f.isFile && f.name.startsWith("weifan-backup-")
+            && f.name.endsWith(".zip") } ?: emptyArray())
+            .sortedByDescending { it.lastModified() }
+    }
 }

@@ -523,6 +523,11 @@ class ChatDb(context: Context) : SQLiteOpenHelper(context, "chats.db", null, 9) 
         "SELECT COUNT(*) FROM todos WHERE done=0", null).use { c ->
         if (c.moveToFirst()) c.getInt(0) else 0
     }
+
+    /** 恢复备份前关连接：不关会锁库，覆盖后新库读不出来 */
+    fun closeForRestore() {
+        try { close() } catch (_: Throwable) { }
+    }
 }
 
 /** 一条跟进待办；customerTitle 由 chats 左连得出（会话已删则空） */

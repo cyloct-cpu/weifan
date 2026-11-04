@@ -123,6 +123,9 @@ class SettingsActivity : BaseActivity() {
         list.addView(row("备份数据", "会话/媒体/设置打包成 zip，存到手机 Download 目录") {
             showBackupDialog()
         })
+        list.addView(row("恢复数据", "从 Download 里的备份 zip 恢复（会覆盖当前数据）") {
+            showRestorePicker()
+        })
         list.addView(row("新建联系人", "查号是否在 WhatsApp + 存进手机通讯录") {
             startActivity(Intent(this, NewContactActivity::class.java))
         })
@@ -264,6 +267,121 @@ class SettingsActivity : BaseActivity() {
             .setPositiveButton("开始备份") { _, _ -> runBackup() }
             .setNegativeButton("取消", null)
             .show()
+    }
+
+    /** 选备份文件（对齐 dialog_backup_restore 的文件选择） */
+    private fun showRestorePicker() {
+        val files = com.weifan.app.core.Backup.availableBackups()
+        if (files.isEmpty()) {
+            Toast.makeText(this, "Download 里没有备份文件", Toast.LENGTH_LONG).show()
+            return
+        }
+        val fmt = java.text.SimpleDateFormat("MM-dd HH:mm", java.util.Locale.CHINA)
+        val labels = files.map {
+            "${it.name}\n${fmt.format(java.util.Date(it.lastModified()))} · ${it.length() / 1024} KB"
+        }.toTypedArray()
+        android.app.AlertDialog.Builder(this)
+            .setTitle("选择备份")
+            .setItems(labels) { _, i -> showRestoreOptions(files[i]) }
+            .setNegativeButton("取消", null)
+            .show()
+    }
+
+    /** 逐项勾选 + 覆盖警告（对齐 dialog_restore_options + dialog_confirm_restore） */
+    private fun showRestoreOptions(zip: java.io.File) {
+        val choices = listOf(
+            "chats" to "会话与消息", "creds" to "设备凭据与联系人",
+            "media" to "媒体文件", "avatars" to "头像缓存", "prefs" to "翻译设置与偏好")
+        val checked = booleanArrayOf(true, true, false, false, true)
+        android.app.AlertDialog.Builder(this)
+            .setTitle("恢复选项")
+            .setMultiChoiceItems(choices.map { it.second }.toTypedArray(), checked) { _, w, v ->
+                checked[w] = v
+            }
+            .setPositiveButton("下一步") { _, _ ->
+                val opts = choices.filterIndexed { i, _ -> checked[i] }.map { it.first }.toSet()
+                if (opts.isEmpty()) {
+                    Toast.makeText(this, "至少选一项", Toast.LENGTH_SHORT).show()
+                    return@setPositiveButton
+                }
+                confirmRestore(zip, opts)
+            }
+            .setNegativeButton("取消", null)
+            .show()
+    }
+
+    /** 覆盖警告（对齐 dialog_confirm_restore：15sp + 左右 20dp） */
+    private fun confirmRestore(zip: java.io.File, opts: Set<String>) {
+        android.app.AlertDialog.Builder(this)
+            .setView(Ui.confirmBody(this, "确定从这份备份恢复？",
+                "恢复会话与消息将覆盖当前所有聊天记录，且无法撤销。恢复完成后应用会自动重启。",
+                night))
+            .setPositiveButton("恢复") { _, _ -> runRestore(zip, opts) }
+            .setNegativeButton("取消", null)
+            .show()
+    }
+
+    /** 关连接 → 覆盖 → 杀进程重启 */
+    private fun runRestore(zip: java.io.File, opts: Set<String>) {
+        val stageText = TextView(this).apply {
+            this.text = "准备中…"
+            textSize = 14f
+            setTextColor(WaSpec.textPrimary(night))
+        }
+        val box = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding(dp(20), dp(22), dp(20), dp(20))
+            addView(TextView(this@SettingsActivity).apply {
+                text = "正在恢复"
+                textSize = 17f
+                setTypeface(android.graphics.Typeface.DEFAULT_BOLD)
+                setTextColor(WaSpec.textPrimary(night))
+            })
+            addView(stageText, LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply {
+                topMargin = dp(12)
+            })
+        }
+        val dlg = android.app.AlertDialog.Builder(this)
+            .setView(box)
+            .setCancelable(false)
+            .create()
+        dlg.show()
+
+        Thread {
+            val err = try {
+                // ① 先把我们自己的库关掉（不关会锁库）
+                runOnUiThread { stageText.text = "正在关闭数据库…" }
+                com.weifan.app.chat.ChatEngine.get(this).db.closeForRestore()
+                // ② 解压 + 覆盖（内部带 .bak 回滚）
+                val n = com.weifan.app.core.Backup.restore(this, zip, opts) { stage ->
+                    runOnUiThread { if (!isFinishing && !isDestroyed) stageText.text = stage }
+                }
+                if (n == 0) "没有写入任何文件（备份内容与选项不匹配）" else null
+            } catch (e: Throwable) {
+                e.message ?: e.toString()
+            }
+            runOnUiThread {
+                try { dlg.dismiss() } catch (_: Throwable) { }
+                if (err != null) {
+                    android.app.AlertDialog.Builder(this)
+                        .setTitle("恢复失败")
+                        .setMessage("$err\n\n原有数据已保留（未成功写入的文件已回滚）。")
+                        .setPositiveButton("知道了") { _, _ -> recreate() }
+                        .show()
+                } else {
+                    android.app.AlertDialog.Builder(this)
+                        .setTitle("恢复完成")
+                        .setMessage("应用即将重启以加载新数据。")
+                        .setCancelable(false)
+                        .setPositiveButton("立即重启") { _, _ ->
+                            finishAffinity()
+                            android.os.Process.killProcess(android.os.Process.myPid())
+                        }
+                        .show()
+                }
+            }
+        }.start()
     }
 
     /** 后台打包 + 进度弹层（对齐参考 dialog_backup_progress：padding 20/22/20/20） */
