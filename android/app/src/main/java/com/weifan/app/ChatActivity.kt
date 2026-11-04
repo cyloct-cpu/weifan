@@ -1561,7 +1561,7 @@ class ChatActivity : BaseActivity() {
         }
         // 文本行（有文字或有 caption 才显示）；
         // poll/location/contact 三类卡片已在媒体区完整渲染，跳过重复文字行
-        if (m.text.isNotBlank() && m.mediaKind !in setOf("poll", "location", "contact", "event", "product")) {
+        if (m.text.isNotBlank() && m.mediaKind !in setOf("poll", "location", "contact", "event", "product", "call")) {
         col.addView(TextView(this).apply {
             text = m.text
             textSize = prefs.sourceTextSp   // 批2-d：原文字号可调
@@ -1622,6 +1622,8 @@ class ChatActivity : BaseActivity() {
         if (m.mediaKind == "event") buildEventBubble(m, col)
         // 商品卡片（ProductMessage）
         if (m.mediaKind == "product") buildProductBubble(m, col)
+        // 通话记录（对齐参考 item_message_call：15sp 标题 + 13sp 状态 + 11sp 时间）
+        if (m.mediaKind == "call") buildCallBubble(m, col)
 
         // 表情回应徽章（DB v10）：有回应时在气泡内显示，点它可更换/取消
         if (m.reaction.isNotBlank()) {
@@ -1887,7 +1889,75 @@ class ChatActivity : BaseActivity() {
         return "$engineName > $langName"
     }
 
-    private fun showCallSheet(video: Boolean) {
+    /** 通话类型选择（对齐参考 bottom_sheet_call_type：语音通话 / 视频通话两行） */
+    /** 通话记录气泡：WhatsApp 通话结束后会在聊天里留下 call_log，我们按参考样式渲染 */
+    private fun buildCallBubble(m: MessageRow, col: LinearLayout) {
+        val o = try { JSONObject(m.mediaMeta) } catch (_: Throwable) { JSONObject() }
+        val video = o.optBoolean("video", false)
+        val status = o.optString("status").ifBlank { m.text }
+        val dur = o.optInt("durationSec", 0)
+        col.addView(TextView(this).apply {
+            text = if (video) "📹 $status" else "📞 $status"
+            textSize = 15f
+            setTextColor(WaSpec.primary(night))
+        })
+        if (dur > 0) col.addView(TextView(this).apply {
+            text = if (dur >= 60) "${dur / 60} 分 ${dur % 60} 秒" else "$dur 秒"
+            textSize = 13f
+            setTextColor(WaSpec.textSecondary(night))
+            setPadding(0, dp(3), 0, 0)
+        })
+    }
+
+    private fun showCallSheet(ignore: Boolean = false) {
+        val box = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding(dp(6), dp(6), dp(6), dp(6))
+        }
+        fun item(label: String, icon: String, action: () -> Unit) = TextView(this).apply {
+            text = "$icon   $label"
+            textSize = 16f
+            setTextColor(WaSpec.textPrimary(night))
+            setPadding(dp(20), dp(14), dp(20), dp(14))
+            isClickable = true
+            setOnClickListener { action() }
+        }
+        val dlg = android.app.AlertDialog.Builder(this, R.style.WeifanDialog).create()
+        box.addView(item("语音通话", "📞") { dlg.dismiss(); launchWhatsAppCall(false) })
+        box.addView(item("视频通话", "📹") { dlg.dismiss(); launchWhatsAppCall(true) })
+        dlg.setView(box)
+        dlg.show()
+    }
+
+    /**
+     * 发起通话：跳转到手机 WhatsApp。
+     *
+     * 为什么不自己做：WATransChat 的通话是它在 Go 层自研的完整 VoIP 栈
+     * （libgojni.so 里 libopus 38 处、SRTP 37 处、voip 36 处），
+     * 即自实现 opus 编解码 + SRTP 加密 + WhatsApp 私有信令。
+     * whatsmeow 只提供来电通知与拒接，没有这条链路。
+     */
+    private fun launchWhatsAppCall(video: Boolean) {
+        val digits = resolvedPhone.ifBlank { chatJid.substringBefore("@") }.filter { it.isDigit() }
+        val pkg = "com.whatsapp"
+        // WhatsApp 有公开的通话 intent action（官方 App 自己声明）
+        val action = if (video) "com.whatsapp.video" else "com.whatsapp.audiocall"
+        try {
+            startActivity(Intent(action).apply {
+                setPackage(pkg)
+                putExtra("jid", "$digits@s.whatsapp.net")
+            })
+        } catch (_: Throwable) {
+            try {
+                startActivity(Intent(Intent.ACTION_VIEW,
+                    android.net.Uri.parse("https://wa.me/$digits")))
+            } catch (_: Throwable) {
+                Toast.makeText(this, "未安装 WhatsApp", Toast.LENGTH_SHORT).show()
+            }
+        }
+    }
+
+    private fun showCallSheetLegacy(video: Boolean) {
         val who = chatTitle.ifBlank { chatJid.substringBefore("@") }
         android.app.AlertDialog.Builder(this, R.style.WeifanDialog)
             .setView(Ui.formDialogShell(this, if (video) "视频通话" else "语音通话", night,
