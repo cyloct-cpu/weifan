@@ -67,6 +67,8 @@ class PairingActivity : BaseActivity(), PairListener {
     private lateinit var qrStatus: TextView
     private lateinit var qrImageBox: FrameLayout
     private lateinit var qrProgress: ProgressBar
+    /** 二维码只发起一次（重复发起会拿到新的 QR 通道，旧的作废） */
+    private var qrRequested = false
 
     private val main = Handler(Looper.getMainLooper())
     private var phone = ""
@@ -363,7 +365,10 @@ class PairingActivity : BaseActivity(), PairListener {
             topMargin = dp(12)
         })
 
-        qrPanel.addView(link("重新获取二维码", accent) { onRequestCode() },
+        qrPanel.addView(link("重新获取二维码", accent) {
+            qrRequested = false
+            requestQR()
+        },
             LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT,
                 ViewGroup.LayoutParams.WRAP_CONTENT).apply {
                 gravity = Gravity.CENTER_HORIZONTAL
@@ -445,6 +450,31 @@ class PairingActivity : BaseActivity(), PairListener {
         getCodePanel.visibility = if (which == 0) View.VISIBLE else View.GONE
         enterCodePanel.visibility = if (which == 1) View.VISIBLE else View.GONE
         qrPanel.visibility = if (which == 2) View.VISIBLE else View.GONE
+        // 第一次进入二维码面板就发起配对：不发起的话二维码永远是空的（之前就是这个 bug）
+        if (which == 2 && !qrRequested) {
+            qrRequested = true
+            requestQR()
+        }
+    }
+
+    /** 发起二维码配对。二维码约 20 秒刷新一次，通过 onQRImage 推图过来 */
+    private fun requestQR() {
+        qrProgress.visibility = View.VISIBLE
+        qrStatus.text = "正在获取二维码…"
+        qrStatus.setTextColor(textStatus)
+        Thread {
+            val err = try { client.pairWithQR(); null } catch (e: Throwable) {
+                e.message ?: e.toString()
+            }
+            if (err != null) {
+                main.post {
+                    qrProgress.visibility = View.GONE
+                    qrStatus.text = "获取二维码失败：$err"
+                    qrStatus.setTextColor(WaSpec.LOGOUT_BANNER_TEXT)
+                    qrRequested = false
+                }
+            }
+        }.start()
     }
 
     /** 步骤条：圆点与连线的颜色/宽度随当前步变化（对齐 stepLine1/2 + stepDot1/2/3）*/
@@ -545,11 +575,54 @@ class PairingActivity : BaseActivity(), PairListener {
         progress.visibility = View.GONE
         nextBtn.isEnabled = true
         pairCodeText.text = formatCode(code)
+        // 自动复制到剪贴板：用户直接去 WhatsApp「关联设备」里长按粘贴，省一个手抄步骤
+        copyToClipboard(code)
         linkingText.text = "正在关联 $phone"
         setStep(1)
         showPanel(1)
         statusText.text = "验证码约 10 秒内有效，过期点「重新获取验证码」"
     }.let {}
+
+    /** 二维码原始字符串（含配对秘钥，不复制到剪贴板，避免误发） */
+    override fun onQRCode(code: String) = main.post {
+        progress.visibility = View.GONE
+        qrStatus.text = "用手机 WhatsApp 扫描上方二维码"
+        qrStatus.setTextColor(textStatus)
+    }.let {}
+
+    /** 渲染好的二维码 PNG → 直接贴到 qrImageBox */
+    override fun onQRImage(png: ByteArray?) {
+        val data = png ?: return
+        if (data.isEmpty()) return
+        main.post {
+        try {
+            val bmp = android.graphics.BitmapFactory.decodeByteArray(data, 0, data.size)
+            if (bmp != null) {
+                qrImageBox.removeAllViews()
+                qrImageBox.addView(android.widget.ImageView(this).apply {
+                    scaleType = android.widget.ImageView.ScaleType.FIT_CENTER
+                    setImageBitmap(bmp)
+                }, FrameLayout.LayoutParams(
+                    ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT))
+                qrProgress.visibility = View.GONE
+            }
+        } catch (e: Throwable) {
+            qrStatus.text = "二维码显示失败：${e.message}"
+            qrStatus.setTextColor(WaSpec.LOGOUT_BANNER_TEXT)
+        }
+        }
+    }
+
+    /** 复制到剪贴板并提示（Android 13+ 系统会自带复制提示，这里只在低版本弹 Toast） */
+    private fun copyToClipboard(text: String) {
+        try {
+            val cm = getSystemService(CLIPBOARD_SERVICE) as android.content.ClipboardManager
+            cm.setPrimaryClip(android.content.ClipData.newPlainText("weifan-paircode", text))
+            if (android.os.Build.VERSION.SDK_INT < 33) {
+                Toast.makeText(this, "验证码已复制，去 WhatsApp 长按粘贴", Toast.LENGTH_LONG).show()
+            }
+        } catch (_: Throwable) { }
+    }
 
     override fun onPairSuccess(jid: String?) = main.post {
         setStep(2)
