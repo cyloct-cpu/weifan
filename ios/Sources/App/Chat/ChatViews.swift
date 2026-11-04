@@ -196,6 +196,11 @@ struct ChatListView: View {
             .navigationDestination(for: String.self) { jid in
                 ChatView(chatJid: jid)
             }
+            .toolbar {
+                ToolbarItem(placement: .topBarTrailing) {
+                    NavigationLink { ChatSettingsView() } label: { Image(systemName: "gearshape") }
+                }
+            }
             .searchable(text: $query, prompt: "搜索或开始新聊天")
             .onAppear { core.connectAsync() }
         }

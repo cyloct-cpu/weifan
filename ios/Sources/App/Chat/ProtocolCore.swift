@@ -224,8 +224,9 @@ final class ProtocolCore: ObservableObject {
                                lastTs: m.timestamp,
                                incrementUnread: !m.fromMe)
             inboxTick &+= 1
-            // 收件自动翻译（媒体消息没有文本可翻）
-            if !m.fromMe, !m.text.isEmpty {
+            // 收件自动翻译（媒体消息没有文本可翻；开关在聊天设置，与 Android 同名键）
+            let autoOn = UserDefaults.standard.object(forKey: "wa_auto_translate_incoming") as? Bool ?? true
+            if autoOn, !m.fromMe, !m.text.isEmpty {
                 translateIncomingAsync(chatJid: m.chatJid, id: m.id, text: m.text)
             }
         }

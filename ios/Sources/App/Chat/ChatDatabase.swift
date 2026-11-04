@@ -174,7 +174,7 @@ final class ChatDatabase: @unchecked Sendable {
         }
     }
 
-    private func query(_ sql: String, args: [Any] = [], row: (OpaquePointer) -> Void) {
+    func query(_ sql: String, args: [Any] = [], row: (OpaquePointer) -> Void) {
         queue.sync {
             var stmt: OpaquePointer?
             guard sqlite3_prepare_v2(db, sql, -1, &stmt, nil) == SQLITE_OK else {
