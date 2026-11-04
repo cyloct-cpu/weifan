@@ -73,6 +73,9 @@ class ChatActivity : BaseActivity() {
     /** 通话音频桥（采集 AudioRecord ↔ Go PCMStream，收侧 Go Sink → AudioTrack） */
     private var callAudio: com.weifan.app.chat.CallAudioBridge? = null
     private var callDialog: android.app.AlertDialog? = null
+    private var callStateText: TextView? = null
+    private var callTimer: android.os.Handler? = null
+    private var callStartedAt = 0L
     private var groupMembers: List<Pair<String, String>> = emptyList()   // phone → 名字
     // 头部标签徽章（批1-c）
     private lateinit var labelBadges: HorizontalScrollView
@@ -203,8 +206,13 @@ class ChatActivity : BaseActivity() {
         engine.onCallPhase = { phase ->
             main.post {
                 when (phase) {
-                    4 -> startCallAudio()
+                    4 -> {
+                        startCallAudio()
+                        callStartedAt = System.currentTimeMillis()
+                        startCallTimer()
+                    }
                     5 -> {
+                        stopCallTimer()
                         stopCallAudio()
                         try { callDialog?.dismiss() } catch (_: Throwable) { }
                         callDialog = null
@@ -1986,13 +1994,19 @@ class ChatActivity : BaseActivity() {
             setTextColor(WaSpec.textPrimary(night))
             setPadding(0, dp(12), 0, 0)
         })
-        box.addView(TextView(this).apply {
+        // 状态行：呼叫中 → 通话中 mm:ss（对齐参考 activity_call 的 12sp 状态文字）
+        val stateText = TextView(this).apply {
             text = if (video) "视频通话呼叫中…" else "语音通话呼叫中…"
             textSize = 14f
             gravity = Gravity.CENTER
             setTextColor(WaSpec.textSecondary(night))
             setPadding(0, dp(6), 0, 0)
-        })
+        }
+        box.addView(stateText)
+        // 计时器：phase==4(active) 起每秒刷新
+        callStateText = stateText
+        callTimer = android.os.Handler(android.os.Looper.getMainLooper())
+        callStartedAt = 0L
         val dlg = android.app.AlertDialog.Builder(this, R.style.WeifanDialog).create()
         val hangup = Ui.pillButton(this, "挂断", true, night)
         hangup.setOnClickListener {
@@ -2008,8 +2022,32 @@ class ChatActivity : BaseActivity() {
         callDialog = dlg
     }
 
+    /** 通话计时：每秒把 通话中 mm:ss 写进状态行 */
+    private fun startCallTimer() {
+        callTimer?.removeCallbacksAndMessages(null)
+        val r = object : Runnable {
+            override fun run() {
+                val t = callStateText ?: return
+                if (isFinishing || isDestroyed) return
+                val sec = ((System.currentTimeMillis() - callStartedAt) / 1000).toInt()
+                t.text = "通话中 %02d:%02d".format(sec / 60, sec % 60)
+                t.setTextColor(WaSpec.primary(night))
+                callTimer?.postDelayed(this, 1000)
+            }
+        }
+        callTimer?.post(r)
+    }
+
+    private fun stopCallTimer() {
+        callTimer?.removeCallbacksAndMessages(null)
+        callStartedAt = 0L
+    }
+
     /** 启动双向音频（需 RECORD_AUDIO 权限） */
     private fun startCallAudio() {
+        // 幂等：接听回调与 phase==4 都会调本方法，重复启动会建两个 AudioTrack
+        // 而 attachAudioSink 只保留最后一个 → 前者收不到音频（真机实测听不到对方）
+        if (callAudio != null) return
         if (checkSelfPermission(android.Manifest.permission.RECORD_AUDIO)
                 != android.content.pm.PackageManager.PERMISSION_GRANTED) {
             requestPermissions(arrayOf(android.Manifest.permission.RECORD_AUDIO), 4104)

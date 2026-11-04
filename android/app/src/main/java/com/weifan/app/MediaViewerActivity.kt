@@ -11,6 +11,7 @@ import android.widget.LinearLayout
 import android.widget.TextView
 import android.widget.Toast
 import com.weifan.app.chat.ChatEngine
+import com.weifan.app.core.MediaSaver
 
 /**
  * 全屏媒体查看器（对齐 WhatsApp Web 点九宫格后的体验）：
@@ -28,6 +29,8 @@ class MediaViewerActivity : BaseActivity() {
     private var pos = 0
 
     private lateinit var imageView: ImageView
+    /** 当前图片的本地路径（长按保存到相册用；下载完成后再赋值） */
+    private var currentPath: String? = null
     private lateinit var iconText: TextView
     private lateinit var infoText: TextView
     private lateinit var hintText: TextView
@@ -109,6 +112,24 @@ class MediaViewerActivity : BaseActivity() {
             }
         }
 
+        // 长按保存到系统相册（对齐参考 media_download + MediaStore）
+        imageView.setOnLongClickListener {
+            val p = currentPath
+            if (p.isNullOrBlank()) {
+                Toast.makeText(this, "图片还没下载完", Toast.LENGTH_SHORT).show()
+            } else {
+                Toast.makeText(this, "正在保存…", Toast.LENGTH_SHORT).show()
+                Thread {
+                    val ok = MediaSaver.saveToGallery(this, java.io.File(p))
+                    runOnUiThread {
+                        Toast.makeText(this,
+                            if (ok) "已保存到相册 / WeFlip" else "保存失败",
+                            Toast.LENGTH_LONG).show()
+                    }
+                }.start()
+            }
+            true
+        }
         setContentView(root)
         render()
     }
@@ -156,6 +177,7 @@ class MediaViewerActivity : BaseActivity() {
             }
         }
         val f = if (m.mediaPath.isNotBlank()) java.io.File(m.mediaPath) else null
+        currentPath = f?.takeIf { it.exists() }?.absolutePath
         // 全屏查看：降采样到屏幕宽度即可（原图常为 4000px 级，全量解码曾撑到 1.4GB RSS）
         val target = resources.displayMetrics.widthPixels
         fun sampleFile(p: String): android.graphics.Bitmap? = try {
