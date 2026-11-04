@@ -1,0 +1,8 @@
+framework module "WeifanProtocol" {
+	header "ref.h"
+    header "Mobile.objc.h"
+    header "Universe.objc.h"
+    header "WeifanProtocol.h"
+
+    export *
+}

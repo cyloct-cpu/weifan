@@ -28,6 +28,9 @@ targets:
       - path: Sources/Shared
     dependencies:
       - package: WeiFanCore
+      - framework: Frameworks/WeifanProtocol.xcframework
+        embed: true
+        codeSign: true
       - target: WeiFanKeyboard
         embed: true
       - target: WeiFanShare
