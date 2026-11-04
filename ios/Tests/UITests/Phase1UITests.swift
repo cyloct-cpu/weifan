@@ -64,6 +64,10 @@ final class Phase1UITests: XCTestCase {
         }
         XCTAssertTrue(translated.exists, "译文行未渲染")
         XCTAssertTrue(app.textFields.firstMatch.exists || app.textViews.firstMatch.exists, "输入区未渲染")
+        let evidence = XCTAttachment(screenshot: XCUIScreen.main.screenshot())
+        evidence.name = "phase2-chat-media"
+        evidence.lifetime = .keepAlways
+        add(evidence)
     }
 
 }

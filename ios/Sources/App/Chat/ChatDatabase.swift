@@ -159,7 +159,7 @@ final class ChatDatabase: @unchecked Sendable {
     // MARK: - 底层
 
     @discardableResult
-    private func exec(_ sql: String, args: [Any] = []) -> Bool {
+    func exec(_ sql: String, args: [Any] = []) -> Bool {
         queue.sync {
             var stmt: OpaquePointer?
             guard sqlite3_prepare_v2(db, sql, -1, &stmt, nil) == SQLITE_OK else {

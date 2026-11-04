@@ -181,16 +181,42 @@ final class ProtocolCore: ObservableObject {
         let pushName: String?
         let timestamp: Int64
         let history: Bool?
+        // 阶段 2：媒体字段（与 Go messageJSON 一一对应）
+        let mediaKind: String?
+        let mimeType: String?
+        let fileName: String?
+        let fileLength: Int64?
+        let mediaKey: String?
+        let fileSha256: String?
+        let fileEncSha256: String?
+        let url: String?
+        let directPath: String?
+        let thumbnail: String?
+        let seconds: Int?
+        let waveform: String?
     }
 
     nonisolated private func handleIncoming(data: Data) {
         guard let m = try? JSONDecoder().decode(IncomingMsg.self, from: data) else { return }
         Task { @MainActor in
+            // 媒体字段打包进 mediaMeta（下载/缩略图/时长都从这里取）
+            var metaJSON = ""
+            var mediaKind = m.mediaKind ?? ""
+            if mediaKind.isEmpty, m.mimeType?.isEmpty == false { mediaKind = "document" }
+            if mediaKind.isEmpty == false {
+                let meta = MediaMeta(url: m.url, directPath: m.directPath,
+                                     mediaKey: m.mediaKey,
+                                     fileSha256: m.fileSha256, fileEncSha256: m.fileEncSha256,
+                                     fileLength: m.fileLength, thumbnail: m.thumbnail,
+                                     seconds: m.seconds, waveform: m.waveform)
+                metaJSON = String(data: (try? JSONEncoder().encode(meta)) ?? Data(), encoding: .utf8) ?? ""
+            }
             let row = MessageRow(
                 id: m.id, chatJid: m.chatJid, senderJid: m.senderJid, fromMe: m.fromMe,
                 text: m.text, original: "", translated: "", translatedLang: "",
-                ts: m.timestamp, mediaKind: "", mediaMime: "", mediaName: "",
-                mediaSize: 0, mediaPath: "", mediaThumb: "", mediaMeta: "", reaction: "")
+                ts: m.timestamp, mediaKind: mediaKind, mediaMime: m.mimeType ?? "",
+                mediaName: m.fileName ?? "", mediaSize: m.fileLength ?? 0,
+                mediaPath: "", mediaThumb: "", mediaMeta: metaJSON, reaction: "")
             try? db.insertMessage(row)
             try? db.upsertChat(jid: m.chatJid,
                                title: m.pushName ?? "",
@@ -198,7 +224,7 @@ final class ProtocolCore: ObservableObject {
                                lastTs: m.timestamp,
                                incrementUnread: !m.fromMe)
             inboxTick &+= 1
-            // 收件自动翻译（历史消息随 historyEngine 语义：阶段 1 全部走默认链）
+            // 收件自动翻译（媒体消息没有文本可翻）
             if !m.fromMe, !m.text.isEmpty {
                 translateIncomingAsync(chatJid: m.chatJid, id: m.id, text: m.text)
             }
@@ -242,6 +268,130 @@ final class ProtocolCore: ObservableObject {
                 await MainActor.run { completion?(error.localizedDescription) }
             }
         }
+    }
+
+    /// 发媒体：协议发送成功后本地落一条（mediaMeta 带本地路径，气泡直接读文件）
+    func sendMediaAsync(chatJid: String, kind: String, localURL: URL,
+                        caption: String? = nil, ptt: Bool = false, seconds: Int64 = 0,
+                        completion: ((String?) -> Void)? = nil) {
+        let client = self.client
+        Task.detached { [db] in
+            do {
+                guard let msgId = try MediaStore.sendFile(client: client, chatJid: chatJid, kind: kind,
+                                                          localURL: localURL, caption: caption,
+                                                          ptt: ptt, seconds: seconds) else {
+                    throw NSError(domain: "weifan", code: 4,
+                                  userInfo: [NSLocalizedDescriptionKey: "媒体发送返回空"])
+                }
+                let now = Int64(Date().timeIntervalSince1970 * 1000)
+                var mime = ""
+                var meta = MediaMeta()
+                if kind == "image" { mime = localURL.pathExtension.lowercased() == "png" ? "image/png" : "image/jpeg" }
+                if kind == "audio" { mime = "audio/mp4"; meta.seconds = Int(seconds) }
+                if kind == "document" { mime = "application/octet-stream" }
+                meta.name = localURL.lastPathComponent
+                let metaJSON = String(data: (try? JSONEncoder().encode(meta)) ?? Data(), encoding: .utf8) ?? ""
+                try db.insertMessage(MessageRow(
+                    id: msgId, chatJid: chatJid, senderJid: "", fromMe: true,
+                    text: caption ?? "", original: "", translated: "", translatedLang: "",
+                    ts: now, mediaKind: kind, mediaMime: mime,
+                    mediaName: localURL.lastPathComponent,
+                    mediaSize: Int64((try? Data(contentsOf: localURL))?.count ?? 0),
+                    mediaPath: localURL.path, mediaThumb: "", mediaMeta: metaJSON, reaction: ""))
+                try db.upsertChat(jid: chatJid, title: "", lastMessage: "[\(kind)]",
+                                  lastTs: now, incrementUnread: false)
+                await MainActor.run {
+                    self.inboxTick &+= 1
+                    completion?(nil)
+                }
+            } catch {
+                await MainActor.run { completion?(error.localizedDescription) }
+            }
+        }
+    }
+
+    nonisolated private func replyMeta(_ quote: MessageRow) -> String {
+        let o: [String: Any] = ["replyTo": quote.id, "replyText": quote.text]
+        return String(data: (try? JSONSerialization.data(withJSONObject: o)) ?? Data(), encoding: .utf8) ?? ""
+    }
+
+    /// 引用回复：quote 参数取自被引消息（sendReply 协议）
+    func sendReplyAsync(chatJid: String, quote: MessageRow, body: String,
+                        completion: ((String?) -> Void)? = nil) {
+        let client = self.client
+        Task.detached { [db] in
+            do {
+                var err: NSError?
+                let msgId = client.sendReply(chatJid, quoteID: quote.id,
+                                             quoteParticipant: quote.senderJid,
+                                             quoteText: quote.text,
+                                             body: body, error: &err)
+                if let err { throw err }
+                let now = Int64(Date().timeIntervalSince1970 * 1000)
+                try db.insertMessage(MessageRow(
+                    id: msgId, chatJid: chatJid, senderJid: "", fromMe: true,
+                    text: body, original: "", translated: "", translatedLang: "",
+                    ts: now, mediaKind: "", mediaMime: "", mediaName: "",
+                    mediaSize: 0, mediaPath: "", mediaThumb: "",
+                    mediaMeta: self.replyMeta(quote),
+                    reaction: ""))
+                try db.upsertChat(jid: chatJid, title: "", lastMessage: body,
+                                  lastTs: now, incrementUnread: false)
+                await MainActor.run {
+                    self.inboxTick &+= 1
+                    completion?(nil)
+                }
+            } catch {
+                await MainActor.run { completion?(error.localizedDescription) }
+            }
+        }
+    }
+
+    /// 转发：文本走 sendForwardText；媒体转发需要 paramsJSON（源消息媒体字段），阶段 2 先支持文本
+    func sendForwardAsync(chatJid: String, m: MessageRow, completion: ((String?) -> Void)? = nil) {
+        let client = self.client
+        Task.detached { [db] in
+            do {
+                var err: NSError?
+                let msgId = client.sendForwardText(chatJid, text: m.text, error: &err)
+                if let err { throw err }
+                let now = Int64(Date().timeIntervalSince1970 * 1000)
+                try db.insertMessage(MessageRow(
+                    id: msgId, chatJid: chatJid, senderJid: "", fromMe: true,
+                    text: m.text, original: "", translated: "", translatedLang: "",
+                    ts: now, mediaKind: "", mediaMime: "", mediaName: "",
+                    mediaSize: 0, mediaPath: "", mediaThumb: "", mediaMeta: "", reaction: ""))
+                try db.upsertChat(jid: chatJid, title: "", lastMessage: m.text,
+                                  lastTs: now, incrementUnread: false)
+                await MainActor.run {
+                    self.inboxTick &+= 1
+                    completion?(nil)
+                }
+            } catch {
+                await MainActor.run { completion?(error.localizedDescription) }
+            }
+        }
+    }
+
+    /// 编辑自己的文本消息：协议 editTextMessage + 本地同步
+    func updateLocalEditText(chatJid: String, id: String, text: String) {
+        try? db.exec("UPDATE messages SET text = ?, original = text WHERE chat_jid = ? AND id = ?",
+                     args: [text, chatJid, id])
+        inboxTick &+= 1
+    }
+
+    /// 撤回自己的消息：本地标记（气泡渲染为「已撤回」由 UI 层处理——阶段 2 先置空文本）
+    func markRevoked(chatJid: String, id: String) {
+        try? db.exec("UPDATE messages SET text = '你撤回了一条消息', media_kind = '', media_meta = '' WHERE chat_jid = ? AND id = ?",
+                     args: [chatJid, id])
+        inboxTick &+= 1
+    }
+
+    /// B6 对应：重新翻译（清空译文 → 重新走收件链）
+    func retranslate(_ m: MessageRow) {
+        try? db.updateTranslation(chatJid: m.chatJid, id: m.id, translated: "", lang: "")
+        translateIncomingAsync(chatJid: m.chatJid, id: m.id, text: m.text)
+        inboxTick &+= 1
     }
 
     // MARK: - 回执（蓝色 ✓✓）
