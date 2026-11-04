@@ -449,6 +449,34 @@ class ChatEngine private constructor(context: Context) :
         }.start()
     }
 
+    /** 发送商品卡片（ProductMessage）。需 Business 账号的商品目录 productID。 */
+    fun sendProductAsync(chatJid: String, productId: String, title: String, desc: String,
+                         currency: String, price: Double, url: String,
+                         onResult: (String?, String?) -> Unit) {
+        Thread {
+            try {
+                val msgId = client.sendProduct(chatJid, productId, title, desc,
+                    currency, price, url)
+                val now = System.currentTimeMillis()
+                val meta = org.json.JSONObject().apply {
+                    put("productId", productId); put("title", title)
+                    put("desc", desc); put("currency", currency)
+                    put("price", price); put("url", url)
+                }.toString()
+                db.insertMessage(MessageRow(
+                    id = msgId, chatJid = chatJid, senderJid = "", fromMe = true,
+                    text = title, original = "", translated = "", translatedLang = "",
+                    ts = now, mediaKind = "product", mediaMime = "",
+                    mediaName = title, mediaSize = 0, mediaPath = "",
+                    mediaThumb = "", mediaMeta = meta))
+                db.upsertChat(chatJid, "", "[商品] $title", now, incrementUnread = false)
+                main.post { onResult(msgId, null) }
+            } catch (e: Throwable) {
+                main.post { onResult(null, e.message ?: e.toString()) }
+            }
+        }.start()
+    }
+
     /** 发送活动邀请（EventMessage）。成功后落库一条 media_kind="event" 的消息。 */
     fun sendEventAsync(chatJid: String, name: String, desc: String,
                        startMs: Long, endMs: Long, location: String, link: String,

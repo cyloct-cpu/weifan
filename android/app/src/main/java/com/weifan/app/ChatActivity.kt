@@ -1541,7 +1541,7 @@ class ChatActivity : BaseActivity() {
         }
         // 文本行（有文字或有 caption 才显示）；
         // poll/location/contact 三类卡片已在媒体区完整渲染，跳过重复文字行
-        if (m.text.isNotBlank() && m.mediaKind !in setOf("poll", "location", "contact", "event")) {
+        if (m.text.isNotBlank() && m.mediaKind !in setOf("poll", "location", "contact", "event", "product")) {
         col.addView(TextView(this).apply {
             text = m.text
             textSize = prefs.sourceTextSp   // 批2-d：原文字号可调
@@ -1600,6 +1600,8 @@ class ChatActivity : BaseActivity() {
         val holder = FrameLayout(this)
         // 活动邀请气泡（EventMessage）
         if (m.mediaKind == "event") buildEventBubble(m, col)
+        // 商品卡片（ProductMessage）
+        if (m.mediaKind == "product") buildProductBubble(m, col)
 
         // 表情回应徽章（DB v10）：有回应时在气泡内显示，点它可更换/取消
         if (m.reaction.isNotBlank()) {
@@ -2067,7 +2069,7 @@ class ChatActivity : BaseActivity() {
             "📊  投票" to "poll",
             "📅  活动" to "event",
             "😀  新建贴图" to "sticker",
-            "🏪  目录" to "catalog",
+            "🏪  商品" to "product",
             "⚡  快速回复" to "quick",
             "✅  添加待办" to "todo",
             "💱  汇率转换" to "fx"
@@ -2111,6 +2113,7 @@ class ChatActivity : BaseActivity() {
                         "contact" -> showContactDialog()
                         "poll" -> showPollDialog()
                         "event" -> showEventDialog()
+                        "product" -> showProductDialog()
                         "fx" -> showFxDialog()
                         "todo" -> startActivity(
                             Intent(this@ChatActivity, FollowupTodosActivity::class.java)
@@ -3187,6 +3190,143 @@ class ChatActivity : BaseActivity() {
             setTextColor(WaSpec.textSecondary(night))
             setPadding(0, dp(5), 0, 0)
         })
+    }
+
+    /**
+     * 发送商品卡片（对齐参考 dialog_send_product / item_catalog_product：
+     * 行高 40dp + 16sp padding 16/10）。
+     *
+     * 需要 WhatsApp Business 账号：productID 从 Business App「商品目录」里复制。
+     * 协议层用 ProductMessage + ProductSnapshot 构造（whatsmeow 无高层 API）。
+     */
+    /** 商品气泡：🏪 + 名称 + 价格 + 描述（对齐 item_catalog_product padding 16/10） */
+    private fun buildProductBubble(m: MessageRow, col: LinearLayout) {
+        val o = try { JSONObject(m.mediaMeta) } catch (_: Throwable) { JSONObject() }
+        val title = o.optString("title").ifBlank { m.text }
+        val price = o.optDouble("price", -1.0)
+        val cur = o.optString("currency", "USD")
+        val desc = o.optString("desc")
+        col.addView(TextView(this).apply { text = "🏪"; textSize = 22f })
+        col.addView(TextView(this).apply {
+            text = title
+            textSize = 16f
+            setTypeface(typeface, Typeface.BOLD)
+            setTextColor(WaSpec.textPrimary(night))
+            setPadding(0, dp(4), 0, 0)
+        })
+        if (price >= 0) {
+            col.addView(TextView(this).apply {
+                text = com.weifan.app.core.Fx.fmt(price, cur)
+                textSize = 15f
+                setTextColor(WaSpec.primary(night))
+                setPadding(0, dp(4), 0, 0)
+            })
+        }
+        if (desc.isNotBlank()) col.addView(TextView(this).apply {
+            text = desc
+            textSize = 13f
+            setTextColor(WaSpec.textSecondary(night))
+            setPadding(0, dp(4), 0, 0)
+        })
+        col.addView(TextView(this).apply {
+            text = "商品 · 点此查看"
+            textSize = 11f
+            setTextColor(WaSpec.textSecondary(night))
+            setPadding(0, dp(5), 0, 0)
+        })
+    }
+
+    private fun showProductDialog() {
+        fun row(hint: String): EditText = EditText(this).apply {
+            this.hint = hint
+            textSize = 16f
+            setTextColor(WaSpec.textPrimary(night))
+            setHintTextColor(WaSpec.textSecondary(night))
+            setBackground(Ui.roundBg(this@ChatActivity,
+                if (night) WaSpec.SEARCH_BG_NIGHT else WaSpec.GRAY6, 10))
+            setPadding(dp(12), 0, dp(12), 0)
+            minimumHeight = dp(40)
+            setSingleLine(true)
+        }
+        val idIn = row("商品 ID（Business App 商品目录里复制）")
+        val titleIn = row("商品名称")
+        val priceIn = row("价格，如 12.50")
+        priceIn.inputType = android.text.InputType.TYPE_CLASS_NUMBER or
+            android.text.InputType.TYPE_NUMBER_FLAG_DECIMAL
+        val descIn = EditText(this).apply {
+            hint = "商品描述（可空）"
+            textSize = 15f
+            setTextColor(WaSpec.textPrimary(night))
+            setHintTextColor(WaSpec.textSecondary(night))
+            setBackground(Ui.roundBg(this@ChatActivity,
+                if (night) WaSpec.SEARCH_BG_NIGHT else WaSpec.GRAY6, 10))
+            setPadding(dp(12), dp(8), dp(12), dp(8))
+            minLines = 2
+        }
+        // 币种：默认按对方国家推，推不出来用 USD
+        var currency = com.weifan.app.core.Fx.currencyForChat(
+            resolvedPhone.ifBlank { chatJid }) ?: "USD"
+        val curLabel = TextView(this).apply {
+            text = "币种：$currency（点此改）"
+            textSize = 14f
+            setTextColor(WaSpec.primary(night))
+            minimumHeight = dp(40)
+            gravity = Gravity.CENTER_VERTICAL
+            isClickable = true
+        }
+        curLabel.setOnClickListener {
+            val codes = com.weifan.app.core.Fx.CURRENCIES.map { it.first }.toTypedArray()
+            android.app.AlertDialog.Builder(this)
+                .setTitle("币种")
+                .setItems(codes) { _, i ->
+                    currency = codes[i]
+                    curLabel.text = "币种：$currency（点此改）"
+                }
+                .setNegativeButton("取消", null)
+                .show()
+        }
+        val content = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            addView(idIn)
+            addView(titleIn, LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply {
+                topMargin = dp(8) })
+            addView(priceIn, LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply {
+                topMargin = dp(8) })
+            addView(curLabel, LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply {
+                topMargin = dp(4) })
+            addView(descIn, LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply {
+                topMargin = dp(8) })
+            addView(TextView(this@ChatActivity).apply {
+                text = "提示：需 Business 账号已有该商品，否则对方会看到「商品不可用」。"
+                textSize = 11.5f
+                setTextColor(WaSpec.textSecondary(night))
+                setPadding(0, dp(10), 0, 0)
+            })
+        }
+        android.app.AlertDialog.Builder(this)
+            .setView(Ui.formDialogShell(this, "发送商品", night, content))
+            .setPositiveButton("发送") { _, _ ->
+                val pid = idIn.text.toString().trim()
+                val t = titleIn.text.toString().trim()
+                val price = priceIn.text.toString().trim().toDoubleOrNull()
+                if (pid.isBlank() || t.isBlank() || price == null) {
+                    Toast.makeText(this, "商品 ID、名称、价格必填", Toast.LENGTH_SHORT).show()
+                    return@setPositiveButton
+                }
+                sendBtn.isEnabled = false
+                engine.sendProductAsync(chatJid, pid, t, descIn.text.toString().trim(),
+                    currency, price, "") { _, err ->
+                    sendBtn.isEnabled = true
+                    if (err != null) Toast.makeText(this, "发送失败：$err",
+                        Toast.LENGTH_LONG).show() else renderMessages()
+                }
+            }
+            .setNegativeButton("取消", null)
+            .show()
     }
 
     private fun showEventDialog() {
