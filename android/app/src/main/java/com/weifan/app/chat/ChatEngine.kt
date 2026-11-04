@@ -449,6 +449,34 @@ class ChatEngine private constructor(context: Context) :
         }.start()
     }
 
+    /** 发送活动邀请（EventMessage）。成功后落库一条 media_kind="event" 的消息。 */
+    fun sendEventAsync(chatJid: String, name: String, desc: String,
+                       startMs: Long, endMs: Long, location: String, link: String,
+                       onResult: (String?, String?) -> Unit) {
+        Thread {
+            try {
+                val msgId = client.sendEvent(chatJid, name, desc, startMs, endMs, location, link)
+                val now = System.currentTimeMillis()
+                // 活动信息存 mediaMeta（JSON），气泡渲染时读
+                val meta = org.json.JSONObject().apply {
+                    put("name", name); put("desc", desc)
+                    put("start", startMs); put("end", endMs)
+                    put("location", location); put("link", link)
+                }.toString()
+                db.insertMessage(MessageRow(
+                    id = msgId, chatJid = chatJid, senderJid = "", fromMe = true,
+                    text = name, original = "", translated = "", translatedLang = "",
+                    ts = now, mediaKind = "event", mediaMime = "",
+                    mediaName = name, mediaSize = 0, mediaPath = "",
+                    mediaThumb = "", mediaMeta = meta))
+                db.upsertChat(chatJid, "", "[活动] $name", now, incrementUnread = false)
+                main.post { onResult(msgId, null) }
+            } catch (e: Throwable) {
+                main.post { onResult(null, e.message ?: e.toString()) }
+            }
+        }.start()
+    }
+
     /** 给消息贴表情（reaction="" 取消）。先本地写库保证 UI 立刻反映，再发协议。 */
     fun reactAsync(chatJid: String, msgId: String, senderJid: String, fromMe: Boolean,
                    reaction: String, callback: (String?) -> Unit) {

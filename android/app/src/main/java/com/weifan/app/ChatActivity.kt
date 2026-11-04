@@ -1541,7 +1541,7 @@ class ChatActivity : BaseActivity() {
         }
         // 文本行（有文字或有 caption 才显示）；
         // poll/location/contact 三类卡片已在媒体区完整渲染，跳过重复文字行
-        if (m.text.isNotBlank() && m.mediaKind !in setOf("poll", "location", "contact")) {
+        if (m.text.isNotBlank() && m.mediaKind !in setOf("poll", "location", "contact", "event")) {
         col.addView(TextView(this).apply {
             text = m.text
             textSize = prefs.sourceTextSp   // 批2-d：原文字号可调
@@ -1598,6 +1598,9 @@ class ChatActivity : BaseActivity() {
         }, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT))
 
         val holder = FrameLayout(this)
+        // 活动邀请气泡（EventMessage）
+        if (m.mediaKind == "event") buildEventBubble(m, col)
+
         // 表情回应徽章（DB v10）：有回应时在气泡内显示，点它可更换/取消
         if (m.reaction.isNotBlank()) {
             col.addView(TextView(this).apply {
@@ -2107,6 +2110,7 @@ class ChatActivity : BaseActivity() {
                         "location" -> showLocationDialog()
                         "contact" -> showContactDialog()
                         "poll" -> showPollDialog()
+                        "event" -> showEventDialog()
                         "fx" -> showFxDialog()
                         "todo" -> startActivity(
                             Intent(this@ChatActivity, FollowupTodosActivity::class.java)
@@ -3131,6 +3135,151 @@ class ChatActivity : BaseActivity() {
         }.also {
             it.layoutParams = LinearLayout.LayoutParams(size, size)
         }
+    }
+
+    /**
+     * 创建活动（对齐参考 dialog_create_event：行高 40dp + 16sp）。
+     * whatsmeow 无 SendEvent 高层 API，直接构造 EventMessage proto 发送（见 mobile.go）。
+     */
+    /** 活动气泡：名称 + 时间 + 地点 + 说明（信息存在 mediaMeta JSON） */
+    private fun buildEventBubble(m: MessageRow, col: LinearLayout) {
+        val o = try { JSONObject(m.mediaMeta) } catch (_: Throwable) { JSONObject() }
+        val nm = o.optString("name").ifBlank { m.text }
+        val start = o.optLong("start", 0L)
+        val end = o.optLong("end", 0L)
+        val loc = o.optString("location")
+        val desc = o.optString("desc")
+        val fmt = java.text.SimpleDateFormat("M月d日 HH:mm", java.util.Locale.CHINA)
+        col.addView(TextView(this).apply { text = "📅"; textSize = 22f })
+        col.addView(TextView(this).apply {
+            text = nm
+            textSize = 16f
+            setTypeface(typeface, Typeface.BOLD)
+            setTextColor(WaSpec.textPrimary(night))
+            setPadding(0, dp(4), 0, 0)
+        })
+        if (start > 0) {
+            val hhmm = java.text.SimpleDateFormat("HH:mm", java.util.Locale.CHINA)
+            val t = if (end > start) "${fmt.format(java.util.Date(start))} – " +
+                hhmm.format(java.util.Date(end)) else fmt.format(java.util.Date(start))
+            col.addView(TextView(this).apply {
+                text = "🕒 $t"
+                textSize = 13f
+                setTextColor(WaSpec.primary(night))
+                setPadding(0, dp(4), 0, 0)
+            })
+        }
+        if (loc.isNotBlank()) col.addView(TextView(this).apply {
+            text = "📍 $loc"
+            textSize = 13f
+            setTextColor(WaSpec.textSecondary(night))
+            setPadding(0, dp(3), 0, 0)
+        })
+        if (desc.isNotBlank()) col.addView(TextView(this).apply {
+            text = desc
+            textSize = 13f
+            setTextColor(WaSpec.textSecondary(night))
+            setPadding(0, dp(4), 0, 0)
+        })
+        col.addView(TextView(this).apply {
+            text = "活动邀请"
+            textSize = 11f
+            setTextColor(WaSpec.textSecondary(night))
+            setPadding(0, dp(5), 0, 0)
+        })
+    }
+
+    private fun showEventDialog() {
+        fun row(hint: String): EditText = EditText(this).apply {
+            this.hint = hint
+            textSize = 16f
+            setTextColor(WaSpec.textPrimary(night))
+            setHintTextColor(WaSpec.textSecondary(night))
+            setBackground(Ui.roundBg(this@ChatActivity,
+                if (night) WaSpec.SEARCH_BG_NIGHT else WaSpec.GRAY6, 10))
+            setPadding(dp(12), 0, dp(12), 0)
+            minimumHeight = dp(40)
+            setSingleLine(true)
+        }
+        val nameIn = row("活动名称，如 新品发布直播")
+        val locIn = row("地点（可空）")
+        val descIn = EditText(this).apply {
+            hint = "说明（可空）"
+            textSize = 15f
+            setTextColor(WaSpec.textPrimary(night))
+            setHintTextColor(WaSpec.textSecondary(night))
+            setBackground(Ui.roundBg(this@ChatActivity,
+                if (night) WaSpec.SEARCH_BG_NIGHT else WaSpec.GRAY6, 10))
+            setPadding(dp(12), dp(8), dp(12), dp(8))
+            minLines = 2
+        }
+        var startMs = java.util.Calendar.getInstance().apply {
+            add(java.util.Calendar.DAY_OF_YEAR, 1)
+            set(java.util.Calendar.HOUR_OF_DAY, 10)
+            set(java.util.Calendar.MINUTE, 0)
+            set(java.util.Calendar.SECOND, 0)
+        }.timeInMillis
+        val dayFmt = java.text.SimpleDateFormat("M月d日 HH:mm", java.util.Locale.CHINA)
+        // 时间行：label 先建后挂点击（在 apply 内引用自身会报 Unresolved reference）
+        val timeLabel = TextView(this).apply {
+            text = "开始：${dayFmt.format(java.util.Date(startMs))}（点此改）"
+            textSize = 14f
+            setTextColor(WaSpec.primary(night))
+            minimumHeight = dp(40)
+            gravity = Gravity.CENTER_VERTICAL
+            isClickable = true
+        }
+        timeLabel.setOnClickListener {
+            val days = intArrayOf(1, 1, 2, 3, 7)
+            val hours = intArrayOf(10, 14, 10, 10, 10)
+            val labels = days.indices.map { i ->
+                if (days[i] == 1) "明天 ${hours[i]}:00" else "${days[i]} 天后 ${hours[i]}:00"
+            }.toTypedArray()
+            android.app.AlertDialog.Builder(this)
+                .setTitle("开始时间")
+                .setItems(labels) { _, i ->
+                    startMs = java.util.Calendar.getInstance().apply {
+                        add(java.util.Calendar.DAY_OF_YEAR, days[i])
+                        set(java.util.Calendar.HOUR_OF_DAY, hours[i])
+                        set(java.util.Calendar.MINUTE, 0)
+                        set(java.util.Calendar.SECOND, 0)
+                    }.timeInMillis
+                    timeLabel.text = "开始：${dayFmt.format(java.util.Date(startMs))}（点此改）"
+                }
+                .setNegativeButton("取消", null)
+                .show()
+        }
+        val content = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            addView(nameIn)
+            addView(locIn, LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply {
+                topMargin = dp(8) })
+            addView(descIn, LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply {
+                topMargin = dp(8) })
+            addView(timeLabel, LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply {
+                topMargin = dp(4) })
+        }
+        android.app.AlertDialog.Builder(this)
+            .setView(Ui.formDialogShell(this, "创建活动", night, content))
+            .setPositiveButton("发送") { _, _ ->
+                val nm = nameIn.text.toString().trim()
+                if (nm.isBlank()) {
+                    Toast.makeText(this, "活动名称必填", Toast.LENGTH_SHORT).show()
+                    return@setPositiveButton
+                }
+                sendBtn.isEnabled = false
+                engine.sendEventAsync(chatJid, nm, descIn.text.toString().trim(),
+                    startMs, startMs + 3600_000L, locIn.text.toString().trim(), "") { _, err ->
+                    sendBtn.isEnabled = true
+                    if (err != null) Toast.makeText(this, "发送失败：$err",
+                        Toast.LENGTH_LONG).show() else renderMessages()
+                }
+            }
+            .setNegativeButton("取消", null)
+            .show()
     }
 
     private fun showPollDialog() {
