@@ -120,6 +120,9 @@ class SettingsActivity : BaseActivity() {
         list.addView(row("跟进待办", "记要跟进的事与到期时间，纯本地不上传") {
             startActivity(Intent(this, FollowupTodosActivity::class.java))
         })
+        list.addView(row("备份数据", "会话/媒体/设置打包成 zip，存到手机 Download 目录") {
+            showBackupDialog()
+        })
         list.addView(row("新建联系人", "查号是否在 WhatsApp + 存进手机通讯录") {
             startActivity(Intent(this, NewContactActivity::class.java))
         })
@@ -222,6 +225,124 @@ class SettingsActivity : BaseActivity() {
     // ---- 构建小块 ----
 
     /** 分组标题：13sp medium、#6B7280（夜 #8696A0）、paddingH 16 / top 18 / bottom 6 */
+    /**
+     * 备份弹层（对齐参考 dialog_backup_restore + dialog_restore_options + dialog_backup_progress）。
+     * 先列出将备份的 5 类内容及体积（20/22/20/18 + 17sp），确认后后台打包并显示进度。
+     */
+    private fun showBackupDialog() {
+        val items = com.weifan.app.core.Backup.summary(this)
+        val content = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+        }
+        for ((name, size) in items) {
+            val r = LinearLayout(this).apply {
+                orientation = LinearLayout.HORIZONTAL
+                gravity = Gravity.CENTER_VERTICAL
+                minimumHeight = dp(40)
+            }
+            r.addView(TextView(this).apply {
+                text = name
+                textSize = 16f
+                setTextColor(WaSpec.textPrimary(night))
+            }, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
+            r.addView(TextView(this).apply {
+                text = size
+                textSize = 13f
+                setTextColor(WaSpec.textSecondary(night))
+            })
+            content.addView(r)
+        }
+        content.addView(TextView(this).apply {
+            text = "备份包含设备凭据，请妥善保管，不要发给他人。"
+            textSize = 12f
+            setTextColor(WaSpec.textSecondary(night))
+            setPadding(0, dp(10), 0, 0)
+        })
+
+        android.app.AlertDialog.Builder(this)
+            .setView(Ui.formDialogShell(this, "备份数据", night, content))
+            .setPositiveButton("开始备份") { _, _ -> runBackup() }
+            .setNegativeButton("取消", null)
+            .show()
+    }
+
+    /** 后台打包 + 进度弹层（对齐参考 dialog_backup_progress：padding 20/22/20/20） */
+    private fun runBackup() {
+        val stamp = java.text.SimpleDateFormat("yyyyMMdd-HHmm", java.util.Locale.CHINA)
+            .format(java.util.Date())
+        val dir = android.os.Environment.getExternalStoragePublicDirectory(
+            android.os.Environment.DIRECTORY_DOWNLOADS)
+        val target = java.io.File(dir, "weifan-backup-$stamp.zip")
+
+        val progressText = TextView(this).apply {
+            text = "准备中…"
+            textSize = 14f
+            setTextColor(WaSpec.textPrimary(night))
+        }
+        val bar = android.widget.ProgressBar(this, null,
+            android.R.attr.progressBarStyleHorizontal).apply {
+            max = 1000
+            progress = 0
+            progressTintList = android.content.res.ColorStateList.valueOf(WaSpec.primary(night))
+        }
+        val box = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding(dp(20), dp(22), dp(20), dp(20))
+            addView(TextView(this@SettingsActivity).apply {
+                text = "正在备份"
+                textSize = 17f
+                setTypeface(android.graphics.Typeface.DEFAULT_BOLD)
+                setTextColor(WaSpec.textPrimary(night))
+            })
+            addView(progressText, LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply {
+                topMargin = dp(12)
+            })
+            addView(bar, LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, dp(6)).apply { topMargin = dp(10) })
+        }
+        val dlg = android.app.AlertDialog.Builder(this)
+            .setView(box)
+            .setCancelable(false)
+            .create()
+        dlg.show()
+
+        Thread {
+            val err = try {
+                com.weifan.app.core.Backup.export(this, target) { done, total ->
+                    runOnUiThread {
+                        if (!isFinishing && !isDestroyed) {
+                            val pct = if (total <= 0) 0 else (done * 1000 / total).toInt()
+                            bar.progress = pct
+                            progressText.text = "已写入 ${done / 1024} KB / ${total / 1024} KB"
+                        }
+                    }
+                }
+                null
+            } catch (e: Throwable) {
+                e.message ?: e.toString()
+            }
+            runOnUiThread {
+                if (isFinishing || isDestroyed) return@runOnUiThread
+                try { dlg.dismiss() } catch (_: Throwable) { }
+                if (err == null) {
+                    val kb = target.length() / 1024
+                    android.app.AlertDialog.Builder(this)
+                        .setTitle("备份完成")
+                        .setMessage("已保存：\nDownload/${target.name}\n共 $kb KB")
+                        .setPositiveButton("知道了", null)
+                        .show()
+                } else {
+                    android.app.AlertDialog.Builder(this)
+                        .setTitle("备份失败")
+                        .setMessage(err)
+                        .setPositiveButton("知道了", null)
+                        .show()
+                }
+            }
+        }.start()
+    }
+
     private fun section(title: String): View =
         TextView(this).apply {
             text = title
