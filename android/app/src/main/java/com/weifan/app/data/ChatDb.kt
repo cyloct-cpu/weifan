@@ -74,6 +74,18 @@ class ChatDb(context: Context) : SQLiteOpenHelper(context, "chats.db", null, 10)
             )
         """)
         db.execSQL("CREATE INDEX IF NOT EXISTS idx_todos_done ON todos(done, due_ts)")
+        // 关键修复：labels / chat_labels 之前只在 onUpgrade 里建，
+        // 全新安装（onCreate 路径）时不存在 → ChatListActivity 查 labels 直接崩。
+        // 老设备升级过所以没暴露，pm clear 后必崩。
+        db.execSQL("CREATE TABLE IF NOT EXISTS labels(" +
+            "id INTEGER PRIMARY KEY AUTOINCREMENT, " +
+            "name TEXT NOT NULL UNIQUE, " +
+            "color TEXT NOT NULL DEFAULT '')")
+        db.execSQL("CREATE TABLE IF NOT EXISTS chat_labels(" +
+            "chat_jid TEXT NOT NULL, " +
+            "label_id INTEGER NOT NULL, " +
+            "PRIMARY KEY(chat_jid, label_id))")
+
     }
 
     override fun onUpgrade(db: SQLiteDatabase, oldVersion: Int, newVersion: Int) {
