@@ -303,6 +303,7 @@ struct ChatView: View {
     @State private var quickLookURL: URL?
     @State private var voice = VoiceRecorder()
     @State private var recording = false
+    @State private var kickedFrom: String?
 
     var body: some View {
         VStack(spacing: 0) {
@@ -380,14 +381,24 @@ struct ChatView: View {
         .navigationBarTitleDisplayMode(.inline)
         .toolbar {
             ToolbarItem(placement: .topBarTrailing) {
-                NavigationLink { ContactInfoView(chatJid: chatJid, title: title) } label: {
-                    Image(systemName: "info.circle")
+                if chatJid.contains("@g.us") {
+                    NavigationLink { GroupInfoView(chatJid: chatJid, title: title) } label: {
+                        Image(systemName: "info.circle")
+                    }
+                } else {
+                    NavigationLink { ContactInfoView(chatJid: chatJid, title: title) } label: {
+                        Image(systemName: "info.circle")
+                    }
                 }
             }
         }
         .alert("发送失败", isPresented: .init(get: { sendError != nil }, set: { if !$0 { sendError = nil } })) {
             Button("好", role: .cancel) {}
         } message: { Text(sendError ?? "") }
+        // P8：被移出群提示（对齐参考 dialog_kicked）
+        .alert("你已被移出群聊", isPresented: .init(get: { kickedFrom != nil }, set: { if !$0 { kickedFrom = nil } })) {
+            Button("知道了", role: .cancel) {}
+        } message: { Text("群：\(kickedFrom ?? "")\n对方将不再收到你发送的消息") }
         // 编辑自己的文本
         .alert("编辑消息", isPresented: .init(get: { editing != nil }, set: { if !$0 { editing = nil } })) {
             TextField("新内容", text: $editText)
@@ -414,6 +425,9 @@ struct ChatView: View {
         .onAppear {
             reload()
             core.markRead(chatJid: chatJid)
+            core.bindKicked { group in
+                if group == chatJid { kickedFrom = group }
+            }
             core.bindReadReceipts { chat, type, ids in
                 if chat == chatJid { core.handleReadReceipts(chatJid: chat, type: type, ids: ids) }
             }
@@ -491,12 +505,16 @@ struct AttachPicker: View {
     var onDone: () -> Void
     var onError: (String) -> Void
     @State private var photoItem: PhotosPickerItem?
+    @State private var videoItem: PhotosPickerItem?
     @State private var showFiles = false
 
     var body: some View {
         List {
             PhotosPicker(selection: $photoItem, matching: .images) {
-                Label("照片或视频", systemImage: "photo.on.rectangle")
+                Label("照片", systemImage: "photo")
+            }
+            PhotosPicker(selection: $videoItem, matching: .videos) {
+                Label("视频", systemImage: "video")
             }
             Button {
                 showFiles = true
@@ -514,6 +532,19 @@ struct AttachPicker: View {
                 let tmp = MediaStore.dir.appendingPathComponent("photo-\(Int(Date().timeIntervalSince1970 * 1000)).jpg")
                 try? data.write(to: tmp)
                 core.sendMediaAsync(chatJid: chatJid, kind: "image", localURL: tmp) { err in
+                    if let err { onError(err) } else { onDone() }
+                }
+            }
+        }
+        .onChange(of: videoItem) { item in
+            guard let item else { return }
+            Task {
+                // 视频：Data 直搬（CoreTransferable 无 MovieFileRepresentation；大文件后续换 FileRepresentation）
+                guard let data = try? await item.loadTransferable(type: Data.self) else { return }
+                let dst = MediaStore.dir.appendingPathComponent(
+                    "video-\(Int(Date().timeIntervalSince1970 * 1000)).mp4")
+                try? data.write(to: dst)
+                core.sendMediaAsync(chatJid: chatJid, kind: "video", localURL: dst) { err in
                     if let err { onError(err) } else { onDone() }
                 }
             }
@@ -879,6 +910,8 @@ struct ContactInfoView: View {
     let title: String
     @ObservedObject var core = ProtocolCore.shared
     @State private var avatar: UIImage?
+    @State private var blocked = false
+    @State private var blockError: String?
 
     var body: some View {
         List {
@@ -903,10 +936,29 @@ struct ContactInfoView: View {
             Section("状态") {
                 LabeledContent("连接", value: core.connected ? "在线" : "未连接")
             }
+            Section("操作") {
+                Button(blocked ? "解除拉黑" : "拉黑此联系人", role: blocked ? .none : .destructive) {
+                    if let e = BlocklistHelper.setBlocked(client: core.client, jid: chatJid, blocked: !blocked) {
+                        blockError = e
+                    } else {
+                        blocked.toggle()
+                    }
+                }
+            }
+            Section {
+                Text(blocked ? "已拉黑：对方消息将不再到达" : "拉黑后对方的消息不再进入本机")
+                    .font(.caption2).foregroundStyle(.secondary)
+            }
         }
         .navigationTitle("联络人资料")
         .navigationBarTitleDisplayMode(.inline)
-        .task { if let b = try? core.client.getProfilePicture(chatJid) { avatar = UIImage(data: Data(b)) } }
+        .task {
+            if let b = try? core.client.getProfilePicture(chatJid) { avatar = UIImage(data: Data(b)) }
+            blocked = BlocklistHelper.isBlocked(client: core.client, jid: chatJid)
+        }
+        .alert("拉黑失败", isPresented: .init(get: { blockError != nil }, set: { if !$0 { blockError = nil } })) {
+            Button("好", role: .cancel) {}
+        } message: { Text(blockError ?? "") }
     }
 }
 

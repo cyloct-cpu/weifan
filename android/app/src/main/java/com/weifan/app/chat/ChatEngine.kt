@@ -382,10 +382,83 @@ class ChatEngine private constructor(context: Context) :
                     val newText = o.optString("editText")
                     if (newText.isNotBlank()) db.applyEdit(chatJid, id, newText)
                 }
+                // P8：群元数据事件（Go onGroupInfo 转发）——被踢时弹 dialog_kicked
+                "groupInfo" -> {
+                    if (o.optBoolean("kicked")) {
+                        val group = o.optString("group")
+                        main.post { onKickedFromGroup?.invoke(group) }
+                    }
+                }
             }
             main.post { onChatUpdated?.invoke() }
         } catch (_: Throwable) { }
     }
+
+    /** P5：群公告（SetGroupTopic） */
+    fun setGroupTopicAsync(groupJid: String, topic: String, callback: (String?) -> Unit) {
+        Thread {
+            try {
+                client.setGroupTopic(groupJid, topic)
+                main.post { callback(null) }
+            } catch (e: Throwable) {
+                main.post { callback(e.message ?: e.toString()) }
+            }
+        }.start()
+    }
+
+    /** P5：群邀请链接（GetGroupInviteLink；reset=true 重置） */
+    fun groupInviteLinkAsync(groupJid: String, reset: Boolean, callback: (String?, String?) -> Unit) {
+        Thread {
+            try {
+                val link = client.getGroupInviteLink(groupJid, reset)
+                main.post { callback(link, null) }
+            } catch (e: Throwable) {
+                main.post { callback(null, e.message ?: e.toString()) }
+            }
+        }.start()
+    }
+
+    /** P6：AI 建议回复——把最后 N 条消息喂给已配置的 LLM，产 3 条候选 */
+    fun aiSuggestAsync(chatJid: String, callback: (List<String>, String?) -> Unit) {
+        Thread {
+            try {
+                val recent = db.messages(chatJid, 8).joinToString("\n") { m ->
+                    (if (m.fromMe) "我" else "对方") + ": " + m.text
+                }
+                val customs = prefs.customs
+                val prof = customs.firstOrNull { it.key.isNotBlank() && it.baseUrl.isNotBlank() }
+                    ?: run { main.post { callback(emptyList(), "没有可用的 LLM：设置→翻译服务→自定义接口") }; return@Thread }
+                val prompt = "你是外贸客服助手。根据以下 WhatsApp 对话，给用户 3 条简短的中文建议回复（每条一行，不要编号，不要解释）：\n\n$recent"
+                val body = org.json.JSONObject().apply {
+                    put("model", prof.model)
+                    put("messages", org.json.JSONArray().put(org.json.JSONObject().apply {
+                        put("role", "user"); put("content", prompt)
+                    }))
+                    put("temperature", 0.7)
+                }.toString()
+                val conn = java.net.URL(prof.baseUrl.trimEnd('/') + "/chat/completions")
+                    .openConnection() as java.net.HttpURLConnection
+                conn.requestMethod = "POST"
+                conn.connectTimeout = 15000; conn.readTimeout = 30000
+                conn.doOutput = true
+                conn.setRequestProperty("Content-Type", "application/json")
+                conn.setRequestProperty("Authorization", "Bearer " + prof.key)
+                conn.outputStream.use { it.write(body.toByteArray()) }
+                val resp = conn.inputStream.bufferedReader().use { it.readText() }
+                val text = org.json.JSONObject(resp).getJSONArray("choices")
+                    .getJSONObject(0).getJSONObject("message").getString("content")
+                val suggestions = text.lines().map { it.trim().removePrefix("- ").removePrefix("· ") }
+                    .filter { it.isNotBlank() && !it.startsWith("回复") }.take(3)
+                conn.disconnect()
+                main.post { callback(suggestions, null) }
+            } catch (e: Throwable) {
+                main.post { callback(emptyList(), e.message ?: e.toString()) }
+            }
+        }.start()
+    }
+
+    /** P8：被移出群回调（ChatListActivity/ChatActivity 弹 dialog_kicked） */
+    var onKickedFromGroup: ((String) -> Unit)? = null
 
     /** 历史向上翻页：取当前最早一条做锚点，请求更早 count 条 */
     fun loadOlderMessagesAsync(chatJid: String, count: Int = 50, onDone: ((Boolean) -> Unit)? = null) {
@@ -881,7 +954,28 @@ class ChatEngine private constructor(context: Context) :
         }.start()
     }
 
-    /** 发送本地图片（经代理上传） */
+    /** P4：视频发送（协议 SendVideoFromPath；whatsmeow MediaVideo 上传） */
+    fun sendVideoAsync(jid: String, path: String, caption: String,
+                       onResult: (String?, String?) -> Unit) {
+        Thread {
+            try {
+                val msgId = client.sendVideoFromPath(jid, path, caption, 0)
+                val now = System.currentTimeMillis()
+                db.insertMessage(MessageRow(
+                    id = msgId, chatJid = jid, senderJid = "", fromMe = true,
+                    text = caption, original = "", translated = "", translatedLang = "",
+                    ts = now, mediaKind = "video", mediaMime = "video/mp4",
+                    mediaName = java.io.File(path).name,
+                    mediaSize = java.io.File(path).length(), mediaPath = path,
+                    mediaThumb = "", mediaMeta = "", reaction = ""))
+                db.upsertChat(jid, "", "[视频]", now, incrementUnread = false)
+                main.post { onResult(msgId, null) }
+            } catch (e: Throwable) {
+                main.post { onResult(null, e.message ?: e.toString()) }
+            }
+        }.start()
+    }
+
     fun sendImageAsync(chatJid: String, path: String, caption: String,
                        onResult: (String?, String?) -> Unit) {
         Thread {

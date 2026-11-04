@@ -4,6 +4,7 @@ import android.content.Intent
 import android.graphics.BitmapFactory
 import android.graphics.Color
 import android.graphics.Typeface
+import android.content.Context
 import android.os.Bundle
 import android.view.Gravity
 import android.view.View
@@ -33,6 +34,7 @@ class ChatInfoActivity : BaseActivity() {
     private var chatJid: String = ""
     private var chatTitle: String = ""
     private var isGroup = false
+    private var topicCache = ""
     private lateinit var nameText: TextView
     private lateinit var subText: TextView
     private lateinit var memberBox: LinearLayout
@@ -255,6 +257,54 @@ class ChatInfoActivity : BaseActivity() {
                 ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply {
                 topMargin = dp(10)
             })
+
+            // P5：群公告 + 邀请链接（协议 SetGroupTopic / GetGroupInviteLink）
+            box.addView(Ui.chip(this, "📝 设置群公告", false, night) {
+                val box2 = LinearLayout(this@ChatInfoActivity).apply {
+                    orientation = LinearLayout.VERTICAL
+                    setPadding(dp(22), dp(18), dp(22), dp(8))
+                }
+                val input = EditText(this@ChatInfoActivity).apply {
+                    hint = "群公告内容"
+                    setText(topicCache)
+                    minLines = 2
+                }
+                box2.addView(input)
+                android.app.AlertDialog.Builder(this@ChatInfoActivity, R.style.WeifanDialog)
+                    .setTitle("群公告")
+                    .setView(box2)
+                    .setPositiveButton("保存") { _, _ ->
+                        ChatEngine.get(this@ChatInfoActivity).setGroupTopicAsync(chatJid, input.text.toString().trim()) { err ->
+                            runOnUiThread {
+                                Toast.makeText(this@ChatInfoActivity, if (err == null) "公告已保存" else "失败：$err", Toast.LENGTH_SHORT).show()
+                            }
+                        }
+                    }
+                    .setNegativeButton("取消", null)
+                    .show()
+            }, LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply { topMargin = dp(12) })
+            box.addView(Ui.chip(this, "🔗 邀请链接", false, night) {
+                ChatEngine.get(this@ChatInfoActivity).groupInviteLinkAsync(chatJid, false) { link, err ->
+                    runOnUiThread {
+                        if (err != null) {
+                            Toast.makeText(this@ChatInfoActivity, "失败：$err", Toast.LENGTH_SHORT).show()
+                        } else {
+                            android.app.AlertDialog.Builder(this@ChatInfoActivity, R.style.WeifanDialog)
+                                .setTitle("群邀请链接")
+                                .setMessage(link)
+                                .setPositiveButton("复制") { _, _ ->
+                                    val cb = getSystemService(Context.CLIPBOARD_SERVICE) as android.content.ClipboardManager
+                                    cb.setPrimaryClip(android.content.ClipData.newPlainText("invite", link))
+                                    Toast.makeText(this@ChatInfoActivity, "已复制", Toast.LENGTH_SHORT).show()
+                                }
+                                .setNegativeButton("关闭", null)
+                                .show()
+                        }
+                    }
+                }
+            }, LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply { topMargin = dp(8) })
         }
 
         // ── 媒体分类 tabs（对齐 WhatsApp Web，去小程序/视频号）：文件/图片与视频/链接/音乐与音频/日期
@@ -314,6 +364,7 @@ class ChatInfoActivity : BaseActivity() {
                     return@post
                 }
                 nameText.text = info.optString("name").ifBlank { chatTitle }
+                topicCache = info.optString("topic")   // P5：群公告回填
                 val members = info.optJSONArray("participants")
                 subText.text = "${members?.length() ?: 0} 位成员"
                 memberBox.removeAllViews()

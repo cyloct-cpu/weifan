@@ -49,6 +49,8 @@ final class ConnectionHandler: NSObject, MobileConnectionListenerProtocol {
 final class MessageHandler: NSObject, MobileMessageListenerProtocol {
     var onMessage: ((Data) -> Void)?
     var onHistoryDoneCb: (() -> Void)?
+    // 群元数据事件（groupInfo/kicked 等，Go onGroupInfo 转发）
+    var onEvent: ((Data) -> Void)?
 
     func onMessage(_ json: String?) {
         guard let json, let data = json.data(using: .utf8) else { return }
@@ -56,6 +58,10 @@ final class MessageHandler: NSObject, MobileMessageListenerProtocol {
     }
     func onHistoryDone() {
         onHistoryDoneCb?()
+    }
+    func onMessageEvent(_ json: String?) {
+        guard let json, let data = json.data(using: .utf8) else { return }
+        onEvent?(data)
     }
 }
 
@@ -147,6 +153,9 @@ final class ProtocolCore: ObservableObject {
         client.setConnectionListener(connHandler)
         client.setMessageListener(msgHandler)
         client.setReceiptListener(receiptHandler)
+        msgHandler.onEvent = { data in
+            Task { @MainActor in self.onGroupEvent?(data) }
+        }
     }
 
     /// 阶段 1：已配对就静默重连
@@ -161,6 +170,13 @@ final class ProtocolCore: ObservableObject {
     // MARK: - 配对
 
     @Published var pairError: String? = nil
+    /// 群事件（kicked 等）出口；ChatView/列表页 bind
+    var onGroupEvent: ((Data) -> Void)? = nil
+    func bindKicked(_ handler: @escaping (String) -> Void) {
+        onGroupEvent = { data in
+            KickedAlert.handle(eventJSON: data) { _, group in handler(group) }
+        }
+    }
 
     /// 发起二维码配对。回调码经 pairHandler.onCode 抛给 UI（用 CoreImage 现场渲染 QR）。
     /// 注意：gobind 回调来自 Go 线程，UI 状态必须回主线程改。

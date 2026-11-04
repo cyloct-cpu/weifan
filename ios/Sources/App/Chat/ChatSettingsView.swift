@@ -109,7 +109,10 @@ struct TodoListView: View {
                 }
             }
             .onDelete { sets in
-                for i in sets { try? core.db.exec("DELETE FROM todos WHERE id = ?", args: [todos[i].id]) }
+                for i in sets {
+                    TodoNotifications.cancel(todoId: todos[i].id)
+                    try? core.db.exec("DELETE FROM todos WHERE id = ?", args: [todos[i].id])
+                }
                 reload()
             }
         }
@@ -129,6 +132,11 @@ struct TodoListView: View {
                 _ = try? core.db.exec(
                     "INSERT INTO todos(chat_jid,content,due_ts,done,created_ts) VALUES(?,?,?,0,?)",
                     args: ["", text, due, Int64(Date().timeIntervalSince1970 * 1000)])
+                if due > 0 {
+                    // P1：到期本地通知（对齐参考 followup_perm_*；与 Android TodoNotifications 同构）
+                    TodoNotifications.ensureAuthorized { _ in }
+                    TodoNotifications.schedule(todoId: Int64(Date().timeIntervalSince1970), content: text, dueTs: due)
+                }
                 newContent = ""; newDue = nil
                 reload()
             }
@@ -151,6 +159,7 @@ struct TodoListView: View {
 
     private func toggle(_ t: TodoRowUI) {
         try? core.db.exec("UPDATE todos SET done = ? WHERE id = ?", args: [!t.done, t.id])
+        if t.done { TodoNotifications.cancel(todoId: t.id) }
         reload()
     }
 

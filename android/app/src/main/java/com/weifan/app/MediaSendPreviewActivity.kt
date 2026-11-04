@@ -31,7 +31,7 @@ import java.io.File
 class MediaSendPreviewActivity : BaseActivity() {
 
     private var path: String = ""
-    private var kind: String = "image"          // image | document
+    private var kind: String = "image"          // image | video | document
     private var fileName: String = ""
     private lateinit var captionInput: EditText
     private lateinit var sendBtn: TextView
@@ -65,7 +65,11 @@ class MediaSendPreviewActivity : BaseActivity() {
             ViewGroup.LayoutParams.MATCH_PARENT, 0, 1f))
 
         // ── 预览区
-        if (kind == "image") box.addView(imagePreview()) else box.addView(documentCard())
+        when (kind) {
+            "image" -> box.addView(imagePreview())
+            "video" -> box.addView(videoPreview())
+            else -> box.addView(documentCard())
+        }
 
         // ── 说明输入
         box.addView(TextView(this).apply {
@@ -137,6 +141,24 @@ class MediaSendPreviewActivity : BaseActivity() {
         return iv
     }
 
+    private fun videoPreview(): View {
+        // 视频预览：系统缩略图（首帧）+ 居中播放图标
+        val bmp = android.media.ThumbnailUtils.createVideoThumbnail(
+            path, android.provider.MediaStore.Video.Thumbnails.MINI_KIND)
+        val frame = android.widget.FrameLayout(this)
+        val iv = android.widget.ImageView(this).apply {
+            if (bmp != null) { setImageBitmap(bmp); scaleType = android.widget.ImageView.ScaleType.CENTER_CROP }
+            else { setImageResource(android.R.drawable.ic_media_play) }
+        }
+        frame.addView(iv, android.widget.FrameLayout.LayoutParams(
+            ViewGroup.LayoutParams.MATCH_PARENT, dp(260)))
+        frame.addView(android.widget.TextView(this).apply {
+            text = "▶"; textSize = 40f; gravity = android.view.Gravity.CENTER
+        }, android.widget.FrameLayout.LayoutParams(
+            ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT))
+        return frame
+    }
+
     private fun documentCard(): View {
         val size = File(path).length()
         return LinearLayout(this).apply {
@@ -193,7 +215,11 @@ class MediaSendPreviewActivity : BaseActivity() {
                 else { setResult(RESULT_OK); finish() }
             }
         }
-        if (kind == "image") engine.sendImageAsync(jid, path, caption) { _, err -> done(err) }
-        else engine.sendDocumentAsync(jid, path, fileName, caption) { _, err -> done(err) }
+        when (kind) {
+            "image" -> engine.sendImageAsync(jid, path, caption) { _, err -> done(err) }
+            // P4：视频发送（协议 SendVideoFromPath；whatsmeow MediaVideo 上传）
+            "video" -> engine.sendVideoAsync(jid, path, caption) { _, err -> done(err) }
+            else -> engine.sendDocumentAsync(jid, path, fileName, caption) { _, err -> done(err) }
+        }
     }
 }

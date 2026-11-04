@@ -192,6 +192,10 @@ history=true 表示来自历史同步（Kotlin 侧直接入库，不再自动翻
  */
 - (NSString* _Nonnull)getGroupInfo:(NSString* _Nullable)groupJid error:(NSError* _Nullable* _Nullable)error;
 /**
+ * GetGroupInviteLink 获取群邀请链接（reset=true 时重置旧链接）
+ */
+- (NSString* _Nonnull)getGroupInviteLink:(NSString* _Nullable)groupJid reset:(BOOL)reset error:(NSError* _Nullable* _Nullable)error;
+/**
  * GetProfilePicture 拉取联系人头像，返回 JPEG 字节。
 下载走已配置的代理（头像 URL 在 mmg.whatsapp.net，国内直连不通），
 Kotlin 侧负责落盘缓存。找不到头像或拉取失败返回错误。
@@ -354,6 +358,10 @@ price 单位是「元」，协议里要乘 1000（priceAmount1000）。
  */
 - (BOOL)sendVideoFrame:(NSData* _Nullable)accessUnit error:(NSError* _Nullable* _Nullable)error;
 /**
+ * SendVideoFromPath 发送视频（对齐参考 sendVideoFromPath；whatsmeow MediaVideo 上传）
+ */
+- (NSString* _Nonnull)sendVideoFromPath:(NSString* _Nullable)chatJid path:(NSString* _Nullable)path caption:(NSString* _Nullable)caption seconds:(long)seconds error:(NSError* _Nullable* _Nullable)error;
+/**
  * VotePoll 以本人身份给投票投选。chatJid/pollMsgID 来自投票消息，
 senderJid/timestampMs 取自该投票消息行（Kotlin 侧已有）。
 SetAudioListener 设置通话音频回调（收到对端音频时触发）。
@@ -365,6 +373,10 @@ SetAudioListener 设置通话音频回调（收到对端音频时触发）。
  * SetGroupName 改群名
  */
 - (BOOL)setGroupName:(NSString* _Nullable)groupJid name:(NSString* _Nullable)name error:(NSError* _Nullable* _Nullable)error;
+/**
+ * SetGroupTopic 设置群公告（对齐参考 setGroupTopic）
+ */
+- (BOOL)setGroupTopic:(NSString* _Nullable)groupJid topic:(NSString* _Nullable)topic error:(NSError* _Nullable* _Nullable)error;
 - (void)setMessageEventListener:(id<MobileMessageEventListener> _Nullable)l;
 - (void)setMessageListener:(id<MobileMessageListener> _Nullable)l;
 /**

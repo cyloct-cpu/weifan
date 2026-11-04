@@ -59,6 +59,31 @@ class ChatListActivity : BaseActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         engine = ChatEngine.get(this)
+        // P8：被移出群 → dialog_kicked（引擎层分发 groupInfo.kicked）
+        engine.onKickedFromGroup = { group ->
+            runOnUiThread {
+                val box = LinearLayout(this).apply {
+                    orientation = LinearLayout.VERTICAL
+                    setPadding(dp(24), dp(20), dp(24), dp(8))
+                }
+                box.addView(TextView(this).apply {
+                    text = "你已被移出群聊"
+                    textSize = 18f
+                    setTypeface(typeface, android.graphics.Typeface.BOLD)
+                    setTextColor(WaSpec.textPrimary(night))
+                })
+                box.addView(TextView(this).apply {
+                    text = "群：$group\n你将不再收到该群的消息"
+                    textSize = 14f
+                    setTextColor(WaSpec.textSecondary(night))
+                    setPadding(0, dp(10), 0, 0)
+                })
+                android.app.AlertDialog.Builder(this, R.style.WeifanDialog)
+                    .setView(box)
+                    .setPositiveButton("知道了", null)
+                    .show()
+            }
+        }
 
         // 入口逻辑：未配对 → 直接进配对页（配对成功后自动回到本页）
         if (!engine.isPaired()) {

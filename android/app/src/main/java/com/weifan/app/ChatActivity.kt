@@ -92,6 +92,7 @@ class ChatActivity : BaseActivity() {
 
     companion object {
         private const val REQ_PICK_IMAGE = 11
+        private const val REQ_PICK_VIDEO = 14
         private const val REQ_PICK_DOC = 12
     }
 
@@ -1857,6 +1858,8 @@ class ChatActivity : BaseActivity() {
             }, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f).apply {
                 marginStart = dp(12)
             })
+            // 整行可点（审查轮抓到：action 原本没挂，菜单点了没反应）
+            r.setOnClickListener { action() }
             box.addView(r)
         }
         row("👤", "查看资料") {
@@ -1864,6 +1867,8 @@ class ChatActivity : BaseActivity() {
                 .putExtra("jid", chatJid).putExtra("title", chatTitle))
         }
         row("🔍", "会话内搜索") { toggleChatSearch() }
+        // P6：AI 建议回复（对齐参考 dialog_ai_suggest_reply / view_ai_suggest_reply_button）
+        row("✨", "AI 建议回复") { showAiSuggestDialog() }
         row("📦", if (archivedNow) "取消归档" else "归档聊天") {
             engine.db.setChatFlags(chatJid, archived = !archivedNow)
             Toast.makeText(this, if (archivedNow) "已取消归档" else "已归档", Toast.LENGTH_SHORT).show()
@@ -1918,6 +1923,55 @@ class ChatActivity : BaseActivity() {
             .setView(box)
             .setPositiveButton("关闭", null)
             .show()
+    }
+
+    /** P6：AI 建议回复（最后 8 条 → 已配置 LLM → 3 条候选，点击填入输入框） */
+    private fun showAiSuggestDialog() {
+        val box = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding(dp(22), dp(18), dp(22), dp(8))
+        }
+        val status = TextView(this).apply {
+            text = "正在根据最近对话生成建议…"
+            textSize = 14f
+            setTextColor(WaSpec.textSecondary(night))
+        }
+        box.addView(status)
+        val dlg = android.app.AlertDialog.Builder(this, R.style.WeifanDialog)
+            .setTitle("✨ AI 建议回复")
+            .setView(box)
+            .setNegativeButton("关闭", null)
+            .show()
+        engine.aiSuggestAsync(chatJid) { suggestions, err ->
+            runOnUiThread {
+                if (err != null || suggestions.isEmpty()) {
+                    status.text = err ?: "没有生成建议"
+                    return@runOnUiThread
+                }
+                status.text = "点击一条填入输入框："
+                box.addView(TextView(this).apply { text = "" }, LinearLayout.LayoutParams(
+                    ViewGroup.LayoutParams.MATCH_PARENT, dp(6)))
+                for (sg in suggestions) {
+                    box.addView(TextView(this).apply {
+                        text = "·  $sg"
+                        textSize = 15f
+                        setTextColor(WaSpec.textPrimary(night))
+                        setPadding(dp(8), dp(10), dp(8), dp(10))
+                        isClickable = true
+                        background = Ui.roundBg(this@ChatActivity,
+                            if (night) WaSpec.SEARCH_BG_NIGHT else WaSpec.GRAY6, 10)
+                        setOnClickListener {
+                            input.setText(sg)
+                            input.setSelection(sg.length)
+                            dlg.dismiss()
+                        }
+                    }, LinearLayout.LayoutParams(
+                        ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply {
+                        topMargin = dp(6)
+                    })
+                }
+            }
+        }
     }
 
     private fun showActionMenu(m: MessageRow) {
@@ -2646,7 +2700,8 @@ class ChatActivity : BaseActivity() {
         attachDialog?.dismiss()
         val items = listOf(
             "📄  文档" to "doc",
-            "🖼️  照片和视频" to "media",
+            "🖼️  照片" to "media",
+            "🎬  视频" to "video",
             "📷  相机" to "camera",
             "🎤  音频" to "audio",
             "👤  联系人" to "contact",
@@ -2693,6 +2748,7 @@ class ChatActivity : BaseActivity() {
                     when (key) {
                         "doc" -> pickDocument()
                         "media" -> pickImage()
+                        "video" -> pickVideo()
                         "audio" -> showRecordDialog()
                         "location" -> showLocationDialog()
                         "contact" -> showContactDialog()
@@ -4096,9 +4152,16 @@ class ChatActivity : BaseActivity() {
     }
 
     private fun pickImage() {
+        // 图/视频统一选择（ACTION_PICK video uri 也能走 MediaSendPreview）
         val i = android.content.Intent(android.content.Intent.ACTION_PICK,
             android.provider.MediaStore.Images.Media.EXTERNAL_CONTENT_URI)
         startActivityForResult(i, REQ_PICK_IMAGE)
+    }
+
+    private fun pickVideo() {
+        val i = android.content.Intent(android.content.Intent.ACTION_PICK,
+            android.provider.MediaStore.Video.Media.EXTERNAL_CONTENT_URI)
+        startActivityForResult(i, REQ_PICK_VIDEO)
     }
 
     private fun pickDocument() {
@@ -4120,7 +4183,11 @@ class ChatActivity : BaseActivity() {
         // 预览页发送完会 finish，本页 onResume 里重新 renderMessages。
         startActivity(Intent(this, MediaSendPreviewActivity::class.java)
             .putExtra("path", path)
-            .putExtra("kind", if (requestCode == REQ_PICK_IMAGE) "image" else "document")
+            .putExtra("kind", when (requestCode) {
+                REQ_PICK_IMAGE -> "image"
+                REQ_PICK_VIDEO -> "video"
+                else -> "document"
+            })
             .putExtra("name", queryDisplayName(uri) ?: java.io.File(path).name)
             .putExtra("jid", chatJid))
     }
@@ -4128,7 +4195,11 @@ class ChatActivity : BaseActivity() {
     private fun copyUriToCache(uri: android.net.Uri, req: Int): String? = try {
         val dir = java.io.File(cacheDir, "send").apply { mkdirs() }
         val name = queryDisplayName(uri) ?: ("pick-" + System.currentTimeMillis() +
-            if (req == REQ_PICK_IMAGE) ".jpg" else "")
+            when (req) {
+                REQ_PICK_IMAGE -> ".jpg"
+                REQ_PICK_VIDEO -> ".mp4"
+                else -> ""
+            })
         val f = java.io.File(dir, name)
         contentResolver.openInputStream(uri)!!.use { ins -> f.outputStream().use { ins.copyTo(it) } }
         f.absolutePath
