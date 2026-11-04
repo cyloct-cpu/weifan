@@ -60,6 +60,8 @@ class ChatActivity : BaseActivity() {
     private lateinit var scroll: ScrollView
     private lateinit var input: EditText
     private lateinit var sendBtn: View
+    // U3：独立麦克风按钮（对齐参考 micButton：与发送钮同位，有字时让位）
+    private lateinit var micBtn: View
     private lateinit var subtitle: TextView
     private lateinit var translateBtn: TextView
     // 会话内搜索（批1-b）
@@ -445,6 +447,12 @@ class ChatActivity : BaseActivity() {
             override fun onTextChanged(s: CharSequence?, a: Int, b: Int, c: Int) {}
             override fun afterTextChanged(s: android.text.Editable?) {
                 if (s?.isNotBlank() == true) engine.notifyComposing(chatJid)
+                // U3：有字切发送钮、空切麦克风钮（对齐参考 sendContainer 双钮同位切换）
+                if (::micBtn.isInitialized && ::sendBtn.isInitialized) {
+                    val hasText = !s.isNullOrBlank()
+                    micBtn.visibility = if (hasText) View.GONE else View.VISIBLE
+                    sendBtn.visibility = if (hasText) View.VISIBLE else View.GONE
+                }
                 // A5/A6：@ 提及（群聊）与 / 斜杠命令建议面板
                 maybeShowSuggestions(s?.toString() ?: "")
             }
@@ -607,7 +615,9 @@ class ChatActivity : BaseActivity() {
         suggestScroll.visibility = View.GONE
         row.addView(capsule, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
 
-        // 发送圆钮 48dp，左间距 4dp
+        // 发送圆钮 48dp，左间距 4dp。
+        // U3：参考 sendContainer 是 micButton/sendButton 同位 FrameLayout——
+        // 空输入显示麦克风（按住说话），有字切发送。
         sendBtn = TextView(this).apply {
             text = "➤"
             textSize = 18f
@@ -619,7 +629,28 @@ class ChatActivity : BaseActivity() {
             isClickable = true
             setOnClickListener { onSend() }
         }
-        row.addView(sendBtn, LinearLayout.LayoutParams(
+        micBtn = TextView(this).apply {
+            text = "🎤"
+            textSize = 19f
+            gravity = Gravity.CENTER
+            setTextColor(WaSpec.inputBtnIcon(night))
+            background = Ui.roundBg(this@ChatActivity, WaSpec.inputBtnBg(night),
+                WaSpec.PTT_SEND_BUTTON_SIZE_DP / 2, 1, WaSpec.inputBtnStroke(night))
+            isClickable = true
+            isLongClickable = true
+            // 按住说话：与录音弹层同一套手势（DOWN 开录 / 上滑取消 / 上滑锁定）
+            setOnTouchListener(pttTouchListener(openDialogOnDown = true))
+        }
+        val sendContainer = android.widget.FrameLayout(this)
+        sendContainer.addView(micBtn, android.widget.FrameLayout.LayoutParams(
+            ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT))
+        sendContainer.addView(sendBtn, android.widget.FrameLayout.LayoutParams(
+            ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT))
+        // 初始态同步（TextWatcher 只在文字变化时触发，进场不带文本 → 显示麦克风）
+        val hasTextNow = !input.text.isNullOrBlank()
+        micBtn.visibility = if (hasTextNow) View.GONE else View.VISIBLE
+        sendBtn.visibility = if (hasTextNow) View.VISIBLE else View.GONE
+        row.addView(sendContainer, LinearLayout.LayoutParams(
             dp(WaSpec.PTT_SEND_BUTTON_SIZE_DP), dp(WaSpec.PTT_SEND_BUTTON_SIZE_DP)).apply {
             marginStart = dp(WaSpec.PTT_SEND_MARGIN_DP)
             bottomMargin = dp(2)
@@ -1031,12 +1062,12 @@ class ChatActivity : BaseActivity() {
                     val row = LinearLayout(this).apply {
                         orientation = LinearLayout.HORIZONTAL
                         gravity = Gravity.CENTER_VERTICAL
-                        setPadding(0, dp(5), 0, 0)
+                        setPadding(0, dp(2), 0, 0)
                     }
                     row.addView(View(this).apply {
                         background = Ui.roundBg(this@ChatActivity,
-                            if (night) 0xFF8696A0.toInt() else 0xFF8696A0.toInt(), dp(11))
-                    }, LinearLayout.LayoutParams(dp(22), dp(22)))
+                            if (night) 0xFF8696A0.toInt() else 0xFF8696A0.toInt(), dp(10))
+                    }, LinearLayout.LayoutParams(dp(20), dp(20)))
                     row.addView(TextView(this).apply {
                         text = opt
                         textSize = 13.5f
@@ -1195,18 +1226,18 @@ class ChatActivity : BaseActivity() {
 
                     val playBtn = TextView(this).apply {
                         text = "▶"
-                        textSize = 16f
+                        textSize = 15f
                         setTextColor(Color.WHITE)
                         gravity = Gravity.CENTER
                         background = Ui.roundBg(this@ChatActivity, WaSpec.GREEN_LIGHT,
-                            WaSpec.PTT_SEND_BUTTON_SIZE_DP / 2)
+                            WaSpec.VOICE_PLAY_BUTTON_SIZE_DP / 2)
                     }
                     val wave = WaveformView(this, night).apply {
                         setData(waveData, m.id)
                     }
                     val dur = TextView(this).apply {
                         text = duration
-                        textSize = 12f
+                        textSize = 11f
                         setTextColor(WaSpec.textSecondary(night))
                     }
                     val row = LinearLayout(this).apply {
@@ -1216,7 +1247,7 @@ class ChatActivity : BaseActivity() {
                         setPadding(dp(2), dp(2), dp(2), dp(2))
                     }
                     row.addView(playBtn, LinearLayout.LayoutParams(
-                        dp(44), dp(44)))
+                        dp(WaSpec.VOICE_PLAY_BUTTON_SIZE_DP), dp(WaSpec.VOICE_PLAY_BUTTON_SIZE_DP)))
                     row.addView(wave, LinearLayout.LayoutParams(0, dp(28), 1f).apply {
                         marginStart = dp(8); marginEnd = dp(8)
                     })
@@ -1462,6 +1493,9 @@ class ChatActivity : BaseActivity() {
                     }
                     return
                 }
+                // R3 尾巴：@提及面板空态（对齐参考 groupMentionEmpty：14sp、padding 14/12）
+                showMentionEmpty()
+                return
             }
         }
         hideSuggestions()
@@ -1490,6 +1524,28 @@ class ChatActivity : BaseActivity() {
                 groupMembers = list.take(120)
             }
         }.start()
+    }
+
+    /** R3 尾巴：@提及面板空态（对齐参考 layout_group_mention_panel 的 groupMentionEmpty：14sp、padding 14/12） */
+    private fun showMentionEmpty() {
+        suggestionPanel.removeAllViews()
+        suggestionPanel.addView(TextView(this).apply {
+            text = "没有匹配的成员"
+            textSize = 14f
+            setTextColor(WaSpec.textSecondary(night))
+            setPadding(dp(14), dp(12), dp(14), dp(12))
+        }, LinearLayout.LayoutParams(
+            ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT))
+        suggestionPanel.visibility = View.VISIBLE
+        suggestScroll.visibility = View.VISIBLE
+        suggestionPanel.post {
+            val h = suggestionPanel.height
+            if (h > 0) {
+                suggestScroll.layoutParams = suggestScroll.layoutParams.apply {
+                    height = minOf(h, dp(430))
+                }
+            }
+        }
     }
 
     private fun showSuggestionItems(items: List<Pair<String, String>>,
@@ -1783,9 +1839,9 @@ class ChatActivity : BaseActivity() {
         val dlg = android.app.AlertDialog.Builder(this, R.style.WeifanDialog).create()
         fun item(label: String, action: () -> Unit): TextView = TextView(this).apply {
             text = label
-            textSize = 16f
+            textSize = 14f
             setTextColor(WaSpec.textPrimary(night))
-            setPadding(dp(20), dp(14), dp(20), dp(14))
+            setPadding(dp(14), dp(10), dp(14), dp(10))
             isClickable = true
             setOnClickListener { action() }
         }
@@ -2593,6 +2649,10 @@ class ChatActivity : BaseActivity() {
     private var recordPath: String? = null
     private var recordStart = 0L
     private var recordDialog: android.app.AlertDialog? = null
+    // U3：录音浮层三件套提为字段，让输入区麦克风按钮与弹层内的「按住」共用同一套手势
+    private var dlgMic: TextView? = null
+    private var dlgHint: TextView? = null
+    private var dlgHold: TextView? = null
     // A4：计时器 / 锁定态 / 锁定后的发送-删除按钮
     private var recordTicker: android.os.Handler? = null
     private var recordTickRunnable: Runnable? = null
@@ -2719,13 +2779,13 @@ class ChatActivity : BaseActivity() {
             .show()
     }
 
-    private fun showRecordDialog() {
+    private fun showRecordDialog(): Boolean {
         // 运行时权限：模拟器 appops 默认 allow 会掩盖缺失；真机不声明不请求直接失败
         recordLocked = false   // 上次锁定态不能留到下一次（否则按住没反应）
         if (checkSelfPermission(android.Manifest.permission.RECORD_AUDIO)
                 != android.content.pm.PackageManager.PERMISSION_GRANTED) {
             requestPermissions(arrayOf(android.Manifest.permission.RECORD_AUDIO), 4102)
-            return
+            return false
         }
         val box = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
@@ -2760,77 +2820,10 @@ class ChatActivity : BaseActivity() {
             topMargin = dp(20)
         })
         recordDialog = android.app.AlertDialog.Builder(this, R.style.WeifanDialog).create()
+        // U3：三件套提为字段，输入区麦克风按钮共用同一手势（见 pttTouchListener）
+        dlgMic = mic; dlgHint = hint; dlgHold = hold
 
-        var downY = 0f
-        // 三个区间（dp）：>取消阀值=松手取消；>锁定阀值=松手后锁定（进入草稿态继续录）
-        val cancelAt = dp(64)
-        val lockAt = dp(150)
-        hold.setOnTouchListener { v, e ->
-            when (e.action) {
-                android.view.MotionEvent.ACTION_DOWN -> {
-                    if (recordLocked) return@setOnTouchListener false
-                    downY = e.rawY
-                    hold.text = "松开 发送"
-                    hold.background = Ui.roundBg(this@ChatActivity, 0xCC4444, 28)
-                    startRecording()
-                    startRecordTimer(mic, hint)
-                    v.isPressed = true
-                    true
-                }
-                android.view.MotionEvent.ACTION_MOVE -> {
-                    if (recordLocked) return@setOnTouchListener false
-                    val dy = downY - e.rawY
-                    when {
-                        dy >= lockAt -> {
-                            mic.text = "🔒"
-                            hint.text = "松开手指，锁定录音\n锁定后可松手继续录，再点发送"
-                            hint.setTextColor(WaSpec.primary(night))
-                        }
-                        dy >= cancelAt -> {
-                            mic.text = "🗑"
-                            hint.text = "松开手指，取消发送"
-                            hint.setTextColor(0xFFE53935.toInt())
-                        }
-                        else -> {
-                            mic.text = "🎤"
-                            hint.text = "松开即发送\n上滑取消 · 继续上滑锁定"
-                            hint.setTextColor(WaSpec.textSecondary(night))
-                        }
-                    }
-                    true
-                }
-                android.view.MotionEvent.ACTION_UP -> {
-                    v.isPressed = false
-                    val dy = downY - e.rawY
-                    if (recordLocked) return@setOnTouchListener false   // 锁定态交给按钮
-                    when {
-                        dy >= lockAt -> {
-                            // pttLockHint → 锁定：松手不停录，进入草稿态
-                            enterLockedRecording(mic, hint, hold)
-                            true
-                        }
-                        dy >= cancelAt -> {
-                            stopRecordTimer()
-                            stopRecording(false)   // 垃圾桶：删除不发送
-                            recordDialog?.dismiss()
-                            true
-                        }
-                        else -> {
-                            stopRecordTimer()
-                            stopRecording(true)
-                            recordDialog?.dismiss()
-                            true
-                        }
-                    }
-                }
-                android.view.MotionEvent.ACTION_CANCEL -> {
-                    stopRecordTimer()
-                    if (!recordLocked) { stopRecording(false); recordDialog?.dismiss() }
-                    true
-                }
-                else -> false
-            }
-        }
+        hold.setOnTouchListener(pttTouchListener(openDialogOnDown = false))
         // 锁定态下的发送 / 删除按钮（默认隐藏，锁定时显现）
         recordLockedRow = LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL
@@ -2875,20 +2868,116 @@ class ChatActivity : BaseActivity() {
             .setNegativeButton("取消", null)
             .show()
             .let { recordDialog = it }
+        return true
+    }
+
+    /**
+     * U3：按住说话手势（录音弹层「按住」钮与输入区麦克风钮共用同一套）。
+     * openDialogOnDown=true 时（输入区麦克风），DOWN 先弹录音浮层再开录；
+     * 三个区间（dp）：>取消阀值=松手取消；>锁定阀值=松手后锁定（进入草稿态继续录）。
+     */
+    private fun pttTouchListener(openDialogOnDown: Boolean): View.OnTouchListener {
+        var downY = 0f
+        val cancelAt = dp(64)
+        val lockAt = dp(150)
+        return View.OnTouchListener { v, e ->
+            // 输入区麦克风：DOWN 先弹录音浮层（里面才会给 dlgMic/dlgHint/dlgHold 赋值），
+            // 再落到下面统一的 DOWN 处理；顺序不能反——dlgMic 为空时整套手势是哑的
+            if (openDialogOnDown && e.action == android.view.MotionEvent.ACTION_DOWN) {
+                if (recordLocked) return@OnTouchListener false
+                if (!showRecordDialog()) return@OnTouchListener false
+            }
+            val mic = dlgMic ?: return@OnTouchListener false
+            val hint = dlgHint ?: return@OnTouchListener false
+            val hold = dlgHold ?: return@OnTouchListener false
+            when (e.action) {
+                android.view.MotionEvent.ACTION_DOWN -> {
+                    if (recordLocked) return@OnTouchListener false
+                    downY = e.rawY
+                    hold.text = "松开 发送"
+                    hold.background = Ui.roundBg(this@ChatActivity, 0xCC4444, 28)
+                    startRecording()
+                    startRecordTimer(mic, hint)
+                    v.isPressed = true
+                    true
+                }
+                android.view.MotionEvent.ACTION_MOVE -> {
+                    if (recordLocked) return@OnTouchListener false
+                    val dy = downY - e.rawY
+                    when {
+                        dy >= lockAt -> {
+                            mic.text = "🔒"
+                            hint.text = "松开手指，锁定录音\n锁定后可松手继续录，再点发送"
+                            hint.setTextColor(WaSpec.primary(night))
+                        }
+                        dy >= cancelAt -> {
+                            mic.text = "🗑"
+                            hint.text = "松开手指，取消发送"
+                            hint.setTextColor(0xFFE53935.toInt())
+                        }
+                        else -> {
+                            mic.text = "🎤"
+                            hint.text = "松开即发送\n上滑取消 · 继续上滑锁定"
+                            hint.setTextColor(WaSpec.textSecondary(night))
+                        }
+                    }
+                    true
+                }
+                android.view.MotionEvent.ACTION_UP -> {
+                    v.isPressed = false
+                    val dy = downY - e.rawY
+                    if (recordLocked) return@OnTouchListener false   // 锁定态交给按钮
+                    when {
+                        dy >= lockAt -> {
+                            // pttLockHint → 锁定：松手不停录，进入草稿态
+                            enterLockedRecording(mic, hint, hold)
+                            true
+                        }
+                        dy >= cancelAt -> {
+                            stopRecordTimer()
+                            stopRecording(false)   // 垃圾桶：删除不发送
+                            recordDialog?.dismiss()
+                            true
+                        }
+                        else -> {
+                            stopRecordTimer()
+                            stopRecording(true)
+                            recordDialog?.dismiss()
+                            true
+                        }
+                    }
+                }
+                android.view.MotionEvent.ACTION_CANCEL -> {
+                    stopRecordTimer()
+                    if (!recordLocked) { stopRecording(false); recordDialog?.dismiss() }
+                    true
+                }
+                else -> false
+            }
+        }
     }
 
     private fun showLocationDialog() {
+        // 对齐参考 dialog_send_location：padding 20/12、字段顺序 名称→地址→纬度→经度
         val box = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
-            setPadding(dp(24), dp(12), dp(24), 0)
+            setPadding(dp(20), dp(12), dp(20), dp(12))
         }
+        val name = EditText(this).apply {
+            hint = "地点名称（可选）"; setSingleLine(true) }
+        val addr = EditText(this).apply {
+            hint = "地址（可选）"; setMaxLines(2) }
         val lat = EditText(this).apply {
             hint = "纬度，如 19.4326（墨西哥城）"; setSingleLine(true) }
         val lng = EditText(this).apply {
             hint = "经度，如 -99.1332"; setSingleLine(true) }
-        val name = EditText(this).apply {
-            hint = "地点名称（可选）"; setSingleLine(true) }
-        box.addView(lat); box.addView(lng); box.addView(name)
+        box.addView(name)
+        box.addView(addr, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT,
+            ViewGroup.LayoutParams.WRAP_CONTENT).apply { topMargin = dp(8) })
+        box.addView(lat, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT,
+            ViewGroup.LayoutParams.WRAP_CONTENT).apply { topMargin = dp(8) })
+        box.addView(lng, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT,
+            ViewGroup.LayoutParams.WRAP_CONTENT).apply { topMargin = dp(8) })
         val dlg = android.app.AlertDialog.Builder(this, R.style.WeifanDialog)
             .setTitle("发送位置")
             .setView(box)
@@ -2900,7 +2989,7 @@ class ChatActivity : BaseActivity() {
                 }
                 sendBtn.isEnabled = false
                 engine.sendLocationAsync(chatJid, la, lo,
-                    name.text.toString().trim(), "") { _, err ->
+                    name.text.toString().trim(), addr.text.toString().trim()) { _, err ->
                     sendBtn.isEnabled = true
                     if (err != null) Toast.makeText(this, "发送失败：$err", Toast.LENGTH_LONG).show()
                     else renderMessages()

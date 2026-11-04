@@ -53,7 +53,7 @@ class MediaSendPreviewActivity : BaseActivity() {
             orientation = LinearLayout.VERTICAL
             setBackgroundColor(WaSpec.surface(night))
         }
-        root.addView(Ui.topBar(this, "发送预览", onBack = { finish() }, night = night))
+        root.addView(Ui.topBar(this, "发送预览", onBack = { finish() }, night = night, titleSp = 16f))
 
         val scroll = ScrollView(this)
         val box = LinearLayout(this).apply {

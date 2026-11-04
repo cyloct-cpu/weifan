@@ -169,6 +169,8 @@ object WaSpec {
     const val TRANSLATE_BUTTON_PADDING_H_DP = 6
     const val TRANSLATE_BUTTON_TEXT_SP = 12
     const val PTT_SEND_BUTTON_SIZE_DP = 48
+    // 语音条播放圆钮（对齐参考 layout_voice_message_row 38dp）
+    const val VOICE_PLAY_BUTTON_SIZE_DP = 38
     const val PTT_SEND_MARGIN_DP = 4
     const val SEND_BUTTON_PADDING_DP = 12
     const val COMPOSER_SCRIM_HEIGHT_DP = 72

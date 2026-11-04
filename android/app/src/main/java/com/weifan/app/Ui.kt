@@ -32,7 +32,8 @@ object Ui {
         title: String,
         onBack: () -> Unit,
         night: Boolean = false,
-        action: View? = null
+        action: View? = null,
+        titleSp: Float = 19f
     ): LinearLayout = LinearLayout(context).apply {
         orientation = LinearLayout.HORIZONTAL
         gravity = Gravity.CENTER_VERTICAL
@@ -50,7 +51,7 @@ object Ui {
         })
         addView(TextView(context).apply {
             text = title
-            textSize = 19f
+            textSize = titleSp
             setTextColor(Color.WHITE)
             setTypeface(typeface, Typeface.BOLD)
             if (action != null) {

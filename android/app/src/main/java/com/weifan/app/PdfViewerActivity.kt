@@ -51,11 +51,12 @@ class PdfViewerActivity : BaseActivity() {
         path = intent.getStringExtra("path") ?: ""
         title = intent.getStringExtra("name") ?: File(path).name
 
-        val root = FrameLayout(this).apply { setBackgroundColor(Color.BLACK) }
+        // 对齐参考 activity_pdf_viewer：底色 wa_gray6（不是黑）
+        val root = FrameLayout(this).apply { setBackgroundColor(WaSpec.GRAY6) }
 
         imageView = ImageView(this).apply {
             scaleType = ImageView.ScaleType.FIT_CENTER
-            setBackgroundColor(Color.BLACK)
+            setBackgroundColor(WaSpec.GRAY6)
             layoutParams = FrameLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT)
         }

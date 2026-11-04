@@ -43,7 +43,7 @@ class NewContactActivity : BaseActivity() {
             orientation = LinearLayout.VERTICAL
             setBackgroundColor(WaSpec.surface(night))
         }
-        root.addView(Ui.topBar(this, "新建联系人", onBack = { finish() }, night = night))
+        root.addView(Ui.topBar(this, "新建联系人", onBack = { finish() }, night = night, titleSp = 18f))
 
         val scroll = ScrollView(this)
         val box = LinearLayout(this).apply {

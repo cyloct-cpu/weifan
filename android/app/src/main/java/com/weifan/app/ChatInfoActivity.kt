@@ -51,7 +51,7 @@ class ChatInfoActivity : BaseActivity() {
             setBackgroundColor(WaSpec.surface(night))
         }
         root.addView(Ui.topBar(this, if (isGroup) "群组资料" else "联络人资料",
-            onBack = { finish() }, night = night))
+            onBack = { finish() }, night = night, titleSp = 18f))
 
         val scroll = ScrollView(this).apply { setBackgroundColor(WaSpec.surface(night)) }
         val box = LinearLayout(this).apply {
