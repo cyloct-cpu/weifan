@@ -5,6 +5,13 @@ import WeiFanCore
 struct WeiFanApp: App {
     @StateObject private var model = AppModel()
 
+    init() {
+        // UI 测试：在任何 SwiftUI 视图创建之前把首启标记清掉（@AppStorage 缓存于此之后才建立）
+        if ProcessInfo.processInfo.arguments.contains("UITEST_RESET_ONBOARDING") {
+            UserDefaults.standard.removeObject(forKey: "onboard_lang_done")
+        }
+    }
+
     var body: some Scene {
         WindowGroup {
             RootView()
@@ -79,6 +86,9 @@ struct RootView: View {
 
     var body: some View {
         TabView {
+            // 阶段 1：多设备客户端形态（语言选择 → 配对 → 会话列表/会话页）
+            NavigationStack { ChatRootView() }
+                .tabItem { Label("聊天", systemImage: "bubble.left.and.bubble.right") }
             NavigationStack { SendView() }
                 .tabItem { Label("翻译", systemImage: "character.bubble") }
             NavigationStack { CustomersView() }

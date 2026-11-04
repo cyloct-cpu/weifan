@@ -12,6 +12,10 @@
 
 
 @class MobileWeifanClient;
+@protocol MobileAudioListener;
+@class MobileAudioListener;
+@protocol MobileCallListener;
+@class MobileCallListener;
 @protocol MobileConnectionListener;
 @class MobileConnectionListener;
 @protocol MobileMessageEventListener;
@@ -26,6 +30,31 @@
 @class MobileReceiptListener;
 @protocol MobileTypingListener;
 @class MobileTypingListener;
+@protocol MobileVideoListener;
+@class MobileVideoListener;
+
+@protocol MobileAudioListener <NSObject>
+/**
+ * OnAudioFrame 对端音频帧（s16le mono 16kHz）。Kotlin 侧写进 AudioTrack
+ */
+- (void)onAudioFrame:(NSData* _Nullable)data;
+@end
+
+@protocol MobileCallListener <NSObject>
+/**
+ * OnCallState 通话阶段变化（meowcaller CallPhase：0=idle 1=calling 2=ringing
+3=connecting 4=active 5=ended 6=waitingRoom）
+ */
+- (void)onCallState:(long)phase;
+/**
+ * OnCallTerminated 通话结束（对方挂断/超时/拒接）
+ */
+- (void)onCallTerminated:(NSString* _Nullable)callID reason:(NSString* _Nullable)reason;
+/**
+ * OnIncomingCall 收到来电。from/callCreator 是 JID，callID 用于拒接
+ */
+- (void)onIncomingCall:(NSString* _Nullable)from callID:(NSString* _Nullable)callID video:(BOOL)video timestampMs:(int64_t)timestampMs;
+@end
 
 @protocol MobileConnectionListener <NSObject>
 - (void)onConnected;
@@ -61,6 +90,14 @@ history=true 表示来自历史同步（Kotlin 侧直接入库，不再自动翻
  * OnPairSuccess 配对成功，携带本机 JID
  */
 - (void)onPairSuccess:(NSString* _Nullable)jid;
+/**
+ * OnQRCode 二维码原始字符串（二维码会过期刷新，UI 每次都要重绘）
+ */
+- (void)onQRCode:(NSString* _Nullable)code;
+/**
+ * OnQRImage 已渲染好的二维码 PNG 字节，UI 直接 decodeByteArray 显示
+ */
+- (void)onQRImage:(NSData* _Nullable)png;
 @end
 
 @protocol MobilePollUpdateListener <NSObject>
@@ -73,6 +110,10 @@ history=true 表示来自历史同步（Kotlin 侧直接入库，不再自动翻
 
 @protocol MobileTypingListener <NSObject>
 - (void)onTyping:(NSString* _Nullable)json;
+@end
+
+@protocol MobileVideoListener <NSObject>
+- (void)onVideoFrame:(NSData* _Nullable)data;
 @end
 
 /**
@@ -88,6 +129,18 @@ history=true 表示来自历史同步（Kotlin 侧直接入库，不再自动翻
  * AddGroupParticipants 往群里加人（phones 为 E.164 数组 JSON）
  */
 - (BOOL)addGroupParticipants:(NSString* _Nullable)groupJid phonesJSON:(NSString* _Nullable)phonesJSON error:(NSError* _Nullable* _Nullable)error;
+/**
+ * AnswerCall 接听当前来电。
+ */
+- (BOOL)answerCall:(NSError* _Nullable* _Nullable)error;
+/**
+ * CallState 当前通话状态（空串=无通话）
+ */
+- (NSString* _Nonnull)callState;
+/**
+ * CallStats 通话统计 JSON（验证双向音频是否真在跑）
+ */
+- (NSString* _Nonnull)callStats;
 /**
  * Connect 尝试连接。已配对 → 直接连上；未配对 → 返回需要配对（调用方再调 PairWithPhone）。
  */
@@ -113,6 +166,14 @@ history=true 表示来自历史同步（Kotlin 侧直接入库，不再自动翻
  */
 - (BOOL)editTextMessage:(NSString* _Nullable)chatJid msgID:(NSString* _Nullable)msgID newText:(NSString* _Nullable)newText error:(NSError* _Nullable* _Nullable)error;
 /**
+ * EnableSendVideo 升级为视频通话并允许发送本地画面。
+ */
+- (BOOL)enableSendVideo:(NSError* _Nullable* _Nullable)error;
+/**
+ * FeedMicPcm 喂麦克风 PCM（s16le mono 16kHz）。Kotlin 在独立线程循环调用。
+ */
+- (void)feedMicPcm:(NSData* _Nullable)data;
+/**
  * GetAllContactsJSON 拉取 WhatsApp 上积累的联系人（pushname/保存名/商家名）
 返回 [{jid,phone,name,fullName,pushName,businessName}]，有名在前
  */
@@ -137,9 +198,17 @@ Kotlin 侧负责落盘缓存。找不到头像或拉取失败返回错误。
  */
 - (NSData* _Nullable)getProfilePicture:(NSString* _Nullable)jid error:(NSError* _Nullable* _Nullable)error;
 /**
+ * HangupCall 挂断当前通话。
+ */
+- (BOOL)hangupCall:(NSError* _Nullable* _Nullable)error;
+/**
  * IsConnected 是否在线
  */
 - (BOOL)isConnected;
+/**
+ * IsMuted 当前是否静音
+ */
+- (BOOL)isMuted;
 /**
  * IsOnWhatsApp 校验手机号是否注册过 WhatsApp（P1-1）。
 phones JSON 数组，如 ["+8613800138000","+447925169391"]。
@@ -151,9 +220,22 @@ phones JSON 数组，如 ["+8613800138000","+447925169391"]。
  */
 - (BOOL)isPaired;
 /**
+ * ListMyDevices 列出本账号已登录的设备（只读）。
+走 USync 的 GetUserDevices：传自己的 JID 拿回同账号所有设备 JID（形如 user:device@s.whatsapp.net）。
+注意：whatsmeow 没有导出通用 IQ 发送口，所以只能读列表、无法注销任意设备。
+返回 JSON 数组：[{"device":12,"current":true}]（不返回完整 JID，避免泄露账号）
+ */
+- (NSString* _Nonnull)listMyDevices:(NSError* _Nullable* _Nullable)error;
+/**
  * Logout 注销并清除本机身份。
  */
 - (BOOL)logout:(NSError* _Nullable* _Nullable)error;
+/**
+ * LogoutWhatsApp 退出 WhatsApp 账号（注销本设备）。
+对齐参考 logout_whatsapp / logout_this_device：会让本设备从账号里消失，
+手机端 WhatsApp「已连接的设备」里也看不到——不可逆，调用后需重新配对。
+ */
+- (BOOL)logoutWhatsApp:(NSError* _Nullable* _Nullable)error;
 /**
  * MarkChatRead 上报已读（打开会话页时调用，ids 为该会话全部收到的消息 ID）
  */
@@ -164,7 +246,8 @@ phones JSON 数组，如 ["+8613800138000","+447925169391"]。
  */
 - (BOOL)pairWithPhone:(NSString* _Nullable)phone error:(NSError* _Nullable* _Nullable)error;
 /**
- * PairWithQR 生成 QR 字符串并打印到终端（桌面调试用）。移动端用 PairWithPhone。
+ * PairWithQR 发起二维码配对：拿到码后转成 PNG 推给 UI。
+二维码每 20 秒左右刷新一次（evt.Event=="code" 会反复出现），UI 每次重绘即可。
  */
 - (BOOL)pairWithQR:(NSError* _Nullable* _Nullable)error;
 /**
@@ -172,9 +255,19 @@ phones JSON 数组，如 ["+8613800138000","+447925169391"]。
  */
 - (BOOL)promoteGroupParticipants:(NSString* _Nullable)groupJid phonesJSON:(NSString* _Nullable)phonesJSON error:(NSError* _Nullable* _Nullable)error;
 /**
+ * RejectCall 拒接当前来电。
+ */
+- (BOOL)rejectCall:(NSString* _Nullable)callFrom callID:(NSString* _Nullable)callID error:(NSError* _Nullable* _Nullable)error;
+/**
  * RemoveGroupParticipants 把成员移出群（phones E.164 数组 JSON）
  */
 - (BOOL)removeGroupParticipants:(NSString* _Nullable)groupJid phonesJSON:(NSString* _Nullable)phonesJSON error:(NSError* _Nullable* _Nullable)error;
+/**
+ * RequestFullHistorySync 请求 WhatsApp 同步整体历史（对齐参考「同步 WhatsApp」）。
+关键前提：原装 WhatsApp 必须同账号在线且后台未被清理，否则服务器不会推历史。
+响应以 events.HistorySync 走原有 OnMessage(history=true) 链路入库。
+ */
+- (BOOL)requestFullHistorySync:(int32_t)count error:(NSError* _Nullable* _Nullable)error;
 /**
  * RequestHistorySyncOnDemand 按需历史翻页：请求某条更早消息之前的 count 条历史。
 anchorID/anchorFromMe/anchorTimestampMs 来自会话里最早一条消息。
@@ -208,6 +301,11 @@ ptt=true 表示语音条样式（官方语音条要求 ogg/opus；AAC 会以普�
  */
 - (NSString* _Nonnull)sendDocumentFromPath:(NSString* _Nullable)chatJid path:(NSString* _Nullable)path fileName:(NSString* _Nullable)fileName caption:(NSString* _Nullable)caption error:(NSError* _Nullable* _Nullable)error;
 /**
+ * SendEvent 发送活动邀请消息（proto EventMessage，whatsmeow 无高层 API 需自行构造）。
+参数：名称、描述、开始/结束毫秒时间戳、地点名、加入链接（可空）。
+ */
+- (NSString* _Nonnull)sendEvent:(NSString* _Nullable)chatJid name:(NSString* _Nullable)name description:(NSString* _Nullable)description startMs:(int64_t)startMs endMs:(int64_t)endMs locationName:(NSString* _Nullable)locationName joinLink:(NSString* _Nullable)joinLink error:(NSError* _Nullable* _Nullable)error;
+/**
  * SendForwardMedia 转发媒体：用存档的下载元数据重建 proto，IsForwarded 置位后重发。
  */
 - (NSString* _Nonnull)sendForwardMedia:(NSString* _Nullable)chatJid paramsJSON:(NSString* _Nullable)paramsJSON error:(NSError* _Nullable* _Nullable)error;
@@ -236,9 +334,32 @@ ptt=true 表示语音条样式（官方语音条要求 ogg/opus；AAC 会以普�
  */
 - (BOOL)sendPresenceAvailable:(NSError* _Nullable* _Nullable)error;
 /**
+ * SendProduct 发送商品卡片（ProductMessage）。
+需要 WhatsApp Business 账号的商品目录：productID 从 Business App 商品页复制。
+price 单位是「元」，协议里要乘 1000（priceAmount1000）。
+ */
+- (NSString* _Nonnull)sendProduct:(NSString* _Nullable)chatJid productID:(NSString* _Nullable)productID title:(NSString* _Nullable)title description:(NSString* _Nullable)description currency:(NSString* _Nullable)currency price:(double)price url:(NSString* _Nullable)url error:(NSError* _Nullable* _Nullable)error;
+/**
+ * SendReaction 给某条消息贴表情（reaction="" 表示取消）。
+底层用 whatsmeow 的 BuildReaction 构造 ReactionMessage 再正常发送。
+ */
+- (BOOL)sendReaction:(NSString* _Nullable)chatJid senderJid:(NSString* _Nullable)senderJid msgID:(NSString* _Nullable)msgID reaction:(NSString* _Nullable)reaction error:(NSError* _Nullable* _Nullable)error;
+/**
  * SendReply 引用回复：body 为要发的文本，引用参数来自被引消息。
  */
 - (NSString* _Nonnull)sendReply:(NSString* _Nullable)chatJid quoteID:(NSString* _Nullable)quoteID quoteParticipant:(NSString* _Nullable)quoteParticipant quoteText:(NSString* _Nullable)quoteText body:(NSString* _Nullable)body error:(NSError* _Nullable* _Nullable)error;
+/**
+ * SendVideoFrame 发送一帧已编码的 H.264 Annex-B 数据到对端。
+必须已在 StartCall(video=true) 或 StartVideo 之后调用，否则服务端会丢弃。
+ */
+- (BOOL)sendVideoFrame:(NSData* _Nullable)accessUnit error:(NSError* _Nullable* _Nullable)error;
+/**
+ * VotePoll 以本人身份给投票投选。chatJid/pollMsgID 来自投票消息，
+senderJid/timestampMs 取自该投票消息行（Kotlin 侧已有）。
+SetAudioListener 设置通话音频回调（收到对端音频时触发）。
+ */
+- (void)setAudioListener:(id<MobileAudioListener> _Nullable)l;
+- (void)setCallListener:(id<MobileCallListener> _Nullable)l;
 - (void)setConnectionListener:(id<MobileConnectionListener> _Nullable)l;
 /**
  * SetGroupName 改群名
@@ -247,25 +368,56 @@ ptt=true 表示语音条样式（官方语音条要求 ogg/opus；AAC 会以普�
 - (void)setMessageEventListener:(id<MobileMessageEventListener> _Nullable)l;
 - (void)setMessageListener:(id<MobileMessageListener> _Nullable)l;
 /**
+ * SetMuted 静音（不发麦克风数据，但仍继续读以保持管道活性）
+ */
+- (void)setMuted:(BOOL)m;
+/**
  * SetPairListener / SetConnectionListener / SetMessageListener 注册回调
  */
 - (void)setPairListener:(id<MobilePairListener> _Nullable)l;
 - (void)setPollUpdateListener:(id<MobilePollUpdateListener> _Nullable)l;
 - (void)setReceiptListener:(id<MobileReceiptListener> _Nullable)l;
+/**
+ * SetSpeakerOn 记录免提状态（实际路由由 Kotlin AudioManager 控制）
+ */
+- (void)setSpeakerOn:(BOOL)on;
 - (void)setTypingListener:(id<MobileTypingListener> _Nullable)l;
+/**
+ * SetVideoListener 设置视频回调（收到对端 H.264 帧时触发）。
+ */
+- (void)setVideoListener:(id<MobileVideoListener> _Nullable)l;
+/**
+ * StartAudio 开始双向音频：
+  - 发送：建 io.Pipe，PCMStream 读管道 → call.Play，Kotlin 侧 FeedMicPcm 写管道
+  - 接收：call.Receive(SinkFunc) 把 float32 转 s16le 后回调 AudioListener
+ */
+- (BOOL)startAudio:(NSError* _Nullable* _Nullable)error;
+/**
+ * StartCall 发起通话（video=true 为视频）。返回 callID。
+ */
+- (NSString* _Nonnull)startCall:(NSString* _Nullable)target video:(BOOL)video error:(NSError* _Nullable* _Nullable)error;
+/**
+ * StartVideoReceive 订阅对端视频流：接收 VideoSink 后逐帧回调 Kotlin 侧解码。
+ */
+- (BOOL)startVideoReceive:(NSError* _Nullable* _Nullable)error;
+/**
+ * StopAudio 停止音频（挂断时调用）
+ */
+- (void)stopAudio;
 /**
  * SubscribePresence 订阅指定联系人的在线状态
  */
 - (BOOL)subscribePresence:(NSString* _Nullable)chatJid error:(NSError* _Nullable* _Nullable)error;
 /**
+ * SyncStats 同步进度 JSON：{"busy":bool,"messages":N,"lastMs":M}。
+messages 是本次同步期间收到的历史消息数（由 OnMessage history=true 累加）。
+ */
+- (NSString* _Nonnull)syncStats;
+/**
  * UpdateBlocklist 官方端拉黑/取消拉黑（与官方 WhatsApp 客户端互通，走服务器 blocklist）。
 action: "block" 或 "unblock"。返回更新后的完整拉黑列表 JSON ["jid",...]
  */
 - (NSString* _Nonnull)updateBlocklist:(NSString* _Nullable)jid action:(NSString* _Nullable)action error:(NSError* _Nullable* _Nullable)error;
-/**
- * VotePoll 以本人身份给投票投选。chatJid/pollMsgID 来自投票消息，
-senderJid/timestampMs 取自该投票消息行（Kotlin 侧已有）。
- */
 - (BOOL)votePoll:(NSString* _Nullable)chatJid pollMsgID:(NSString* _Nullable)pollMsgID senderJid:(NSString* _Nullable)senderJid timestampMs:(int64_t)timestampMs optionsCSV:(NSString* _Nullable)optionsCSV error:(NSError* _Nullable* _Nullable)error;
 @end
 
@@ -280,6 +432,10 @@ FOUNDATION_EXPORT void MobileDebugRun(NSString* _Nullable dbDir, NSString* _Null
  */
 FOUNDATION_EXPORT MobileWeifanClient* _Nullable MobileNewClient(NSString* _Nullable dbDir, NSString* _Nullable proxyURL, NSError* _Nullable* _Nullable error);
 
+@class MobileAudioListener;
+
+@class MobileCallListener;
+
 @class MobileConnectionListener;
 
 @class MobileMessageEventListener;
@@ -293,6 +449,39 @@ FOUNDATION_EXPORT MobileWeifanClient* _Nullable MobileNewClient(NSString* _Nulla
 @class MobileReceiptListener;
 
 @class MobileTypingListener;
+
+@class MobileVideoListener;
+
+@interface MobileAudioListener : NSObject <goSeqRefInterface, MobileAudioListener> {
+}
+@property(strong, readonly) _Nonnull id _ref;
+
+- (nonnull instancetype)initWithRef:(_Nonnull id)ref;
+/**
+ * OnAudioFrame 对端音频帧（s16le mono 16kHz）。Kotlin 侧写进 AudioTrack
+ */
+- (void)onAudioFrame:(NSData* _Nullable)data;
+@end
+
+@interface MobileCallListener : NSObject <goSeqRefInterface, MobileCallListener> {
+}
+@property(strong, readonly) _Nonnull id _ref;
+
+- (nonnull instancetype)initWithRef:(_Nonnull id)ref;
+/**
+ * OnCallState 通话阶段变化（meowcaller CallPhase：0=idle 1=calling 2=ringing
+3=connecting 4=active 5=ended 6=waitingRoom）
+ */
+- (void)onCallState:(long)phase;
+/**
+ * OnCallTerminated 通话结束（对方挂断/超时/拒接）
+ */
+- (void)onCallTerminated:(NSString* _Nullable)callID reason:(NSString* _Nullable)reason;
+/**
+ * OnIncomingCall 收到来电。from/callCreator 是 JID，callID 用于拒接
+ */
+- (void)onIncomingCall:(NSString* _Nullable)from callID:(NSString* _Nullable)callID video:(BOOL)video timestampMs:(int64_t)timestampMs;
+@end
 
 /**
  * ConnectionListener 连接状态回调
@@ -318,9 +507,6 @@ json: {"chatJid","id","kind":"revoke|edit","editText"}
 - (void)onMessageEvent:(NSString* _Nullable)json;
 @end
 
-/**
- * MessageListener 消息回调
- */
 @interface MobileMessageListener : NSObject <goSeqRefInterface, MobileMessageListener> {
 }
 @property(strong, readonly) _Nonnull id _ref;
@@ -357,6 +543,14 @@ history=true 表示来自历史同步（Kotlin 侧直接入库，不再自动翻
  * OnPairSuccess 配对成功，携带本机 JID
  */
 - (void)onPairSuccess:(NSString* _Nullable)jid;
+/**
+ * OnQRCode 二维码原始字符串（二维码会过期刷新，UI 每次都要重绘）
+ */
+- (void)onQRCode:(NSString* _Nullable)code;
+/**
+ * OnQRImage 已渲染好的二维码 PNG 字节，UI 直接 decodeByteArray 显示
+ */
+- (void)onQRImage:(NSData* _Nullable)png;
 @end
 
 /**
@@ -394,6 +588,22 @@ json: {"chatJid","typing":true|false}
 
 - (nonnull instancetype)initWithRef:(_Nonnull id)ref;
 - (void)onTyping:(NSString* _Nullable)json;
+@end
+
+/**
+ * MessageListener 消息回调
+CallListener 来电监听。
+能力边界：whatsmeow 只能「收到来电通知 + 拒接」，无法发起/接听/传输音视频
+（那需要完整 VoIP 栈：信令、SRTP、Opus 编解码，whatsmeow 未实现）。
+AudioListener 通话音频回调。收侧每 20ms 一帧 s16le mono 16kHz PCM。
+VideoListener 视频回调。meowcaller 给的是 H.264 Annex-B 裸流（含起始码）。
+ */
+@interface MobileVideoListener : NSObject <goSeqRefInterface, MobileVideoListener> {
+}
+@property(strong, readonly) _Nonnull id _ref;
+
+- (nonnull instancetype)initWithRef:(_Nonnull id)ref;
+- (void)onVideoFrame:(NSData* _Nullable)data;
 @end
 
 #endif

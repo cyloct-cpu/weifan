@@ -1,5 +1,4 @@
 import XCTest
-import WeifanProtocol
 
 /// 协议层接入验证（iOS 阶段 0 的验收测试）。
 ///

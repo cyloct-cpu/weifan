@@ -9,6 +9,7 @@ options:
 packages:
   WeiFanCore:
     path: ../core
+    from: "7.0.0"
 
 settings:
   base:
@@ -28,9 +29,6 @@ targets:
       - path: Sources/Shared
     dependencies:
       - package: WeiFanCore
-      - framework: Frameworks/WeifanProtocol.xcframework
-        embed: true
-        codeSign: true
       - target: WeiFanKeyboard
         embed: true
       - target: WeiFanShare
@@ -39,6 +37,10 @@ targets:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.weifan.app
         PRODUCT_NAME: 微翻
+        SWIFT_OBJC_BRIDGING_HEADER: Sources/App/ProtocolBridging.h
+        HEADER_SEARCH_PATHS: "$(inherited) $(PROJECT_DIR)/Frameworks/ProtocolHeaders"
+        OTHER_LDFLAGS: "$(inherited) -framework WeifanProtocol"
+        FRAMEWORK_SEARCH_PATHS: "$(inherited) $(PROJECT_DIR)/Frameworks/WeifanProtocol.xcframework/ios-arm64_x86_64-simulator"
         INFOPLIST_FILE: Resources/Info-App.plist
         CODE_SIGN_ENTITLEMENTS: Resources/WeiFan.entitlements
         GENERATE_INFOPLIST_FILE: NO
@@ -98,5 +100,9 @@ targets:
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.weifan.app.uitests
+        SWIFT_OBJC_BRIDGING_HEADER: Sources/App/ProtocolBridging.h
+        HEADER_SEARCH_PATHS: "$(inherited) $(PROJECT_DIR)/Frameworks/ProtocolHeaders"
+        OTHER_LDFLAGS: "$(inherited) -framework WeifanProtocol"
+        FRAMEWORK_SEARCH_PATHS: "$(inherited) $(PROJECT_DIR)/Frameworks/WeifanProtocol.xcframework/ios-arm64_x86_64-simulator"
         GENERATE_INFOPLIST_FILE: YES
         TEST_TARGET_NAME: WeiFan

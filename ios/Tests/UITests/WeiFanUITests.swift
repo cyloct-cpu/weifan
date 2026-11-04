@@ -19,9 +19,13 @@ final class WeiFanUITests: XCTestCase {
 
     func testAllTabsReachable() throws {
         let app = XCUIApplication()
+        app.launchArguments = ["UITEST_FAKE_PAIRED"]
         app.launch()
 
-        // ── 1. 翻译页（默认 tab）
+        // ── 0. 聊天栈现在是第一 tab；本测试只验工具形态四页可达 → 切到翻译 tab
+        let translateTab = app.tabBars.buttons["翻译"]
+        XCTAssertTrue(translateTab.waitForExistence(timeout: 25), "TabBar 没起来（App 可能启动失败）")
+        translateTab.tap()
         XCTAssertTrue(app.navigationBars["微翻"].waitForExistence(timeout: 25),
                       "翻译页没起来（App 可能启动失败）")
         snapshot(app, "01-翻译")
@@ -49,7 +53,12 @@ final class WeiFanUITests: XCTestCase {
     /// 试译：输入中文 → 未配密钥时应给出可读提示，而不是静默失败或崩溃
     func testTranslateWithoutKeyShowsReadableError() throws {
         let app = XCUIApplication()
+        app.launchArguments = ["UITEST_FAKE_PAIRED"]
         app.launch()
+        // 聊天 tab 在前：切到翻译
+        let tb = app.tabBars.buttons["翻译"]
+        XCTAssertTrue(tb.waitForExistence(timeout: 25), "TabBar 没起来")
+        tb.tap()
 
         let editor = app.textViews["sourceText"]
         XCTAssertTrue(editor.waitForExistence(timeout: 25), "输入框没找到")
