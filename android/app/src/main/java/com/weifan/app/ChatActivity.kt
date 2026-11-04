@@ -192,6 +192,11 @@ class ChatActivity : BaseActivity() {
         }
         titleCol.addView(subtitle)
 
+        // 来电监听：挂到 ChatActivity 生命周期上，收到即弹全屏来电界面
+        engine.onIncomingCall = { from, callId, video ->
+            main.post { showIncomingCallUI(from, callId, video) }
+        }
+
         // 头部标签徽章行（对齐参考 headerLabelRow → headerLabelBadges，marginTop 4dp）
         // 参考把客户标签直接摊在会话页顶部，是 CRM 可见性的关键入口。
         labelBadges = HorizontalScrollView(this).apply {
@@ -214,20 +219,16 @@ class ChatActivity : BaseActivity() {
 
         // 通话入口（对齐参考 chatHeader 的 callButton / videoCallButton）
         // 能力边界：whatsmeow 无法发起/接听通话，这里只做入口与说明，点击引导到手机 WhatsApp
-        top.addView(TextView(this).apply {
-            text = "📞"
-            textSize = 17f
-            gravity = Gravity.CENTER
-            isClickable = true
-            setOnClickListener { showCallSheet(false) }
-        }, LinearLayout.LayoutParams(dp(WaSpec.CHAT_BACK_BTN_DP), dp(WaSpec.CHAT_BACK_BTN_DP)))
-        top.addView(TextView(this).apply {
-            text = "📹"
-            textSize = 17f
-            gravity = Gravity.CENTER
-            isClickable = true
-            setOnClickListener { showCallSheet(true) }
-        }, LinearLayout.LayoutParams(dp(WaSpec.CHAT_BACK_BTN_DP), dp(WaSpec.CHAT_BACK_BTN_DP)))
+        // 头部共 5 个按钮（📞📹文🔍⋮），40dp 会挤压标题，用 32dp
+        for ((icon, isVideo) in listOf("📞" to false, "📹" to true)) {
+            top.addView(TextView(this).apply {
+                text = icon
+                textSize = 15f
+                gravity = Gravity.CENTER
+                isClickable = true
+                setOnClickListener { showCallSheet(isVideo) }
+            }, LinearLayout.LayoutParams(dp(32), dp(WaSpec.CHAT_BACK_BTN_DP)))
+        }
 
         // 客户语言（对齐参考 customerLanguageButton 40dp —— 会话级指定客户语言与引擎）
         top.addView(TextView(this).apply {
@@ -1937,24 +1938,114 @@ class ChatActivity : BaseActivity() {
      * 即自实现 opus 编解码 + SRTP 加密 + WhatsApp 私有信令。
      * whatsmeow 只提供来电通知与拒接，没有这条链路。
      */
+    /** 真正发起通话（meowcaller 引擎，含 MLOW 编解码 + SRTP） */
     private fun launchWhatsAppCall(video: Boolean) {
-        val digits = resolvedPhone.ifBlank { chatJid.substringBefore("@") }.filter { it.isDigit() }
-        val pkg = "com.whatsapp"
-        // WhatsApp 有公开的通话 intent action（官方 App 自己声明）
-        val action = if (video) "com.whatsapp.video" else "com.whatsapp.audiocall"
-        try {
-            startActivity(Intent(action).apply {
-                setPackage(pkg)
-                putExtra("jid", "$digits@s.whatsapp.net")
-            })
-        } catch (_: Throwable) {
-            try {
-                startActivity(Intent(Intent.ACTION_VIEW,
-                    android.net.Uri.parse("https://wa.me/$digits")))
-            } catch (_: Throwable) {
-                Toast.makeText(this, "未安装 WhatsApp", Toast.LENGTH_SHORT).show()
+        engine.startCallAsync(chatJid, video) { callId, err ->
+            if (err != null) {
+                Toast.makeText(this, "发起通话失败：$err", Toast.LENGTH_LONG).show()
+            } else {
+                showCallingUI(video, callId ?: "")
             }
         }
+    }
+
+    /** 呼叫中界面：显示对方名 + 挂断按钮 */
+    private fun showCallingUI(video: Boolean, callId: String) {
+        val box = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            gravity = Gravity.CENTER
+            setPadding(dp(24), dp(30), dp(24), dp(30))
+        }
+        box.addView(TextView(this).apply {
+            text = if (video) "📹" else "📞"
+            textSize = 48f
+            gravity = Gravity.CENTER
+        })
+        box.addView(TextView(this).apply {
+            text = chatTitle.ifBlank { chatJid.substringBefore("@") }
+            textSize = 20f
+            gravity = Gravity.CENTER
+            setTextColor(WaSpec.textPrimary(night))
+            setPadding(0, dp(12), 0, 0)
+        })
+        box.addView(TextView(this).apply {
+            text = if (video) "视频通话呼叫中…" else "语音通话呼叫中…"
+            textSize = 14f
+            gravity = Gravity.CENTER
+            setTextColor(WaSpec.textSecondary(night))
+            setPadding(0, dp(6), 0, 0)
+        })
+        val dlg = android.app.AlertDialog.Builder(this, R.style.WeifanDialog).create()
+        val hangup = Ui.pillButton(this, "挂断", true, night)
+        hangup.setOnClickListener {
+            engine.hangupCallAsync { }
+            dlg.dismiss()
+        }
+        box.addView(hangup, LinearLayout.LayoutParams(
+            ViewGroup.LayoutParams.MATCH_PARENT, dp(52)).apply { topMargin = dp(24) })
+        dlg.setView(box)
+        dlg.show()
+        dlg.window?.setBackgroundDrawableResource(android.R.color.transparent)
+    }
+
+    /** 来电界面：接听 / 拒接 */
+    private fun showIncomingCallUI(from: String, callId: String, video: Boolean) {
+        if (isFinishing || isDestroyed) return
+        val box = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            gravity = Gravity.CENTER
+            setPadding(dp(24), dp(30), dp(24), dp(30))
+        }
+        box.addView(TextView(this).apply {
+            text = if (video) "📹" else "📞"
+            textSize = 48f
+            gravity = Gravity.CENTER
+        })
+        box.addView(TextView(this).apply {
+            text = "来电"
+            textSize = 16f
+            gravity = Gravity.CENTER
+            setTextColor(WaSpec.textSecondary(night))
+        })
+        box.addView(TextView(this).apply {
+            text = chatTitle.ifBlank { from.substringBefore("@") }
+            textSize = 20f
+            gravity = Gravity.CENTER
+            setTextColor(WaSpec.textPrimary(night))
+            setPadding(0, dp(8), 0, 0)
+        })
+        box.addView(TextView(this).apply {
+            text = if (video) "视频来电" else "语音来电"
+            textSize = 14f
+            gravity = Gravity.CENTER
+            setTextColor(WaSpec.primary(night))
+            setPadding(0, dp(6), 0, 0)
+        })
+        val dlg = android.app.AlertDialog.Builder(this, R.style.WeifanDialog)
+            .setCancelable(false).create()
+        val row = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL }
+        val reject = Ui.pillButton(this, "拒接", false, night)
+        val answer = Ui.pillButton(this, "接听", true, night)
+        reject.setOnClickListener {
+            engine.rejectCallAsync { }
+            dlg.dismiss()
+        }
+        answer.setOnClickListener {
+            engine.answerCallAsync { err ->
+                if (err != null) Toast.makeText(this, "接听失败：$err", Toast.LENGTH_LONG).show()
+            }
+            dlg.dismiss()
+            showCallingUI(video, callId)
+        }
+        row.addView(reject, LinearLayout.LayoutParams(0, dp(52), 1f))
+        row.addView(answer, LinearLayout.LayoutParams(0, dp(52), 1f).apply { marginStart = dp(10) })
+        box.addView(row, LinearLayout.LayoutParams(
+            ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply {
+            topMargin = dp(24)
+        })
+        dlg.setView(box)
+        dlg.show()
+        dlg.window?.setBackgroundDrawableResource(android.R.color.transparent)
     }
 
     private fun showCallSheetLegacy(video: Boolean) {

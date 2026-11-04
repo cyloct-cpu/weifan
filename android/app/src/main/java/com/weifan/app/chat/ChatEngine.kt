@@ -48,11 +48,13 @@ class ChatEngine private constructor(context: Context) :
         client.setTypingListener(this)
         client.setMessageEventListener(this)
         client.setCallListener(object : mobile.CallListener {
-            override fun onIncomingCall(from: String?, callID: String?, callCreator: String?,
+            override fun onIncomingCall(from: String?, callID: String?, video: Boolean,
                                         timestampMs: Long) {
-                onIncomingCall?.invoke(from ?: "", callID ?: "")
+                onIncomingCall?.invoke(from ?: "", callID ?: "", video)
             }
-            override fun onCallTerminated(callID: String?, reason: String?) { }
+            override fun onCallTerminated(callID: String?, reason: String?) {
+                onCallTerminated?.invoke(callID ?: "")
+            }
         })
         // pollUpdateListener 在下方属性声明后于 initPoll 注册（属性初始化顺序）
     }
@@ -461,14 +463,43 @@ class ChatEngine private constructor(context: Context) :
      * 列出本账号已登录设备（只读）。返回 (设备数, 当前设备id)；失败时 count=-1 并带错误。
      * 注意：协议层只能读列表，无法注销任意设备（whatsmeow 无通用 IQ 发送口）。
      */
-    /** 来电回调：(fromJid, callID)；whatsmeow 只能收来电+拒接，无法接听 */
-    var onIncomingCall: ((String, String) -> Unit)? = null
+    /** 来电回调：(fromJid, callID, isVideo)。meowcaller 支持接听/拒接/发起 */
+    var onIncomingCall: ((String, String, Boolean) -> Unit)? = null
+    var onCallTerminated: ((String) -> Unit)? = null
 
-    /** 拒接来电 */
-    fun rejectCallAsync(callFrom: String, callID: String, callback: (String?) -> Unit) {
+    /** 接听当前来电 */
+    fun answerCallAsync(callback: (String?) -> Unit) {
         Thread {
-            try { client.rejectCall(callFrom, callID); main.post { callback(null) } }
+            try { client.answerCall(); main.post { callback(null) } }
             catch (e: Throwable) { main.post { callback(e.message ?: e.toString()) } }
+        }.start()
+    }
+
+    /** 拒接当前来电 */
+    fun rejectCallAsync(callback: (String?) -> Unit) {
+        Thread {
+            try { client.rejectCall("", ""); main.post { callback(null) } }
+            catch (e: Throwable) { main.post { callback(e.message ?: e.toString()) } }
+        }.start()
+    }
+
+    /** 挂断当前通话 */
+    fun hangupCallAsync(callback: (String?) -> Unit) {
+        Thread {
+            try { client.hangupCall(); main.post { callback(null) } }
+            catch (e: Throwable) { main.post { callback(e.message ?: e.toString()) } }
+        }.start()
+    }
+
+    /** 发起通话，返回 callID */
+    fun startCallAsync(targetJid: String, video: Boolean, callback: (String?, String?) -> Unit) {
+        Thread {
+            try {
+                val id = client.startCall(targetJid, video)
+                main.post { callback(id, null) }
+            } catch (e: Throwable) {
+                main.post { callback(null, e.message ?: e.toString()) }
+            }
         }.start()
     }
 
