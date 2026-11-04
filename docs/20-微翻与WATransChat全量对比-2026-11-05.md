@@ -72,6 +72,7 @@
 
 ## 4. 技术可行性说明（做不出来的/有代价的）
 
+0. **链接预览（P7）未做的原因**：不是技术不通——og 元数据抓取（HttpURLConnection + 正则/Jsoup 解析 og:title/og:image）+ 气泡卡片约 150 行/端。没做的原因是**优先级判断**：本轮预算给了群管理/拉黑/通知/AI 回复这类「功能从无到有」的项；链接预览是「已有功能的增强」，且收发双方可见性依赖真实会话（未配对状态下无法验证对方视角）。排下一轮，双端各半天。
 1. **dialog_kicked**：whatsmeow 通过 AppState（messaging）。被踢事件 = `events.GroupParticipantChange`（参与者jid==自己且 action=remove）。微翻 mobile.go 需在 handleEvent 加该事件转发（JSON → MessageEventListener 通道），双端弹层。**本轮已确认 whatsmeow 事件类型存在并接入**。
 2. **视频发送**：whatsmeow `upload`（appInfo=MediaVideo）+ `proto.VideoMessage`——与图片同构，照 SendImageFromPath 模式即可。iOS 端 PhotosPicker matching .videos。
 3. **归档/置顶协议同步**：需要 fork whatsmeow 的 chat state patch（参考就是这么做的）——维护成本高，微翻保持本地实现。
