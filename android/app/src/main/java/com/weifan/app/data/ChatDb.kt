@@ -548,6 +548,11 @@ class ChatDb(context: Context) : SQLiteOpenHelper(context, "chats.db", null, 10)
             arrayOf(reaction, chatJid, msgId))
     }
 
+    /** 消息总数（备份 manifest 用） */
+    fun totalMessageCount(): Int = readableDatabase.rawQuery(
+        "SELECT COUNT(*) FROM messages", null).use { c ->
+        if (c.moveToFirst()) c.getInt(0) else 0 }
+
     /** 恢复备份前关连接：不关会锁库，覆盖后新库读不出来 */
     fun closeForRestore() {
         try { close() } catch (_: Throwable) { }

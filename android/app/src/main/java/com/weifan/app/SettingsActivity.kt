@@ -308,15 +308,34 @@ class SettingsActivity : BaseActivity() {
         val shell = Ui.dialogShellCentered(this, "同步 WhatsApp", night, content,
             listOf("取消" to false, "开始同步" to true)) { idx ->
             if (idx == 0) { dlg?.dismiss(); return@dialogShellCentered }
-            status.text = "正在请求…"
+            status.text = "正在向手机请求历史消息…"
             status.setTextColor(WaSpec.primary(night))
-            com.weifan.app.chat.ChatEngine.get(this).requestFullHistorySyncAsync(50) { err ->
+            val eng = com.weifan.app.chat.ChatEngine.get(this)
+            // 轮询进度（对齐参考的 requesting → waiting → receiving 多阶段反馈）
+            val poll = object : Runnable {
+                override fun run() {
+                    if (isFinishing || isDestroyed) return
+                    val st = try { eng.syncStats() } catch (_: Throwable) { "{}" }
+                    val busy = st.contains("\"busy\":true")
+                    val n = Regex("\"messages\":(\\d+)").find(st)?.groupValues?.get(1)?.toIntOrNull() ?: 0
+                    status.text = when {
+                        busy && n == 0 -> "正在向手机请求历史消息…（等原装 WhatsApp 回应）"
+                        busy -> "正在接收并写入历史消息…已同步 $n 条"
+                        n > 0 -> "已从 WhatsApp 同步 $n 条历史消息"
+                        else -> "等待中…请确认原装 WhatsApp 已打开且未被清理后台"
+                    }
+                    android.os.Handler(android.os.Looper.getMainLooper())
+                        .postDelayed(this, 1500)
+                }
+            }
+            eng.requestFullHistorySyncAsync(50) { err ->
                 if (isFinishing || isDestroyed) return@requestFullHistorySyncAsync
-                status.text = if (err == null)
-                    "已发出请求。若原装 WhatsApp 在线，历史会陆续出现（可稍后回列表查看）。"
-                else "同步失败：${err.replace(Regex("^(配对失败[:：]\\s*)+"), "")}"
-                status.setTextColor(if (err == null) WaSpec.primary(night)
-                    else WaSpec.LOGOUT_BANNER_TEXT)
+                if (err != null) {
+                    status.text = "同步失败：${err.replace(Regex("^(配对失败[:：]\\s*)+"), "")}"
+                    status.setTextColor(WaSpec.LOGOUT_BANNER_TEXT)
+                } else {
+                    runOnUiThread { poll.run() }
+                }
             }
         }
         dlg = Ui.showCardDialog(this, shell)
@@ -402,7 +421,12 @@ class SettingsActivity : BaseActivity() {
         }
         val fmt = java.text.SimpleDateFormat("MM-dd HH:mm", java.util.Locale.CHINA)
         val labels = files.map {
-            "${it.name}\n${fmt.format(java.util.Date(it.lastModified()))} · ${it.length() / 1024} KB"
+            val m = com.weifan.app.core.Backup.readManifest(it)
+            if (m != null)
+                "备份 v${m.version} · ${m.chats} 个会话 · ${m.messages} 条消息\n" +
+                    "${fmt.format(java.util.Date(it.lastModified()))} · ${it.length() / 1024} KB"
+            else
+                "${it.name}\n${fmt.format(java.util.Date(it.lastModified()))} · ${it.length() / 1024} KB"
         }.toTypedArray()
         android.app.AlertDialog.Builder(this, R.style.WeifanDialog)
             .setTitle("选择备份")
@@ -551,7 +575,10 @@ class SettingsActivity : BaseActivity() {
 
         Thread {
             val err = try {
-                com.weifan.app.core.Backup.export(this, target) { done, total ->
+                val db = com.weifan.app.chat.ChatEngine.get(this).db
+                val chatN = try { db.chats().size } catch (_: Throwable) { 0 }
+                val msgN = try { db.totalMessageCount() } catch (_: Throwable) { 0 }
+                com.weifan.app.core.Backup.export(this, target, chatN, msgN) { done, total ->
                     runOnUiThread {
                         if (!isFinishing && !isDestroyed) {
                             val pct = if (total <= 0) 0 else (done * 1000 / total).toInt()

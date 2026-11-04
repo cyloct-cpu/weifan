@@ -62,11 +62,23 @@ object Backup {
      * 成功返回目标文件。
      */
     fun export(ctx: Context, target: File,
+               // 对齐参考：备份内要带元数据，恢复前才能显示「备份 v1 · N会话 · N消息」
+               chatCount: Int = 0, msgCount: Int = 0,
                progress: (Long, Long) -> Unit = { _, _ -> }): File {
         val (items, total) = collect(ctx)
         if (items.isEmpty()) throw IllegalStateException("没有可备份的数据")
         var written = 0L
         ZipOutputStream(FileOutputStream(target).buffered()).use { zos ->
+            // manifest.json 放在最前，恢复时可先读它做摘要预览
+            val manifest = org.json.JSONObject().apply {
+                put("version", MANIFEST_VERSION)
+                put("createdAt", System.currentTimeMillis())
+                put("chats", chatCount)
+                put("messages", msgCount)
+            }.toString()
+            zos.putNextEntry(ZipEntry("manifest.json"))
+            zos.write(manifest.toByteArray())
+            zos.closeEntry()
             for (item in items) {
                 zos.putNextEntry(ZipEntry(item.entryName))
                 FileInputStream(item.file).use { fis ->
@@ -198,6 +210,30 @@ object Backup {
         try { tmp.deleteRecursively() } catch (_: Throwable) { }
         return restored
     }
+
+    /** 备份清单里声明的格式版本（对齐参考 restore_backup_summary 的 v%1$d） */
+    const val MANIFEST_VERSION = 1
+
+    /** 备份文件摘要：版本 / 会话数 / 消息数 / 创建时间；无 manifest 返回 null（旧包） */
+    data class Manifest(val version: Int, val chats: Int, val messages: Int, val createdAt: Long)
+
+    fun readManifest(zip: File): Manifest? = try {
+        java.util.zip.ZipInputStream(java.io.FileInputStream(zip).buffered()).use { zis ->
+            var found: Manifest? = null
+            while (true) {
+                val e = zis.nextEntry ?: break
+                if (e.name == "manifest.json") {
+                    val bytes = zis.readBytes()
+                    val o = org.json.JSONObject(String(bytes))
+                    found = Manifest(o.optInt("version", 1), o.optInt("chats"),
+                        o.optInt("messages"), o.optLong("createdAt"))
+                    break
+                }
+                zis.closeEntry()
+            }
+            found
+        }
+    } catch (_: Throwable) { null }
 
     /** 列出 Download 目录下的备份 zip（按时间倒序） */
     fun availableBackups(): List<File> {

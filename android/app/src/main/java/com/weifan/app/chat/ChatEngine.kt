@@ -487,6 +487,9 @@ class ChatEngine private constructor(context: Context) :
         Thread { try { client.stopAudio() } catch (_: Throwable) { } }.start()
     }
 
+    /** 同步进度 JSON：{busy,messages,lastMs} */
+    fun syncStats(): String = try { client.syncStats() } catch (_: Throwable) { "{}" }
+
     /** 请求 WhatsApp 同步整体历史（需原装 WhatsApp 在线后台运行） */
     fun requestFullHistorySyncAsync(count: Int, callback: (String?) -> Unit) {
         Thread {
