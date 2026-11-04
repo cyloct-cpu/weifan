@@ -487,6 +487,22 @@ class ChatEngine private constructor(context: Context) :
         Thread { try { client.stopAudio() } catch (_: Throwable) { } }.start()
     }
 
+    /** 请求 WhatsApp 同步整体历史（需原装 WhatsApp 在线后台运行） */
+    fun requestFullHistorySyncAsync(count: Int, callback: (String?) -> Unit) {
+        Thread {
+            try { client.requestFullHistorySync(count); main.post { callback(null) } }
+            catch (e: Throwable) { main.post { callback(e.message ?: e.toString()) } }
+        }.start()
+    }
+
+    /** 退出 WhatsApp 账号（注销本设备，不可逆，需重新配对） */
+    fun logoutWhatsAppAsync(callback: (String?) -> Unit) {
+        Thread {
+            try { client.logoutWhatsApp(); main.post { callback(null) } }
+            catch (e: Throwable) { main.post { callback(e.message ?: e.toString()) } }
+        }.start()
+    }
+
     /** Go 侧通话统计 JSON（state/tx/rx 帧与字节数） */
     fun callStats(): String = try { client.callStats() } catch (_: Throwable) { "{}" }
 

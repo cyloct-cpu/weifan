@@ -129,6 +129,12 @@ class SettingsActivity : BaseActivity() {
         list.addView(row("设备管理", "查看本账号有几台设备在线（仅查看，无法远程注销）") {
             showDevicesDialog()
         })
+        list.addView(row("同步 WhatsApp", "从手机 WhatsApp 拉取更早的聊天记录") {
+            showSyncWhatsAppDialog()
+        })
+        list.addView(row("退出 WhatsApp 账号", "注销本设备，手机「已连接设备」里也会消失") {
+            showLogoutWhatsAppDialog()
+        })
         list.addView(row("新建联系人", "查号是否在 WhatsApp + 存进手机通讯录") {
             startActivity(Intent(this, NewContactActivity::class.java))
         })
@@ -268,6 +274,78 @@ class SettingsActivity : BaseActivity() {
         android.app.AlertDialog.Builder(this, R.style.WeifanDialog)
             .setView(Ui.formDialogShell(this, "备份数据", night, content))
             .setPositiveButton("开始备份") { _, _ -> runBackup() }
+            .setNegativeButton("取消", null)
+            .show()
+    }
+
+    /**
+     * 同步 WhatsApp（对齐参考 sync_whatsapp_history_*）。
+     *
+     * 实现原理：向服务器发 BuildHistorySyncRequest(nil, count)，请求整体历史。
+     * **关键前提（参考明确写了这条）**：原装 WhatsApp 必须同账号在线、
+     * 后台未被清理、省电策略设为「无限制」，否则服务器不会推历史。
+     */
+    private fun showSyncWhatsAppDialog() {
+        val status = TextView(this).apply {
+            text = "未开始"
+            textSize = 13f
+            setTextColor(WaSpec.textSecondary(night))
+            setPadding(0, dp(10), 0, 0)
+        }
+        val content = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            addView(TextView(this@SettingsActivity).apply {
+                text = "从手机 WhatsApp 同步更早的聊天记录。\n\n" +
+                    "请先打开原装 WhatsApp，把它锁定在后台、不要清理，并把省电模式设为" +
+                    "「无限制」，否则服务器不会推送历史消息。\n\n" +
+                    "同步在后台进行，完成后会话列表会自动出现更早的消息。"
+                textSize = 14f
+                setTextColor(WaSpec.textPrimary(night))
+            })
+            addView(status)
+        }
+        var dlg: android.app.AlertDialog? = null
+        val shell = Ui.dialogShellCentered(this, "同步 WhatsApp", night, content,
+            listOf("取消" to false, "开始同步" to true)) { idx ->
+            if (idx == 0) { dlg?.dismiss(); return@dialogShellCentered }
+            status.text = "正在请求…"
+            status.setTextColor(WaSpec.primary(night))
+            com.weifan.app.chat.ChatEngine.get(this).requestFullHistorySyncAsync(50) { err ->
+                if (isFinishing || isDestroyed) return@requestFullHistorySyncAsync
+                status.text = if (err == null)
+                    "已发出请求。若原装 WhatsApp 在线，历史会陆续出现（可稍后回列表查看）。"
+                else "同步失败：${err.replace(Regex("^(配对失败[:：]\\s*)+"), "")}"
+                status.setTextColor(if (err == null) WaSpec.primary(night)
+                    else WaSpec.LOGOUT_BANNER_TEXT)
+            }
+        }
+        dlg = Ui.showCardDialog(this, shell)
+    }
+
+    /** 退出 WhatsApp 账号（对齐 logout_whatsapp：不可逆，二次确认） */
+    private fun showLogoutWhatsAppDialog() {
+        android.app.AlertDialog.Builder(this, R.style.WeifanDialog)
+            .setView(Ui.confirmBody(this, "退出 WhatsApp 账号？",
+                "本设备会从该 WhatsApp 账号中注销，手机「已连接的设备」里也会消失。" +
+                    "退出后需要重新配对才能继续收发消息。", night))
+            .setPositiveButton("退出账号") { _, _ ->
+                com.weifan.app.chat.ChatEngine.get(this).logoutWhatsAppAsync { err ->
+                    if (isFinishing || isDestroyed) return@logoutWhatsAppAsync
+                    if (err != null) {
+                        Toast.makeText(this, "退出失败：$err", Toast.LENGTH_LONG).show()
+                    } else {
+                        android.app.AlertDialog.Builder(this, R.style.WeifanDialog)
+                            .setTitle("已退出")
+                            .setMessage("本设备已从 WhatsApp 账号注销。请重新配对。")
+                            .setCancelable(false)
+                            .setPositiveButton("重新配对") { _, _ ->
+                                startActivity(Intent(this, PairingActivity::class.java))
+                                finishAffinity()
+                            }
+                            .show()
+                    }
+                }
+            }
             .setNegativeButton("取消", null)
             .show()
     }
