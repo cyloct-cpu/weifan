@@ -1034,12 +1034,17 @@ struct BubbleView: View {
                     LinkPreviewCard(lp: lp)
                 }
                 if !m.text.isEmpty, !isCardKind {
-                    Text(m.text).foregroundStyle(.primary)
+                    // B4：原文字号可调（Android src_sp 同键）
+                    Text(m.text)
+                        .font(.system(size: UserDefaults.standard.object(forKey: "src_sp") as? Double ?? 15))
+                        .foregroundStyle(.primary)
                 }
                 if !m.fromMe, !m.translated.isEmpty {
+                    // B4：译文字号与颜色独立可调（Android trans_sp / trans_color 同键）
                     Text(m.translated)
-                        .font(.subheadline.weight(.medium))
-                        .foregroundStyle(Color(hex: 0x0A7EA4))
+                        .font(.system(size: UserDefaults.standard.object(forKey: "trans_sp") as? Double ?? 13,
+                                      weight: .medium))
+                        .foregroundStyle(Color(hex: UInt32(UserDefaults.standard.object(forKey: "trans_color") as? Int ?? 0x0A7EA4)))
                 }
                 if m.fromMe, !m.original.isEmpty, m.original != m.text {
                     Text(m.original).font(.caption).foregroundStyle(.secondary)

@@ -38,7 +38,7 @@ struct ChatSettingsView: View {
             }
 
             Section("翻译设置") {
-                NavigationLink("翻译服务（九家 + 自定义接口）") { SettingsView() }
+                NavigationLink("翻译服务（九家 + 自定义接口）") { TranslationServiceView() }
             }
 
             Section("客户管理") {

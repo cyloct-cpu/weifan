@@ -306,20 +306,41 @@ final class ProtocolCore: ObservableObject {
             // 收件自动翻译（媒体消息没有文本可翻；开关在聊天设置，与 Android 同名键）
             let autoOn = UserDefaults.standard.object(forKey: "wa_auto_translate_incoming") as? Bool ?? true
             if autoOn, !m.fromMe, !m.text.isEmpty {
-                translateIncomingAsync(chatJid: m.chatJid, id: m.id, text: m.text)
+                translateIncomingAsync(chatJid: m.chatJid, id: m.id, text: m.text,
+                                       history: m.history == true)
             }
         }
     }
 
-    /// 收件：对方语言 → 中文（WeiFanCore，与 Android Engine.translateIncoming 同规格）
-    func translateIncomingAsync(chatJid: String, id: String, text: String) {
-        Task.detached { [core, db] in
+    /// 收件：对方语言 → 中文。
+    /// B5：history=true 的消息用 history_engine 指定的自定义接口（与 Android 同名键）；
+    /// 普通收件若配置了 customs 且 selection 指定，也走自定义接口。
+    func translateIncomingAsync(chatJid: String, id: String, text: String,
+                                history: Bool = false) {
+        Task.detached { [weak self, core, db] in
+            // 引擎选择：历史消息 → history_engine；否则跟随全局（WeiFanCore 路由）
+            let engineId = history ? UserDefaults.standard.string(forKey: "history_engine") ?? "" : ""
+            let prompt = UserDefaults.standard.string(forKey: "prompt_tpl")
+
+            if !engineId.isEmpty, let prof = CustomProfile.byId(engineId.replacingOccurrences(of: "custom:", with: "")) {
+                // 指定引擎：自定义 OpenAI 兼容接口（与 Android customRun 同构）
+                do {
+                    let out = try await CustomLLMEngine.translate(
+                        text: text, target: "中文", profile: prof,
+                        prompt: UserDefaults.standard.string(forKey: "prompt_tpl"))
+                    guard !out.isEmpty else { return }
+                    try? db.updateTranslation(chatJid: chatJid, id: id, translated: out, lang: "")
+                    await MainActor.run { self?.inboxTick &+= 1 }
+                } catch { }
+                return
+            }
+
             guard let out = try? await core.translateIncoming(text) else { return }
             guard !out.alreadyChinese, !out.translated.isEmpty else { return }
             try? db.updateTranslation(chatJid: chatJid, id: id,
                                       translated: out.translated,
                                       lang: out.sourceLanguage?.rawValue ?? "")
-            await MainActor.run { self.inboxTick &+= 1 }
+            await MainActor.run { self?.inboxTick &+= 1 }
         }
     }
 
