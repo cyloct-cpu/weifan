@@ -18,6 +18,11 @@ struct ChatSettingsView: View {
     @State private var exporting = false
     @State private var showRestore = false
     @State private var restoreMsg: String?
+    @State private var showDevices = false
+    @State private var showLogout = false
+    @State private var syncing = false
+    @State private var syncMsg: String?
+    @State private var deviceMsg = "正在查询…"
 
     var body: some View {
         // 段结构与行顺序完全对齐 Android SettingsActivity：
@@ -68,9 +73,17 @@ struct ChatSettingsView: View {
                     Label("恢复数据", systemImage: "arrow.down.doc")
                 }
                 NavigationLink("新建联系人") { NewContactView() }
-                // 以下三项 Android 已有，iOS 协议层已支持但尚未接 UI
-                Text("设备管理 / 同步 WhatsApp / 退出账号：协议层已就绪，UI 待接")
-                    .font(.caption2).foregroundStyle(.secondary)
+                // 以下三项对齐 Android SettingsActivity 客户管理段
+                Button { showDevices = true } label: { Label("设备管理", systemImage: "iphone.gen3") }
+                Button { doSync() } label: {
+                    HStack {
+                        Label("同步 WhatsApp", systemImage: "arrow.triangle.2.circlepath")
+                        if syncing { ProgressView().scaleEffect(0.7) }
+                    }
+                }.disabled(syncing)
+                Button(role: .destructive) { showLogout = true } label: {
+                    Label("退出 WhatsApp 账号", systemImage: "rectangle.portrait.and.arrow.right")
+                }
             }
 
             Section("隐私与屏蔽") {
@@ -83,6 +96,7 @@ struct ChatSettingsView: View {
                 LabeledContent("版本", value: "3.9.1（55）")
             }
         }
+        .onAppear { loadDevices() }
         .navigationTitle("聊天设置")
         .navigationBarTitleDisplayMode(.inline)
         .sheet(item: $backupURL) { url in
@@ -97,9 +111,71 @@ struct ChatSettingsView: View {
                 restoreMsg = msg
             }
         }
+        .alert("设备管理", isPresented: $showDevices) {
+            Button("好", role: .cancel) {}
+        } message: { Text(deviceMsg) }
+        .alert("同步 WhatsApp", isPresented: .init(get: { syncMsg != nil },
+                                                  set: { if !$0 { syncMsg = nil } })) {
+            Button("好", role: .cancel) {}
+        } message: { Text(syncMsg ?? "") }
+        .alert("退出 WhatsApp 账号？", isPresented: $showLogout) {
+            Button("退出账号", role: .destructive) { doLogout() }
+            Button("取消", role: .cancel) {}
+        } message: {
+            Text("本设备会从该 WhatsApp 账号注销，手机「已连接的设备」里也会消失。退出后需重新配对。")
+        }
         .alert("恢复结果", isPresented: .init(get: { restoreMsg != nil }, set: { if !$0 { restoreMsg = nil } })) {
             Button("好", role: .cancel) {}
         } message: { Text(restoreMsg ?? "") }
+    }
+}
+
+extension ChatSettingsView {
+    /// 设备管理（对齐 Android showDevicesDialog：只读，协议层无注销接口）
+    func loadDevices() {
+        deviceMsg = "正在查询…"
+        DispatchQueue.global(qos: .userInitiated).async {
+            var derr: NSError?
+            let json = ProtocolCore.shared.client.listMyDevices(&derr) ?? "[]"
+            let n = (try? JSONSerialization.jsonObject(with: Data(json.utf8)) as? [Any])?.count ?? 0
+            DispatchQueue.main.async {
+                deviceMsg = n > 0
+                    ? "本账号共 \(n) 台设备在线。\n\n只能查看数量，无法远程注销——注销需要 WhatsApp 未公开的管理接口。若发现陌生设备，请在手机 WhatsApp 的「已连接的设备」里退出。"
+                    : "没有查到设备信息（需已连接）。"
+            }
+        }
+    }
+
+    /// 同步 WhatsApp（对齐 Android：请求整体历史，需原装 WhatsApp 在线后台运行）
+    func doSync() {
+        syncing = true
+        syncMsg = nil
+        DispatchQueue.global(qos: .userInitiated).async {
+            do {
+                try ProtocolCore.shared.client.requestFullHistorySync(50)
+                DispatchQueue.main.async {
+                    syncing = false
+                    syncMsg = "已发出请求。若原装 WhatsApp 在线且未被清理后台，历史会陆续出现。"
+                }
+            } catch {
+                DispatchQueue.main.async {
+                    syncing = false
+                    syncMsg = "同步失败：\(error.localizedDescription)"
+                }
+            }
+        }
+    }
+
+    /// 退出账号（对齐 Android logoutWhatsApp：不可逆）
+    func doLogout() {
+        DispatchQueue.global(qos: .userInitiated).async {
+            do {
+                try ProtocolCore.shared.client.logoutWhatsApp()
+                DispatchQueue.main.async { restoreMsg = "已退出 WhatsApp 账号，请重新配对。" }
+            } catch {
+                DispatchQueue.main.async { restoreMsg = "退出失败：\(error.localizedDescription)" }
+            }
+        }
     }
 }
 
@@ -119,32 +195,77 @@ struct TodoListView: View {
     @State private var showNew = false
     @State private var newDue: Date? = nil
 
+    /// 当前标签：ALL / OVERDUE / TODAY / DONE（对齐 Android FollowupTodosActivity 4 标签）
+    @State private var tab = "TODAY"
+
+    private let tabs: [(String, String)] = [
+        ("全部", "ALL"), ("逾期", "OVERDUE"), ("今日", "TODAY"), ("已完成", "DONE")
+    ]
+
+    /// 按标签过滤（对齐 Android todosByFilter）
+    private var shown: [TodoRowUI] {
+        let now = Int64(Date().timeIntervalSince1970 * 1000)
+        let cal = Calendar.current
+        let dayStart = Int64(cal.startOfDay(for: Date()).timeIntervalSince1970 * 1000)
+        let dayEnd = dayStart + 86_400_000
+        switch tab {
+        case "OVERDUE": return todos.filter { !$0.done && $0.dueTs > 0 && $0.dueTs < now }
+        case "TODAY": return todos.filter { !$0.done && $0.dueTs >= dayStart && $0.dueTs < dayEnd }
+        case "DONE": return todos.filter { $0.done }
+        default: return todos
+        }
+    }
+
+    private var overdueCount: Int {
+        let now = Int64(Date().timeIntervalSince1970 * 1000)
+        return todos.filter { !$0.done && $0.dueTs > 0 && $0.dueTs < now }.count
+    }
+    private var pendingCount: Int { todos.filter { !$0.done }.count }
+
     var body: some View {
-        List {
-            ForEach(todos) { t in
-                HStack {
-                    Image(systemName: t.done ? "checkmark.circle.fill" : "circle")
-                        .foregroundStyle(t.done ? Color.secondary : Color.teal)
-                        .onTapGesture { toggle(t) }
-                    VStack(alignment: .leading, spacing: 2) {
-                        Text(t.content)
-                            .strikethrough(t.done)
-                            .foregroundStyle(t.done ? Color.secondary : Color.primary)
-                        if t.dueTs > 0 {
-                            let overdue = !t.done && Double(t.dueTs) < Date().timeIntervalSince1970 * 1000
-                            Text(Self.day(t.dueTs)).font(.caption2)
-                                .foregroundStyle(overdue ? Color.red : Color.secondary)
+        VStack(spacing: 0) {
+            // 标签条（对齐 Android：HorizontalScrollView padding 12/4/12/10，chip 间距 8）
+            ScrollView(.horizontal, showsIndicators: false) {
+                HStack(spacing: 8) {
+                    ForEach(tabs, id: \.1) { t in
+                        Text(t.0)
+                            .font(.system(size: 15))
+                            .foregroundStyle(tab == t.1 ? Color(hex: 0x5E5E5E) : Color(hex: 0x111111))
+                            .padding(.horizontal, 12).padding(.vertical, 6)
+                            .background(Capsule().fill(tab == t.1 ? Color(hex: 0xEBEBEF) : .white))
+                            .overlay(Capsule().stroke(
+                                tab == t.1 ? Color(hex: 0xD1D1D6) : Color(hex: 0xE0E0E4), lineWidth: 1))
+                            .onTapGesture { tab = t.1 }
+                    }
+                }
+                .padding(.horizontal, 12)
+            }
+            .padding(.top, 4).padding(.bottom, 10)
+
+            // 统计卡片（对齐 Android：padding 16/12/16/4，两卡各 weight=1，间距 6，卡内 14/12，
+            // 标签 12sp secondary + 数字 22sp bold primary + marginTop 2）
+            HStack(spacing: 6) {
+                statCard("逾期", overdueCount, overdueCount > 0 ? Color(hex: 0xE53935) : Color(hex: 0x111111))
+                statCard("待跟进", pendingCount, Color(hex: 0x111111))
+            }
+            .padding(.horizontal, 16).padding(.top, 12).padding(.bottom, 4)
+
+            if shown.isEmpty {
+                Spacer()
+                Text(tab == "DONE" ? "还没有完成的待办"
+                     : tab == "TODAY" ? "今天没有待办" : "点右上角 ＋ 记一条")
+                    .font(.system(size: 14)).foregroundStyle(Color(hex: 0x8E8E93))
+                Spacer()
+            } else {
+                ScrollView {
+                    LazyVStack(spacing: 0) {
+                        ForEach(shown) { t in
+                            todoRow(t)
+                            Rectangle().fill(Color(hex: 0xE5E5EA))
+                                .frame(height: 1).padding(.leading, 70)
                         }
                     }
-                    Spacer()
                 }
-            }
-            .onDelete { sets in
-                for i in sets {
-                    TodoNotifications.cancel(todoId: todos[i].id)
-                    try? core.db.exec("DELETE FROM todos WHERE id = ?", args: [todos[i].id])
-                }
-                reload()
             }
         }
         .navigationTitle("跟进待办")
@@ -156,26 +277,68 @@ struct TodoListView: View {
         }
         .alert("新建待办", isPresented: $showNew) {
             TextField("要跟进什么", text: $newContent)
-            Button("保存") {
-                let text = newContent.trimmingCharacters(in: .whitespaces)
-                guard !text.isEmpty else { return }
-                let due = newDue.map { Int64($0.timeIntervalSince1970 * 1000) } ?? 0
-                _ = try? core.db.exec(
-                    "INSERT INTO todos(chat_jid,content,due_ts,done,created_ts) VALUES(?,?,?,0,?)",
-                    args: ["", text, due, Int64(Date().timeIntervalSince1970 * 1000)])
-                if due > 0 {
-                    // P1：到期本地通知（对齐参考 followup_perm_*；与 Android TodoNotifications 同构）
-                    TodoNotifications.ensureAuthorized { _ in }
-                    TodoNotifications.schedule(todoId: Int64(Date().timeIntervalSince1970), content: text, dueTs: due)
-                }
-                newContent = ""; newDue = nil
-                reload()
-            }
+            Button("保存") { saveNew() }
             Button("取消", role: .cancel) { newContent = "" }
-        } message: {
-            Text("到期提醒与 Android 端同构（本地闹钟在阶段 3 后续接入）")
         }
         .onAppear(perform: reload)
+    }
+
+    /// 统计卡片：标签 12sp + 数字 22sp bold（对齐 Android statCard）
+    private func statCard(_ label: String, _ value: Int, _ color: Color) -> some View {
+        VStack(alignment: .leading, spacing: 2) {
+            Text(label).font(.system(size: 12)).foregroundStyle(Color(hex: 0x8E8E93))
+            Text("\(value)").font(.system(size: 22, weight: .bold)).foregroundStyle(color)
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(.horizontal, 14).padding(.vertical, 12)
+        .background(RoundedRectangle(cornerRadius: 14).fill(Color.white))
+        .overlay(RoundedRectangle(cornerRadius: 14).stroke(Color(hex: 0xE5E5EA), lineWidth: 1))
+    }
+
+    /// 待办行（对齐 Android item_followup_todo：外层 16/10/16/2，卡片内上下 12 / start 8 / end 4）
+    private func todoRow(_ t: TodoRowUI) -> some View {
+        let now = Int64(Date().timeIntervalSince1970 * 1000)
+        let overdue = !t.done && t.dueTs > 0 && t.dueTs < now
+        return HStack(spacing: 6) {
+            Button { toggle(t) } label: {
+                Image(systemName: t.done ? "checkmark.circle.fill" : "circle")
+                    .font(.system(size: 20))
+                    .foregroundStyle(t.done ? Color(hex: 0x25D366) : Color(hex: 0xC7C7CC))
+            }
+            VStack(alignment: .leading, spacing: 3) {
+                Text(t.content)
+                    .font(.system(size: 16))
+                    .strikethrough(t.done)
+                    .foregroundStyle(t.done ? Color(hex: 0x8E8E93) : Color(hex: 0x111111))
+                    .lineLimit(3)
+                if t.dueTs > 0 {
+                    Text((overdue ? "⚠ 已过期 " : "到期 ") + Self.day(t.dueTs))
+                        .font(.system(size: 12))
+                        .foregroundStyle(overdue ? Color(hex: 0xE53935) : Color(hex: 0x8E8E93))
+                }
+            }
+            Spacer(minLength: 0)
+        }
+        .padding(.leading, 8).padding(.trailing, 4).padding(.vertical, 12)
+        .background(RoundedRectangle(cornerRadius: 14).fill(Color.white))
+        .overlay(RoundedRectangle(cornerRadius: 14).stroke(Color(hex: 0xE5E5EA), lineWidth: 1))
+        .padding(.horizontal, 16).padding(.top, 10).padding(.bottom, 2)
+    }
+
+    private func saveNew() {
+        let text = newContent.trimmingCharacters(in: .whitespaces)
+        guard !text.isEmpty else { return }
+        let due = newDue.map { Int64($0.timeIntervalSince1970 * 1000) } ?? 0
+        _ = try? core.db.exec(
+            "INSERT INTO todos(chat_jid,content,due_ts,done,created_ts) VALUES(?,?,?,0,?)",
+            args: ["", text, due, Int64(Date().timeIntervalSince1970 * 1000)])
+        if due > 0 {
+            TodoNotifications.ensureAuthorized { _ in }
+            TodoNotifications.schedule(todoId: Int64(Date().timeIntervalSince1970),
+                                       content: text, dueTs: due)
+        }
+        newContent = ""; newDue = nil
+        reload()
     }
 
     private func reload() {
