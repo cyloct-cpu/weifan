@@ -280,4 +280,28 @@ final class WeiFanUITests: XCTestCase {
         }
         sleep(3)
     }
+
+    /// 聊天 UI 重设计（对齐 WATransChat 参考图）：壁纸/气泡尾巴/时间入泡/文档灰卡 —— 明暗两态截图
+    func testChatRedesignScreenshots() throws {
+        let app = XCUIApplication()
+        app.launchArguments = ["PREVIEW_LIST", "UITEST_FORCE_DARK"]
+        app.launch()
+
+        let firstChat = app.staticTexts["TEST-验证"]
+        XCTAssertTrue(firstChat.waitForExistence(timeout: 25), "列表没起来")
+        firstChat.tap()
+        sleep(2)
+        snapshot(app, "70-暗-会话新设计")
+        app.navigationBars.buttons.element(boundBy: 0).tap()
+
+        // 亮色态再拍一张（壁纸浅色涂鸦版）
+        app.terminate()
+        app.launchArguments = ["PREVIEW_LIST", "UITEST_FORCE_LIGHT"]
+        app.launch()
+        let chat2 = app.staticTexts["TEST-验证"]
+        XCTAssertTrue(chat2.waitForExistence(timeout: 25), "亮态列表没起来")
+        chat2.tap()
+        sleep(2)
+        snapshot(app, "71-亮-会话新设计")
+    }
 }

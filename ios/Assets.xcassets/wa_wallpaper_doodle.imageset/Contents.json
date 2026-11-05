@@ -1,0 +1,14 @@
+{
+  "images" : [
+    {
+      "filename" : "wa_wallpaper_doodle.jpg",
+      "idiom" : "universal"
+    },
+    {
+      "appearances" : [ { "appearance" : "luminosity", "value" : "dark" } ],
+      "filename" : "wa_wallpaper_doodle_dark.jpg",
+      "idiom" : "universal"
+    }
+  ],
+  "info" : { "author" : "xcode", "version" : 1 }
+}

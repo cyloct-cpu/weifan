@@ -27,6 +27,7 @@ targets:
     sources:
       - path: Sources/App
       - path: Sources/Shared
+      - path: Assets.xcassets
     dependencies:
       - package: WeiFanCore
       - target: WeiFanKeyboard

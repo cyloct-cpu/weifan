@@ -506,7 +506,7 @@ struct ChatView: View {
         VStack(spacing: 0) {
             ScrollViewReader { proxy in
                 ScrollView {
-                    LazyVStack(spacing: 6) {
+                    LazyVStack(spacing: 4) {
                         ForEach(msgs) { m in
                             BubbleView(m: m, read: core.readReceipts[m.id] == true,
                                        chatMsgs: msgs,
@@ -515,9 +515,11 @@ struct ChatView: View {
                                 .id(m.id)
                                 .contextMenu { contextMenu(m) }
                         }
-                    }
-                    .padding(.horizontal, 8).padding(.vertical, 10)
+                        }
+                        .padding(.horizontal, 8).padding(.vertical, 10)
                 }
+                // 聊天背景：WhatsApp 涂鸦壁纸（与安卓 drawable-nodpi 同款资源，昼夜两版）
+                .background(ChatWallpaperView())
                 .onChange(of: msgs.count) { _ in
                     if let last = msgs.last { proxy.scrollTo(last.id, anchor: .bottom) }
                 }
@@ -1012,6 +1014,33 @@ private func roundAction(icon: String, filled: Bool, action: @escaping () -> Voi
     }
 }
 
+// MARK: - 聊天壁纸（WhatsApp 涂鸦壁纸，与安卓同款资源：wa_wallpaper_doodle[_dark].jpg）
+
+struct ChatWallpaperView: View {
+    @Environment(\.colorScheme) private var scheme
+
+    var body: some View {
+        GeometryReader { geo in
+            if let ui = Self.wallpaper(scheme) {
+                Image(uiImage: ui)
+                    .resizable()
+                    .scaledToFill()
+                    .frame(width: geo.size.width, height: geo.size.height)
+                    .clipped()
+                    .ignoresSafeArea()
+            } else {
+                // 资源缺失兜底：暗色近黑 / 亮色白
+                Color.dyn(0xFFFFFF, 0x0B141A).ignoresSafeArea()
+            }
+        }
+    }
+
+    static func wallpaper(_ scheme: ColorScheme) -> UIImage? {
+        let name = scheme == .dark ? "wa_wallpaper_doodle_dark" : "wa_wallpaper_doodle"
+        return UIImage(named: name)
+    }
+}
+
 // MARK: - 气泡（阶段 2：媒体渲染 + 时间回执）
 
 struct BubbleView: View {
@@ -1030,46 +1059,18 @@ struct BubbleView: View {
     private var settings: AppSettings { ProtocolCore.shared.core.settings }
 
     var body: some View {
-        HStack {
-            if m.fromMe { Spacer(minLength: 30) }
-            VStack(alignment: .leading, spacing: 3) {
-                media
-                if let lp = linkPreview {
-                    LinkPreviewCard(lp: lp)
-                }
-                if !m.text.isEmpty, !isCardKind {
-                    // B4：原文字号可调（Android src_sp 同键）——统一走 AppSettings（翻译服务页写入）
-                    Text(m.text)
-                        .font(.system(size: settings.sourceTextSp))
-                        .foregroundStyle(.primary)
-                }
-                if !m.fromMe, !m.translated.isEmpty {
-                    // B4：译文字号与颜色独立可调（Android trans_sp / trans_color 同键）
-                    Text(m.translated)
-                        .font(.system(size: settings.translationTextSp, weight: .medium))
-                        .foregroundStyle(Color(hex: UInt32(settings.translationColorHex)))
-                }
-                if m.fromMe, !m.original.isEmpty, m.original != m.text {
-                    Text(m.original).font(.caption).foregroundStyle(.secondary)
-                }
-                HStack(spacing: 3) {
-                    Text(Self.time(m.ts)).font(.caption2).foregroundStyle(.secondary)
-                    if m.fromMe {
-                        Image(systemName: "checkmark.circle.fill")
-                            .font(.caption2)
-                            .foregroundStyle(read ? Color(hex: 0x34B7F1) : Color.secondary)
-                    }
-                }
-                .frame(maxWidth: .infinity, alignment: .trailing)
+        HStack(alignment: .bottom) {
+            if m.fromMe { Spacer(minLength: 46) }
+            if isSystemLine {
+                systemLine
+            } else if isMediaBubble {
+                mediaBubble
+            } else if isDocument {
+                documentBubble
+            } else {
+                textBubble
             }
-            .padding(10)
-            // 照搬 WaSpec：BUBBLE_SENT #E0FCD6 / BUBBLE_RECEIVED 白 / 圆角 10 / 最大宽 280dp
-            .background(m.fromMe ? Color.dyn(0xE0FCD6, 0x005C4B)
-                        : Color.dyn(0xFFFFFF, 0x1F2C33))
-            .clipShape(RoundedRectangle(cornerRadius: 10))
-            .overlay(RoundedRectangle(cornerRadius: 10)
-                .stroke(mediaKindNeedsStroke ? Color.primary.opacity(0.08) : .clear, lineWidth: 1))
-            if !m.fromMe { Spacer(minLength: 30) }
+            if !m.fromMe { Spacer(minLength: 46) }
         }
         .task(id: m.id) {
             // P7：链接预览（有 URL、无媒体、未抓过 → 后台抓 og）
@@ -1099,6 +1100,161 @@ struct BubbleView: View {
 
     private var isCardKind: Bool {
         ["poll", "location", "contact", "event", "product"].contains(m.mediaKind)
+    }
+    /// 撤回/系统行：居中灰字（对齐参考「撤回了一条消息」）
+    private var isSystemLine: Bool {
+        m.mediaKind.isEmpty && m.text.contains("撤回了一条消息")
+    }
+
+    private var systemLine: some View {
+        HStack(spacing: 5) {
+            if m.fromMe { Spacer(minLength: 0) }
+            Image(systemName: "nosign").font(.caption2)
+            Text(m.text).font(.caption)
+            if !m.fromMe { Spacer(minLength: 0) }
+        }
+        .foregroundStyle(.secondary)
+        .padding(.vertical, 3)
+        .frame(maxWidth: .infinity, alignment: m.fromMe ? .trailing : .leading)
+        .padding(.horizontal, 12)
+    }
+
+    private var mediaBubble: some View {
+        VStack(alignment: m.fromMe ? .trailing : .leading, spacing: 3) {
+            media
+                .overlay(alignment: .bottomTrailing) { timeBadge }
+            if !m.text.isEmpty {
+                Text(m.text)
+                    .font(.system(size: settings.sourceTextSp))
+                    .foregroundStyle(.primary)
+            }
+        }
+        .frame(maxWidth: 290, alignment: m.fromMe ? .trailing : .leading)
+    }
+
+    private var textBubble: some View {
+        textBubbleContent
+            .padding(.horizontal, 9).padding(.vertical, 6)
+            // 照搬 WaSpec：BUBBLE_SENT #E0FCD6 / BUBBLE_RECEIVED 白 / 圆角 10 / 最大宽 280dp
+            .frame(maxWidth: 290, alignment: .leading)
+            .background(m.fromMe ? Color.dyn(0xE0FCD6, 0x005C4B)
+                        : Color.dyn(0xFFFFFF, 0x1F2C33))
+            .clipShape(RoundedRectangle(cornerRadius: 16))
+    }
+
+    /// 气泡内引用块（对齐参考：teal 左条 + 引用者 + 引文，深色半透明底）
+    private var quoteBlock: some View {
+        VStack(alignment: .leading, spacing: 2) {
+            Text(m.fromMe ? "你" : "对方")
+                .font(.caption2.bold()).foregroundStyle(Color(hex: 0x00A884))
+            Text(quoteText)
+                .font(.caption).foregroundStyle(Color.primary.opacity(0.7))
+                .lineLimit(3)
+        }
+        .padding(.horizontal, 8).padding(.vertical, 5)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(Color.black.opacity(0.14))
+        .overlay(alignment: .leading) {
+            Rectangle().fill(Color(hex: 0x00A884)).frame(width: 3)
+        }
+        .clipShape(RoundedRectangle(cornerRadius: 6))
+    }
+
+    private var quoteText: String {
+        guard let d = m.mediaMeta.data(using: .utf8),
+              let o = try? JSONSerialization.jsonObject(with: d) as? [String: Any],
+              let t = o["replyText"] as? String, !t.isEmpty else { return "" }
+        return t
+    }
+
+    private var textBubbleContent: some View {
+        HStack(alignment: .bottom, spacing: 5) {
+            VStack(alignment: .leading, spacing: 5) {
+                if !quoteText.isEmpty {
+                    quoteBlock
+                }
+                bubbleTexts
+            }
+            timeColumn
+        }
+    }
+
+    private var bubbleTexts: some View {
+        VStack(alignment: .leading, spacing: 3) {
+            if let lp = linkPreview {
+                LinkPreviewCard(lp: lp)
+            }
+            if !m.text.isEmpty, !isCardKind {
+                // B4：原文字号可调（Android src_sp 同键）——统一走 AppSettings（翻译服务页写入）
+                Text(m.text)
+                    .font(.system(size: settings.sourceTextSp))
+                    .foregroundStyle(.primary)
+            }
+            if !m.fromMe, !m.translated.isEmpty {
+                // B4：译文字号与颜色独立可调（Android trans_sp / trans_color 同键）
+                Text(m.translated)
+                    .font(.system(size: settings.translationTextSp, weight: .medium))
+                    .foregroundStyle(Color(hex: UInt32(settings.translationColorHex)))
+            }
+            if m.fromMe, !m.original.isEmpty, m.original != m.text {
+                Text(m.original).font(.caption).foregroundStyle(Color.primary.opacity(0.55))
+            }
+        }
+    }
+
+    /// 时间+回执在气泡内右下、贴内容（去掉 maxWidth infinity——之前它把气泡撑满整行）
+    private var timeColumn: some View {
+        HStack(spacing: 3) {
+            Text(Self.time(m.ts)).font(.system(size: 10))
+                .foregroundStyle(Color.primary.opacity(0.45))
+            if m.fromMe {
+                Image(systemName: "checkmark.circle.fill")
+                    .font(.system(size: 10))
+                    .foregroundStyle(read ? Color(hex: 0x34B7F1) : Color.primary.opacity(0.35))
+            }
+        }
+    }
+    /// 图片/视频/贴纸：无气泡底
+    private var isMediaBubble: Bool {
+        ["image", "video", "sticker"].contains(m.mediaKind)
+    }
+    private var isDocument: Bool { m.mediaKind == "document" }
+
+    /// 文档消息（对齐参考）：中性灰气泡（双方向同色）装文件卡；
+    /// 说明文字在卡外下方直接贴壁纸，收件时间随说明行、发件时间+回执在卡内右下
+    private var documentBubble: some View {
+        VStack(alignment: m.fromMe ? .trailing : .leading, spacing: 3) {
+            HStack(alignment: .bottom, spacing: 6) {
+                media
+                    .foregroundStyle(m.mediaMime.contains("pdf") ? Color(hex: 0xE53935) : .orange)
+                if m.fromMe { timeColumn }
+            }
+            .padding(.horizontal, 9).padding(.vertical, 8)
+            .frame(maxWidth: 290, alignment: .leading)
+            .background(Color.dyn(0xFFFFFF, 0x1F2C33))
+            .clipShape(RoundedRectangle(cornerRadius: 16))
+
+            if !m.text.isEmpty {
+                // 说明文字在卡外（对齐参考「I need something with stones」）
+                Text(m.text)
+                    .font(.system(size: settings.sourceTextSp))
+                    .foregroundStyle(.primary)
+            }
+            if !m.fromMe {
+                Text(Self.time(m.ts)).font(.system(size: 10))
+                    .foregroundStyle(.secondary)
+            }
+        }
+        .frame(maxWidth: 290, alignment: m.fromMe ? .trailing : .leading)
+    }
+    /// 叠在媒体图右下角的时间徽章（黑 45% 胶囊白字）
+    private var timeBadge: some View {
+        Text(Self.time(m.ts))
+            .font(.system(size: 10))
+            .foregroundStyle(.white)
+            .padding(.horizontal, 6).padding(.vertical, 2)
+            .background(Capsule().fill(Color.black.opacity(0.45)))
+            .padding(5)
     }
     private var mediaKindNeedsStroke: Bool {
         ["image", "video", "document"].contains(m.mediaKind)
