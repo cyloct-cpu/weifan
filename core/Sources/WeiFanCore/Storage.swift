@@ -72,6 +72,10 @@ public struct AppSettings: Codable, Equatable, Sendable {
     public var themeMode: String = "system"
     /// 已停用的服务商 id（网格开关；路由时跳过）
     public var disabledProviders: Set<String> = []
+    /// 渠道顺序（网格拖动排序；顺序即降级链优先级，Android serviceChainOrder 同义）
+    public var providerOrder: [String] = []
+    /// 服务选择三档（Android selection 同义）：auto=按语种优选 / priority=按我的排序 / 具体渠道 id=只用这家
+    public var providerSelection: String = "auto"
 
     public init() {}
 
@@ -95,6 +99,8 @@ public struct AppSettings: Codable, Equatable, Sendable {
         historyEngine = try c.decodeIfPresent(String.self, forKey: .historyEngine) ?? d.historyEngine
         themeMode = try c.decodeIfPresent(String.self, forKey: .themeMode) ?? d.themeMode
         disabledProviders = try c.decodeIfPresent(Set<String>.self, forKey: .disabledProviders) ?? d.disabledProviders
+        providerOrder = try c.decodeIfPresent([String].self, forKey: .providerOrder) ?? d.providerOrder
+        providerSelection = try c.decodeIfPresent(String.self, forKey: .providerSelection) ?? d.providerSelection
     }
 }
 

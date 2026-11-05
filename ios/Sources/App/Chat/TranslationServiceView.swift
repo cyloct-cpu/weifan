@@ -20,6 +20,8 @@ struct ProviderCard: Identifiable {
     let name: String
     let desc: String
     let implemented: Bool
+    /// 是否有密钥录入界面（deepl/google 直连 Keychain；其余引擎下一轮接入）
+    var hasKeyEntry: Bool { id == "deepl" || id == "google" }
 }
 
 // MARK: - 自定义接口档案（与 Android customs_json 同构）
@@ -108,8 +110,7 @@ struct TranslationServiceView: View {
     @State private var prompt = ""
     @State private var showColor = false
     @State private var showHistoryPicker = false
-
-    @State private var themeMode = "system"
+    @State private var showTemplates = false
 
     @State private var glossaryText = ""
 
@@ -119,6 +120,9 @@ struct TranslationServiceView: View {
 
     @State private var latencyText = "未测试"
     @State private var latencyTesting = false
+
+    // 渠道密钥录入（deepl/google）：点未配置卡片的开关时弹出
+    @State private var keyDialog: ProviderCard?
 
     private let settingsStore = UserDefaultsSettingsStore()
 
@@ -154,7 +158,6 @@ struct TranslationServiceView: View {
                 displaySection
                 sendSection
                 quotaSection
-                appearanceSection
                 glossarySection
                 saveButton
                 testSection
@@ -189,6 +192,18 @@ struct TranslationServiceView: View {
             HistoryEnginePicker(customs: customs, selection: $settings.historyEngine,
                                 onPick: { _ in persist() })
         }
+        .sheet(isPresented: $showTemplates) {
+            PromptTemplatePicker { tpl in
+                prompt = tpl
+                persist()
+                showTemplates = false
+            }
+        }
+        .sheet(item: $keyDialog) { card in
+            ProviderKeyDialog(card: card) {
+                creds = core.core.credentials   // 保存后刷新 configured 状态
+            }
+        }
     }
 
     // MARK: 段头（● 圆点 + 可折叠，对齐安卓段头样式）
@@ -221,32 +236,55 @@ struct TranslationServiceView: View {
                 Text("翻译服务（网格顺序 = 优先级：左→右、上→下）")
                     .font(.footnote).foregroundStyle(.secondary)
 
-                Button {
-                    settings.disabledProviders = []
-                    persist()
+                // 三档服务选择（对齐 Android refreshServiceSpinner）：即时生效
+                Menu {
+                    Button {
+                        settings.providerSelection = "auto"
+                        persist()
+                    } label: {
+                        Label("自动（按语种优选）",
+                              systemImage: settings.providerSelection == "auto" ? "checkmark" : "")
+                    }
+                    Button {
+                        settings.providerSelection = "priority"
+                        persist()
+                    } label: {
+                        Label("按我的排序（网格拖动）",
+                              systemImage: settings.providerSelection == "priority" ? "checkmark" : "")
+                    }
+                    ForEach(channels.filter { $0.configured }) { ch in
+                        Button {
+                            settings.providerSelection = ch.id
+                            persist()
+                        } label: {
+                            Label("\(ch.label)（只用这家）",
+                                  systemImage: settings.providerSelection == ch.id ? "checkmark" : "")
+                        }
+                    }
                 } label: {
                     HStack {
-                        Text("自动（按语种优选）").font(.callout)
+                        Text(selectionLabel).font(.callout)
                         Spacer()
-                        if settings.disabledProviders.isEmpty {
-                            Image(systemName: "checkmark").font(.caption).foregroundStyle(.teal)
-                        }
+                        Image(systemName: "chevron.up.chevron.down")
+                            .font(.caption2).foregroundStyle(.secondary)
                     }
                     .padding(12).frame(maxWidth: .infinity)
                     .background(Color(uiColor: .secondarySystemGroupedBackground))
                     .clipShape(RoundedRectangle(cornerRadius: 10))
                 }
-                .buttonStyle(.plain)
+
+                Text("长按卡片拖到另一颗上 = 插到它前面；开关关掉 = 停用")
+                    .font(.caption2).foregroundStyle(.secondary)
 
                 LazyVGrid(columns: [GridItem(.flexible(), spacing: 10), GridItem(.flexible(), spacing: 10)], spacing: 10) {
-                    builtinCard(providers[0])
-                    builtinCard(providers[1])
-                    ForEach(providers.dropFirst(2)) { p in
-                        unimplementedCard(p)
+                    ForEach(channels) { ch in
+                        channelCard(ch)
+                            .onDrag {
+                                dragging = ch.id
+                                return NSItemProvider(object: ch.id as NSString)
+                            }
                     }
-                    ForEach(customs) { p in
-                        customCard(p)
-                    }
+                    // 放置目标：网格末尾（拖到「添加接口」上 = 挪到最后）
                     Button { editingNew = true } label: {
                         VStack(spacing: 6) {
                             Image(systemName: "plus").font(.title3)
@@ -257,24 +295,88 @@ struct TranslationServiceView: View {
                         .clipShape(RoundedRectangle(cornerRadius: 12))
                     }
                     .buttonStyle(.plain)
+                    .onDrop(of: [.text], delegate: ChannelDropDelegate(view: self, targetId: "__end__"))
                 }
+                .onDrop(of: [.text], delegate: ChannelDropDelegate(view: self, targetId: nil))
             }
         }
     }
 
-    private func builtinCard(_ p: ProviderCard) -> some View {
-        let enabled = !settings.disabledProviders.contains(p.id)
+    // MARK: 渠道模型（对齐 Android Channel：free + custom 混排，顺序 = 优先级）
+
+    struct Channel: Identifiable {
+        let id: String
+        let label: String
+        let note: String
+        let configured: Bool
+        let card: ProviderCard?
+        let custom: CustomProfile?
+    }
+
+    /// 凭据快照（网格 configured 状态用；Keychain 保存后 refreshCreds 刷新）
+    @State private var creds = ProviderCredentials()
+    @State private var dragging: String?
+
+    private var channels: [Channel] {
+        var free: [Channel] = providers.map { card in
+            Channel(id: card.id, label: card.name, note: card.desc,
+                    configured: isConfigured(card), card: card, custom: nil)
+        }
+        free.append(contentsOf: customs.map { c in
+            let complete = !c.key.isEmpty && !c.baseUrl.isEmpty && !c.model.isEmpty
+            return Channel(id: "custom:\(c.id)", label: c.name.isEmpty ? c.model : c.name,
+                           note: complete ? c.baseUrl : "点开填写 key + 接口地址",
+                           configured: complete, card: nil, custom: c)
+        })
+        let byId = Dictionary(uniqueKeysWithValues: free.map { ($0.id, $0) })
+        var order = settings.providerOrder.filter { byId[$0] != nil }
+        for ch in free where !order.contains(ch.id) { order.append(ch.id) }
+        return order.compactMap { byId[$0] }
+    }
+
+    private var selectionLabel: String {
+        switch settings.providerSelection {
+        case "auto": return "自动（按语种优选）"
+        case "priority": return "按我的排序（网格拖动）"
+        default:
+            return channels.first { $0.id == settings.providerSelection }?.label
+                .appending("（只用这家）") ?? "自动（按语种优选）"
+        }
+    }
+
+    private func isConfigured(_ card: ProviderCard) -> Bool {
+        guard card.implemented else { return false }
+        switch card.id {
+        case "deepl": return !(creds.deepLAPIKey ?? "").isEmpty
+        case "google": return !(creds.googleAPIKey ?? "").isEmpty
+        default: return false
+        }
+    }
+
+    /// 单颗渠道卡（对齐 Android channelCapsule：开关=启用，点卡=配密钥，长按=拖）
+    private func channelCard(_ ch: Channel) -> some View {
+        let off = settings.disabledProviders.contains(ch.id)
+        let active = ch.configured && !off
         return VStack(alignment: .leading, spacing: 6) {
             HStack {
-                Text(p.name).font(.callout.bold()).lineLimit(1)
+                Text(ch.label).font(.callout.bold()).lineLimit(1)
                 Spacer()
-                Toggle("", isOn: Binding(
-                    get: { enabled },
-                    set: { on in setProvider(p.id, on: on) }))
-                    .labelsHidden()
+                if ch.configured {
+                    Toggle("", isOn: Binding(
+                        get: { !off },
+                        set: { on in setProvider(ch.id, on: on) }))
+                        .labelsHidden()
+                } else if ch.card?.implemented == true {
+                    // 引擎有、密钥没配：开关默认关，点开=去填密钥
+                    Toggle("", isOn: .constant(false))
+                        .labelsHidden()
+                        .onTapGesture { if ch.card?.hasKeyEntry == true { keyDialog = ch.card } }
+                } else {
+                    Toggle("", isOn: .constant(false)).labelsHidden().disabled(true)
+                }
             }
-            Text(p.desc).font(.caption2).foregroundStyle(.secondary)
-            if !p.implemented {
+            Text(ch.note).font(.caption2).foregroundStyle(.secondary).lineLimit(2)
+            if let card = ch.card, !card.implemented {
                 Text("Swift 引擎下一轮接入").font(.caption2).foregroundStyle(.orange)
             }
         }
@@ -283,45 +385,49 @@ struct TranslationServiceView: View {
         .background(Color(uiColor: .secondarySystemGroupedBackground))
         .clipShape(RoundedRectangle(cornerRadius: 12))
         .overlay(RoundedRectangle(cornerRadius: 12)
-            .stroke(enabled ? Color.teal : .clear, lineWidth: 1.5))
-    }
-
-    private func unimplementedCard(_ p: ProviderCard) -> some View {
-        VStack(alignment: .leading, spacing: 6) {
-            HStack {
-                Text(p.name).font(.callout.bold()).lineLimit(1)
-                Spacer()
-                Toggle("", isOn: .constant(false)).labelsHidden().disabled(true)
+            .stroke(active ? Color(hex: 0x0A7EA4) : .clear, lineWidth: 1.5))
+        .opacity(off ? 0.45 : 1)
+        .onTapGesture {
+            if let c = ch.custom { editingProfile = c }
+            else if let card = ch.card, card.implemented, !ch.configured, card.hasKeyEntry {
+                keyDialog = card
             }
-            Text(p.desc).font(.caption2).foregroundStyle(.secondary)
         }
-        .padding(10)
-        .frame(maxWidth: .infinity, minHeight: 74, alignment: .topLeading)
-        .opacity(0.55)
-        .background(Color(uiColor: .secondarySystemGroupedBackground))
-        .clipShape(RoundedRectangle(cornerRadius: 12))
-    }
-
-    private func customCard(_ p: CustomProfile) -> some View {
-        VStack(alignment: .leading, spacing: 6) {
-            HStack {
-                Text(p.name.isEmpty ? p.model : p.name).font(.callout.bold()).lineLimit(1)
-                Spacer()
-            }
-            Text(p.baseUrl).font(.caption2).foregroundStyle(.secondary).lineLimit(1)
-            Text(p.model).font(.caption2).foregroundStyle(.teal)
-        }
-        .padding(10)
-        .frame(maxWidth: .infinity, minHeight: 74, alignment: .topLeading)
-        .background(Color(uiColor: .secondarySystemGroupedBackground))
-        .clipShape(RoundedRectangle(cornerRadius: 12))
-        .overlay(RoundedRectangle(cornerRadius: 12).stroke(Color.teal, lineWidth: 1.5))
         .contextMenu {
-            Button("编辑") { editingProfile = p }
-            Button("删除", role: .destructive) {
-                customs.removeAll { $0.id == p.id }
-                CustomProfile.saveAll(customs)
+            if ch.custom != nil {
+                Button("编辑") { editingProfile = ch.custom }
+                Button("删除", role: .destructive) {
+                    customs.removeAll { $0.id == ch.custom?.id }
+                    CustomProfile.saveAll(customs)
+                }
             }
+        }
+        .onDrop(of: [.text], delegate: ChannelDropDelegate(view: self, targetId: ch.id))
+    }
+
+    /// 拖动排序：松手落到目标卡上 = 插到它前面（对齐 Android ACTION_DROP）
+    struct ChannelDropDelegate: DropDelegate {
+        let view: TranslationServiceView
+        let targetId: String?   // nil = 整网格兜底（不重排）
+
+        func dropEntered(info: DropInfo) {
+            guard let targetId, let dragging = view.dragging, dragging != targetId else { return }
+            var order = view.channels.map { $0.id }
+            guard let from = order.firstIndex(of: dragging),
+                  let to = order.firstIndex(of: targetId) else { return }
+            order.remove(at: from)
+            order.insert(dragging, at: to)
+            view.settings.providerOrder = order
+            view.persist()
+        }
+
+        func performDrop(info: DropInfo) -> Bool {
+            view.dragging = nil
+            return true
+        }
+
+        func dropUpdated(info: DropInfo) -> DropProposal? {
+            DropProposal(operation: .move)
         }
     }
 
@@ -395,13 +501,10 @@ struct TranslationServiceView: View {
                     .buttonStyle(.borderedProminent)
                     Button("默认") { prompt = ""; persist() }
                         .buttonStyle(.bordered)
-                    Button("模板") {
-                        prompt = Self.promptTemplateText
-                        persist()
-                    }
-                    .buttonStyle(.bordered)
+                    Button("模板") { showTemplates = true }
+                        .buttonStyle(.bordered)
                 }
-                Text("占位：(TO) = 目标语言，(TONE) = 语气")
+                Text("占位：{TO} = 目标语言，{TONE} = 语气")
                     .font(.caption2).foregroundStyle(.secondary)
 
                 Button { showColor = true } label: {
@@ -494,24 +597,6 @@ struct TranslationServiceView: View {
         }
     }
 
-    private var appearanceSection: some View {
-        VStack(alignment: .leading, spacing: 10) {
-            sectionHeader("外观：昼夜切换", "外观")
-            if expanded.contains("外观") {
-                Text("昼是浅色，夜是暗色调。跟随系统会跟着手机的深浅色走。")
-                    .font(.footnote).foregroundStyle(.secondary)
-                Picker("外观", selection: themeBinding) {
-                    Text("跟随系统").tag("system")
-                    Text("昼").tag("light")
-                    Text("夜").tag("dark")
-                }
-                .pickerStyle(.segmented)
-                Text("自定夜间时段与安卓一样，列下一轮接入。")
-                    .font(.caption2).foregroundStyle(.secondary)
-            }
-        }
-    }
-
     private var glossarySection: some View {
         VStack(alignment: .leading, spacing: 10) {
             sectionHeader("术语：不要乱译的词", "术语")
@@ -584,7 +669,7 @@ struct TranslationServiceView: View {
         prompt = settings.promptTemplate
         glossaryText = glossaryLines(settings.glossary)
         customs = CustomProfile.loadAll()
-        themeMode = settings.themeMode
+        creds = core.core.credentials
     }
 
     private func persist() {
@@ -604,11 +689,6 @@ struct TranslationServiceView: View {
     private func sizeBinding(_ kp: WritableKeyPath<AppSettings, Double>) -> Binding<Double> {
         Binding(get: { settings[keyPath: kp] },
                 set: { settings[keyPath: kp] = $0; persist() })
-    }
-
-    private var themeBinding: Binding<String> {
-        Binding(get: { settings.themeMode },
-                set: { settings.themeMode = $0; persist() })
     }
 
     private var colorBinding: Binding<Color> {
@@ -665,8 +745,141 @@ struct TranslationServiceView: View {
     }
 }
 
-extension TranslationServiceView {
-    static let promptTemplateText = "你是专业的外贸翻译引擎，服务于跨境贸易沟通。把用户输入翻译成(TO)。\n要求：\n1. 只输出译文，不要解释、不要引号、不要加任何前后缀。\n2. 语气：正式商务语气，简洁专业，不使用缩略语和表情。\n3. 文本中的『数字』是占位符，必须原样保留在译文中的对应位置，不得翻译、不得改写、不得移除。\n4. 金额、数量、日期、型号必须逐字对应，不许换算、不许分开。\n5. 人名、品牌名、产品型号保留原文，不要音译。\n6. 如果原文已是目标语言，原样返回。"
+
+// MARK: - 提示词模板（对齐 Android showPromptTemplates：四选一）
+
+struct PromptTemplatePicker: View {
+    var onPick: (String) -> Void
+    @Environment(\.dismiss) private var dismiss
+
+    private static let businessPrompt = [
+        "你是专业的中外互译引擎，服务于跨境贸易沟通。把用户输入翻译成{TO}。",
+        "要求：",
+        "1. 只输出译文，不要解释、不要引号、不要加任何前后缀。",
+        "2. 语气：正式商务语气，简洁专业，不使用缩略语和表情。",
+        "3. 文本中的 ⟦数字⟧ 是占位符，必须原样保留在译文中的对应位置，不得翻译、不得改写、不得移动。",
+        "4. 金额、数量、日期、型号必须逐字对应，不许换算、不许四舍五入。",
+        "5. 人名、品牌名、产品型号保留原文，不要音译。",
+        "6. 如果原文已是目标语言，原样返回。",
+    ].joined(separator: "\n")
+
+    private static let literalPrompt = [
+        "你是专业的中外互译引擎，服务于跨境贸易沟通。把用户输入翻译成{TO}。",
+        "要求：",
+        "1. 只输出译文，不要解释、不要引号、不要加任何前后缀。",
+        "2. 语气：忠实直译，保留原文结构与数字格式，不润色。",
+        "3. 文本中的 ⟦数字⟧ 是占位符，必须原样保留在译文中的对应位置，不得翻译、不得改写、不得移动。",
+        "4. 金额、数量、日期、型号必须逐字对应，不许换算、不许四舍五入。",
+        "5. 人名、品牌名、产品型号保留原文，不要音译。",
+        "6. 如果原文已是目标语言，原样返回。",
+    ].joined(separator: "\n")
+
+    private static let techPrompt = [
+        "你是技术文档翻译引擎。把输入翻译成{TO}。",
+        "要求：",
+        "1. 型号、参数、单位、公差、材质代码逐字保留，不翻译不换算。",
+        "2. 表格与列表结构原样输出，行数与顺序不变。",
+        "3. 只输出译文，不加解释。",
+    ].joined(separator: "\n")
+
+    private static let casualPrompt =
+        "你是外贸聊天翻译。把输入翻译成{TO}。{TONE}。短句为主，不加礼貌后缀，不补充原文没有的信息。只输出译文。"
+
+    private let templates: [(String, String)] = [
+        ("跨境询盘回复（默认风格）", businessPrompt),
+        ("技术规格 / 参数表", techPrompt),
+        ("口语短句（节拍聊天）", casualPrompt),
+        ("严格直译（合同报价）", literalPrompt),
+    ]
+
+    var body: some View {
+        NavigationStack {
+            List {
+                ForEach(templates, id: \.0) { name, text in
+                    Button {
+                        onPick(text)
+                    } label: {
+                        VStack(alignment: .leading, spacing: 4) {
+                            Text(name).font(.callout.bold()).foregroundStyle(.primary)
+                            Text(text.replacingOccurrences(of: "\n", with: " "))
+                                .font(.caption2).foregroundStyle(.secondary)
+                                .lineLimit(2)
+                        }
+                    }
+                }
+            }
+            .navigationTitle("选择提示词模板")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) { Button("取消") { dismiss() } }
+            }
+        }
+    }
+}
+
+// MARK: - 渠道密钥录入（对齐 Android openProviderDialog：deepL/google 直连 Keychain）
+
+struct ProviderKeyDialog: View {
+    let card: ProviderCard
+    var onSaved: () -> Void
+    @Environment(\.dismiss) private var dismiss
+
+    @State private var keyValue = ""
+    @State private var endpoint = "https://api-free.deepl.com/v2/translate"
+    @State private var saved = false
+
+    var body: some View {
+        NavigationStack {
+            Form {
+                Section(card.name + " 密钥") {
+                    SecureField(card.id == "deepl" ? "xxxxxxxx-xxxx-…:fx" : "AIza…", text: $keyValue)
+                        .autocorrectionDisabled()
+                        .textInputAutocapitalization(.never)
+                    if card.id == "deepl" {
+                        TextField("接口地址", text: $endpoint)
+                            .keyboardType(.URL)
+                            .autocorrectionDisabled()
+                            .textInputAutocapitalization(.never)
+                    }
+                }
+                Section {
+                    Text("密钥保存在 Keychain，不写入任何会提交的文件。免费额度：" + card.desc)
+                        .font(.footnote).foregroundStyle(.secondary)
+                }
+            }
+            .navigationTitle("配置密钥")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) { Button("取消") { dismiss() } }
+                ToolbarItem(placement: .confirmationAction) {
+                    Button(saved ? "已保存" : "保存") {
+                        var c = Keychain.credentials()
+                        let v = keyValue.trimmingCharacters(in: .whitespaces)
+                        if card.id == "deepl" {
+                            c.deepLAPIKey = v.isEmpty ? nil : v
+                            if let u = URL(string: endpoint.trimmingCharacters(in: .whitespaces)) { c.deepLEndpoint = u }
+                        } else if card.id == "google" {
+                            c.googleAPIKey = v.isEmpty ? nil : v
+                        }
+                        Keychain.save(c)
+                        saved = true
+                        onSaved()
+                        DispatchQueue.main.asyncAfter(deadline: .now() + 0.6) { dismiss() }
+                    }
+                    .disabled(keyValue.trimmingCharacters(in: .whitespaces).isEmpty)
+                }
+            }
+            .onAppear {
+                let c = Keychain.credentials()
+                if card.id == "deepl" {
+                    keyValue = c.deepLAPIKey ?? ""
+                    endpoint = c.deepLEndpoint.absoluteString
+                } else if card.id == "google" {
+                    keyValue = c.googleAPIKey ?? ""
+                }
+            }
+        }
+    }
 }
 
 // MARK: - 自定义接口编辑器

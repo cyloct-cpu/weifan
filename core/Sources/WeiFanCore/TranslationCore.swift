@@ -205,31 +205,86 @@ public struct TranslationCore: Sendable {
                               target: LanguageCode) throws -> TranslationProviding {
         // 网格开关：用户停用的服务商不参与路由（对齐 Android chain_off）
         let off = settings.disabledProviders
+        // 三档服务选择（对齐 Android selection）：auto=按语种优选 / priority=按我的排序 / 具体 id=只用这家
+        let selection = settings.providerSelection
+
+        if selection != "auto" && selection != "priority" {
+            // 只用这家：deepl/google/llm 在核心层；custom:* 由 App 层拦截（不走这里）
+            let only = selection
+            switch (route, only) {
+            case (.fastMT, "deepl"):
+                if target.supportedByDeepL, let key = credentials.deepLAPIKey, !key.isEmpty, !off.contains("deepl") {
+                    return DeepLTranslationProvider(apiKey: key, endpoint: credentials.deepLEndpoint, session: session)
+                }
+                throw TranslationError.missingCredential("DeepL（该语言不支持或未配密钥）")
+            case (.fastMT, "google"):
+                if let key = credentials.googleAPIKey, !key.isEmpty, !off.contains("google") {
+                    return GoogleTranslationProvider(apiKey: key, session: session)
+                }
+                throw TranslationError.missingCredential("Google API Key")
+            case (_, "llm"):
+                if let key = credentials.llmAPIKey, !key.isEmpty, !off.contains("llm") {
+                    return LLMTranslationProvider(apiKey: key, baseURL: credentials.llmBaseURL,
+                                                  model: credentials.llmModel, name: "LLM", session: session,
+                                                  promptOverride: settings.promptTemplate.isEmpty ? nil : settings.promptTemplate)
+                }
+                throw TranslationError.missingCredential("大模型 API Key")
+            default:
+                break // 指定的渠道不可用 → 继续走下面的链路降级
+            }
+        }
+
+        // 候选降级链：priority 档按 providerOrder 排（缺失的按默认序追加在尾部）
+        func ordered(_ ids: [String]) -> [String] {
+            guard selection == "priority" else { return ids }
+            var seen = Set<String>()
+            var list: [String] = []
+            for id in settings.providerOrder where ids.contains(id) && seen.insert(id).inserted {
+                list.append(id)
+            }
+            return list + ids.filter { !seen.contains($0) }
+        }
+
         switch route {
         case .fastMT:
-            // 优先 DeepL（中→欧语质量更稳），不支持的语言回落 Google
-            if target.supportedByDeepL, let key = credentials.deepLAPIKey, !key.isEmpty,
-               !off.contains("deepl") {
-                return DeepLTranslationProvider(apiKey: key, endpoint: credentials.deepLEndpoint, session: session)
-            }
-            if let key = credentials.googleAPIKey, !key.isEmpty, !off.contains("google") {
-                return GoogleTranslationProvider(apiKey: key, session: session)
-            }
-            if let key = credentials.llmAPIKey, !key.isEmpty, !off.contains("llm") {
-                // 没配机翻就别硬失败，退到大模型
-                return LLMTranslationProvider(apiKey: key, baseURL: credentials.llmBaseURL,
-                                              model: credentials.llmModel, name: "LLM(兜底)", session: session,
-                                              promptOverride: settings.promptTemplate.isEmpty ? nil : settings.promptTemplate)
+            for id in ordered(["deepl", "google", "llm"]) {
+                switch id {
+                case "deepl":
+                    if target.supportedByDeepL, let key = credentials.deepLAPIKey, !key.isEmpty, !off.contains("deepl") {
+                        return DeepLTranslationProvider(apiKey: key, endpoint: credentials.deepLEndpoint, session: session)
+                    }
+                case "google":
+                    if let key = credentials.googleAPIKey, !key.isEmpty, !off.contains("google") {
+                        return GoogleTranslationProvider(apiKey: key, session: session)
+                    }
+                case "llm":
+                    if let key = credentials.llmAPIKey, !key.isEmpty, !off.contains("llm") {
+                        // 没配机翻就别硬失败，退到大模型
+                        return LLMTranslationProvider(apiKey: key, baseURL: credentials.llmBaseURL,
+                                                      model: credentials.llmModel, name: "LLM(兜底)", session: session,
+                                                      promptOverride: settings.promptTemplate.isEmpty ? nil : settings.promptTemplate)
+                    }
+                default:
+                    break
+                }
             }
             throw TranslationError.missingCredential("Google / DeepL / 大模型 任一")
         case .languageModel:
-            if let key = credentials.llmAPIKey, !key.isEmpty, !off.contains("llm") {
-                return LLMTranslationProvider(apiKey: key, baseURL: credentials.llmBaseURL,
-                                              model: credentials.llmModel, name: "LLM", session: session,
-                                              promptOverride: settings.promptTemplate.isEmpty ? nil : settings.promptTemplate)
-            }
-            if let google = credentials.googleAPIKey, !google.isEmpty, !off.contains("google") {
-                return GoogleTranslationProvider(apiKey: google, session: session)
+            for id in ordered(["llm", "google"]) {
+                switch id {
+                case "llm":
+                    if let key = credentials.llmAPIKey, !key.isEmpty, !off.contains("llm") {
+                        return LLMTranslationProvider(apiKey: key, baseURL: credentials.llmBaseURL,
+                                                      model: credentials.llmModel, name: "LLM", session: session,
+                                                      promptOverride: settings.promptTemplate.isEmpty ? nil : settings.promptTemplate)
+                    }
+                case "google":
+                    if let google = credentials.googleAPIKey, !google.isEmpty, !off.contains("google") {
+                        return GoogleTranslationProvider(apiKey: google, session: session)
+                    }
+                default:
+                    break
+                }
             }
             throw TranslationError.missingCredential("大模型 API Key")
         }

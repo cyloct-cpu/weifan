@@ -99,4 +99,84 @@ final class WeiFanUITests: XCTestCase {
         att.lifetime = .keepAlways
         add(att)
     }
+
+    /// 2026-11-06 用户反馈「翻译服务页怎么返回上一页」——
+    /// 验证真实导航流（列表 ⋮ → 设置 → 翻译服务）里返回键存在且可用。
+    /// 注意：调试钩子 PREVIEW_TRANSLATION 的根视图本来就没有返回键，别拿它当真实流。
+    func testTranslationServiceBackButton() throws {
+        let app = XCUIApplication()
+        app.launchArguments = ["PREVIEW_LIST"]
+        app.launch()
+
+        let menu = app.buttons["header_menu"]
+        XCTAssertTrue(menu.waitForExistence(timeout: 25), "列表页 ⋮ 没找到")
+        menu.tap()
+
+        let settingsItem = app.buttons["设置"]
+        XCTAssertTrue(settingsItem.waitForExistence(timeout: 8), "菜单里没有「设置」")
+        settingsItem.tap()
+        XCTAssertTrue(app.navigationBars["聊天设置"].waitForExistence(timeout: 10), "聊天设置没推入")
+
+        let row = app.buttons["row_translation_service"]
+        XCTAssertTrue(row.waitForExistence(timeout: 8), "翻译服务入口行没找到")
+        row.tap()
+        XCTAssertTrue(app.navigationBars["翻译服务"].waitForExistence(timeout: 10), "翻译服务页没推入")
+        snapshot(app, "30-翻译服务-真实流")
+
+        // 返回键 = 导航栏左侧按钮（「聊天设置」或 chevron）
+        let navBar = app.navigationBars["翻译服务"]
+        let back = navBar.buttons.element(boundBy: 0)
+        XCTAssertTrue(back.exists && back.isHittable, "翻译服务页没有可点的返回键")
+        back.tap()
+        XCTAssertTrue(app.navigationBars["聊天设置"].waitForExistence(timeout: 8), "点返回没回到聊天设置")
+    }
+
+    /// 2026-11-06 第二轮反馈回归：网格未配置默认关、外观挪总设置、四模板入口
+    func testTranslationServiceFixes() throws {
+        let app = XCUIApplication()
+        app.launchArguments = ["PREVIEW_LIST"]
+        app.launch()
+
+        let menu = app.buttons["header_menu"]
+        XCTAssertTrue(menu.waitForExistence(timeout: 25), "列表页 ⋮ 没找到")
+        menu.tap()
+        let settingsItem = app.buttons["设置"]
+        XCTAssertTrue(settingsItem.waitForExistence(timeout: 8), "菜单里没有「设置」")
+        settingsItem.tap()
+        XCTAssertTrue(app.navigationBars["聊天设置"].waitForExistence(timeout: 10), "聊天设置没推入")
+        snapshot(app, "40-总设置-外观行")
+
+        // #4：外观：昼夜切换应出现在总设置，且不在翻译服务页
+        XCTAssertTrue(app.staticTexts["外观：昼夜切换"].waitForExistence(timeout: 5), "总设置没有外观行")
+
+        let row = app.buttons["row_translation_service"]
+        XCTAssertTrue(row.waitForExistence(timeout: 8), "翻译服务入口行没找到")
+        row.tap()
+        XCTAssertTrue(app.navigationBars["翻译服务"].waitForExistence(timeout: 10), "翻译服务页没推入")
+        XCTAssertFalse(app.staticTexts["外观：昼夜切换"].exists, "外观行不该在翻译服务页")
+
+        // #2：未配置渠道默认关——服务段默认展开，直接拍网格
+        sleep(1)
+        snapshot(app, "41-网格-未配置全关")
+        // 三档服务选择菜单
+        let autoRow = app.buttons["自动（按语种优选）"]
+        if autoRow.exists && autoRow.isHittable {
+            autoRow.tap()
+            sleep(1)
+            snapshot(app, "43-三档服务菜单")
+            app.buttons["自动（按语种优选）"].firstMatch.tap()
+        }
+        // 未配密钥时 DeepL 卡应处于关（开关 value = 0）
+
+
+        // #3：模板按钮 → 四模板选择器（显示段默认展开，别再点段头否则收起）
+        let tplBtn = app.buttons["模板"]
+        if tplBtn.waitForExistence(timeout: 5) {
+            tplBtn.tap()
+            XCTAssertTrue(app.navigationBars["选择提示词模板"].waitForExistence(timeout: 8), "四模板选择器没弹出")
+            snapshot(app, "42-四模板选择器")
+            let cancel = app.buttons["取消"]
+            if cancel.exists { cancel.tap() }
+        }
+    }
 }

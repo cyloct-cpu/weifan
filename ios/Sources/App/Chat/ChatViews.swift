@@ -23,9 +23,6 @@ struct ChatRootView: View {
         // 安卓没有「界面语言选择」页（中文单语），这里去掉，直接按配对状态分流
         if ProcessInfo.processInfo.arguments.contains("PREVIEW_LIST") {
             ChatListView()
-        } else if ProcessInfo.processInfo.arguments.contains("PREVIEW_TRANSLATION") {
-            // 调试预览：直接进翻译服务页（不需要配对）
-            NavigationStack { TranslationServiceView() }
         } else if !core.paired {
             PairingView()
         } else {
@@ -255,6 +252,7 @@ struct ChatListView: View {
                             .foregroundStyle(Color(hex: 0x111111))
                             .frame(width: 32, height: 32)
                     }
+                    .accessibilityIdentifier("header_menu")
                 }
                 .padding(.horizontal, 12)
                 .frame(height: 48)

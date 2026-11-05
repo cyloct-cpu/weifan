@@ -257,9 +257,7 @@ public struct LLMTranslationProvider: TranslationProviding {
             "model": model,
             "temperature": 0.2,
             "messages": [
-                ["role": "system", "content": promptOverride?.isEmpty == false
-                    ? promptOverride!
-                    : Self.systemPrompt(for: request)],
+                ["role": "system", "content": Self.effectivePrompt(for: request, override: promptOverride)],
                 ["role": "user", "content": request.text]
             ]
         ]
@@ -295,6 +293,27 @@ public struct LLMTranslationProvider: TranslationProviding {
             detectedSource: request.source,
             latency: Date().timeIntervalSince(started)
         )
+    }
+
+    /// 实际使用的提示词：用户模板优先（{TO}/{TONE} 占位，对齐 Android effectivePrompt），否则内置默认
+    static func effectivePrompt(for request: TranslationRequest, override: String?) -> String {
+        let tpl = override?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        guard !tpl.isEmpty else { return systemPrompt(for: request) }
+        let tone: String
+        switch request.style {
+        case .business: tone = "正式商务语气，简洁专业，不使用缩略语和表情"
+        case .literal:  tone = "忠实直译，保留原文结构与数字格式，不润色"
+        case .casual:   tone = "自然口语，像熟人聊天，可以简短"
+        }
+        let to = "\(request.target.displayName)（\(request.target.rawValue)）"
+        return tpl
+            .replacingOccurrences(of: "{TO}", with: to)
+            .replacingOccurrences(of: "{TONE}", with: tone)
+            // 旧版模板曾用 (TO)/(TONE)（8cdd1f6 前后的一版），一并兼容
+            .replacingOccurrences(of: "(TO)", with: to)
+            .replacingOccurrences(of: "(TONE)", with: tone)
+            .replacingOccurrences(of: "（TO）", with: to)
+            .replacingOccurrences(of: "（TONE）", with: tone)
     }
 
     /// 提示词是四端共用资产，改这里等于四端同时生效（见 docs/02-技术方案.md §5）

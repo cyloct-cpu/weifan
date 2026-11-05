@@ -5,6 +5,7 @@
 //   跟进待办（本地库 todos）、备份导出（SQLite JSON 打包到「文件」App）。
 
 import SwiftUI
+import WeiFanCore
 import UniformTypeIdentifiers
 import SQLite3
 
@@ -13,6 +14,19 @@ import SQLite3
 struct ChatSettingsView: View {
     @ObservedObject var core = ProtocolCore.shared
     @AppStorage("wa_auto_translate_incoming") private var autoTranslate = true
+    private let settingsStore = UserDefaultsSettingsStore()
+    @State private var themeMode = "system"
+
+    private var themeBinding: Binding<String> {
+        Binding(get: { themeMode },
+                set: { mode in
+                    themeMode = mode
+                    var s = settingsStore.load()
+                    s.themeMode = mode
+                    settingsStore.save(s)
+                    core.applySettings(s)   // WeiFanApp 监听 UserDefaults didChange 即时换肤
+                })
+    }
     @State private var backupURL: URL?
     @State private var exporting = false
     @State private var showRestore = false
@@ -24,11 +38,26 @@ struct ChatSettingsView: View {
     @State private var deviceMsg = "正在查询…"
 
     var body: some View {
+        _body
+            .onAppear { themeMode = UserDefaultsSettingsStore().load().themeMode }
+    }
+
+    private var _body: some View {
         // 段结构与行顺序完全对齐 Android SettingsActivity：
         // 通用 / WhatsApp 连接 / 翻译设置 / 客户管理 / 隐私与屏蔽 / 关于
         Form {
             Section("通用") {
                 LabeledContent("检查更新", value: "3.9.1（55）")
+                // 外观昼夜切换（对齐 Android 设置页主题项；之前误放在翻译服务页）
+                VStack(alignment: .leading, spacing: 8) {
+                    Text("外观：昼夜切换").font(.callout)
+                    Picker("外观", selection: themeBinding) {
+                        Text("跟随系统").tag("system")
+                        Text("昼").tag("light")
+                        Text("夜").tag("dark")
+                    }
+                    .pickerStyle(.segmented)
+                }
             }
 
             Section("WhatsApp 连接") {
@@ -39,6 +68,7 @@ struct ChatSettingsView: View {
 
             Section("翻译设置") {
                 NavigationLink("翻译服务（九家 + 自定义接口）") { TranslationServiceView() }
+                    .accessibilityIdentifier("row_translation_service")
             }
 
             Section("客户管理") {
