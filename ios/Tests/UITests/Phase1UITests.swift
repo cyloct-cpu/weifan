@@ -11,31 +11,25 @@ final class Phase1UITests: XCTestCase {
     }
 
     /// 语言选择页渲染并可点选 → 进入配对页
-    func test01OnboardingFlow() throws {
+    private func shot(_ app: XCUIApplication, _ name: String) {
+        let a = XCTAttachment(screenshot: XCUIScreen.main.screenshot())
+        a.name = name
+        a.lifetime = .keepAlways
+        add(a)
+    }
+
+    /// 未配对态 → 配对页（新流程：手机号 + 二维码双 tab；对齐安卓配对页）
+    func test01PairingPageShows() throws {
         let app = XCUIApplication()
-        app.launchArguments = ["UITEST_RESET_ONBOARDING"]
+        app.launchArguments = ["UITEST_FAKE_UNPAIRED"]
         app.launch()
 
-        // 首启：语言选择页
-        let spanish = app.buttons["lang_es"].firstMatch
-        if !spanish.waitForExistence(timeout: 10) {
-            let shot = XCTAttachment(screenshot: XCUIScreen.main.screenshot())
-            shot.name = "onboarding-not-shown"
-            shot.lifetime = .keepAlways
-            add(shot)
-        }
-        XCTAssertTrue(spanish.exists, "语言选择页未出现")
-        app.buttons["lang_en"].firstMatch.tap()
-
-        // 点选后：配对页（标题「关联 WhatsApp」）
-        let pairTitle = app.staticTexts["关联 WhatsApp"]
-        if !pairTitle.waitForExistence(timeout: 10) {
-            let shot = XCTAttachment(screenshot: XCUIScreen.main.screenshot())
-            shot.name = "after-language-tap"
-            shot.lifetime = .keepAlways
-            add(shot)
-        }
-        XCTAssertTrue(pairTitle.exists, "点选语言后未进入配对页")
+        let title = app.staticTexts["关联 WhatsApp"].firstMatch
+        XCTAssertTrue(title.waitForExistence(timeout: 10), "配对页未出现")
+        // 分段选择器（手机号/二维码）——segmented picker 的段不是 staticText
+        XCTAssertTrue(app.staticTexts["在手机 WhatsApp → 已链接的设备 → 使用电话号码关联，输入下方号码"].firstMatch.exists
+                      || app.segmentedControls.firstMatch.exists, "手机号流程未渲染")
+        shot(app, "pairing-page")
     }
 
     /// fake-paired：会话列表渲染种子会话 → 进入会话页看到气泡与输入区

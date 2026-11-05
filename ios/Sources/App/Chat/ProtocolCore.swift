@@ -131,9 +131,11 @@ final class ProtocolCore: ObservableObject {
         // 翻译管线：与翻译工具形态共用一套 WeiFanCore 装配（凭据来自钥匙串）
         core = TranslationCore.make(credentials: Keychain.credentials())
 
-        // UI 测试开关：launch argument 模拟已配对态（真实配对需要手机扫码）
+        // UI 测试开关：launch 参数模拟已配对/未配对态（真实配对需要手机扫码）
         if ProcessInfo.processInfo.arguments.contains("UITEST_FAKE_PAIRED") {
             paired = true
+        } else if ProcessInfo.processInfo.arguments.contains("UITEST_FAKE_UNPAIRED") {
+            paired = false
         } else {
             paired = client.isPaired()
         }
