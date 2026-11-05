@@ -278,7 +278,8 @@ struct ChatListView: View {
 
                 // 连接状态条
                 if !core.connected {
-                    Text("连接中…（需手机 WhatsApp 在线）")
+                    Text(core.connectError.map { "连接失败：\($0) · 重试中…" }
+                         ?? "连接中…（需可用的代理/网络出口；扫码与历史同步时需手机在线）")
                         .font(.caption)
                         .frame(maxWidth: .infinity)
                         .padding(.vertical, 6)
@@ -340,6 +341,9 @@ struct ChatListView: View {
                 }
             }
             .searchable(text: $query, placement: .navigationBarDrawer(displayMode: .always), prompt: "搜索或开始新聊天")
+            .navigationDestination(for: String.self) { jid in
+                ChatView(chatJid: jid)
+            }
             .onAppear { core.connectAsync() }
             .onChange(of: core.pendingChatJid) { jid in
                 // 新建会话/联系人/建群后程序化进会话（iOS 16 兼容写法）

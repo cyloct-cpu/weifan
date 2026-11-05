@@ -175,12 +175,33 @@ final class ProtocolCore: ObservableObject {
         }
     }
 
-    /// 阶段 1：已配对就静默重连
+    @Published var connectError: String? = nil
+    private var connectAttempt = 0
+    private var connecting = false
+
+    /// 连接（失败自动重试，指数退避 30s 封顶）。
+    /// whatsmeow 首连成功后自带断线重连；这里补「首连失败也要重试」，
+    /// 否则一次网络抖动就永远卡在「连接中」。
     func connectAsync() {
-        guard paired else { return }
-        DispatchQueue.global(qos: .userInitiated).async { [client] in
-            // 失败由 ConnectionListener 的 onDisconnected 反馈
-            _ = try? client.connect()
+        guard paired, !connecting else { return }
+        connecting = true
+        DispatchQueue.global(qos: .userInitiated).async { [weak self, client] in
+            var connErr: NSError?
+            do { _ = try client.connect() } catch { connErr = error as NSError }
+            DispatchQueue.main.async {
+                self?.connecting = false
+                if let connErr {
+                    self?.connectError = connErr.localizedDescription
+                    self?.connectAttempt = min((self?.connectAttempt ?? 0) + 1, 5)
+                    let delay = min(Double(2 << (self?.connectAttempt ?? 0)), 30)
+                    DispatchQueue.main.asyncAfter(deadline: .now() + delay) { [weak self] in
+                        self?.connectAsync()
+                    }
+                } else {
+                    self?.connectError = nil
+                    self?.connectAttempt = 0
+                }
+            }
         }
     }
 
