@@ -70,8 +70,12 @@ final class CallEngine: NSObject, ObservableObject {
         client.setAudioListener(handler)
     }
 
-    /// 主叫
+    /// 主叫。未连接 WhatsApp 直接给出明确错误（之前静默失败，用户以为按钮坏了）
     func startCall(client: MobileWeifanClient, jid: String, video: Bool) {
+        guard ProtocolCore.shared.connected else {
+            error = "未连接 WhatsApp，无法发起通话。请回到会话列表确认顶部横条已消失（已连上）再试。"
+            return
+        }
         peerJid = jid
         isVideo = video
         phase = .outgoing
@@ -80,7 +84,10 @@ final class CallEngine: NSObject, ObservableObject {
             let cid = client.startCall(jid, video: video, error: &err)
             DispatchQueue.main.async {
                 self?.callID = cid ?? ""
-                if let err { self?.error = err.localizedDescription; self?.teardown() }
+                if let err {
+                    self?.error = "通话发起失败：\(err.localizedDescription)"
+                    self?.teardown()
+                }
             }
         }
     }
@@ -127,7 +134,10 @@ final class CallEngine: NSObject, ObservableObject {
         playerNode?.stop(); playerNode = nil
         phase = .idle
         peerJid = ""; callID = ""; seconds = 0; muted = false
+        // error 保留：由界面 alert 展示后手动清除
     }
+
+    func clearError() { error = nil }
 
     private func startMic() {
         let session = AVAudioSession.sharedInstance()

@@ -328,9 +328,18 @@ final class WeiFanUITests: XCTestCase {
         app.navigationBars.buttons.element(boundBy: 0).tap()
         XCTAssertTrue(app.buttons["call_voice"].waitForExistence(timeout: 10), "回到会话页失败")
 
-        // ② 语音通话冒烟：浮层出现则验证+挂断；未连接时起呼立即失败属预期（真机连上再验）
+        // ② 语音通话冒烟：未连接 → 应弹「未连接 WhatsApp」明确提示（之前静默失败像按钮坏了）
         app.buttons["call_voice"].tap()
-        if app.staticTexts["呼叫中…"].waitForExistence(timeout: 6) {
+        sleep(1)
+        snapshot(app, "81-通话点击后即时状态")
+        let alertMsg = app.staticTexts.matching(
+            NSPredicate(format: "label CONTAINS %@", "未连接")).firstMatch
+        let offlineAlert = alertMsg.waitForExistence(timeout: 6)
+        if offlineAlert {
+            snapshot(app, "81-通话未连接提示")
+            app.buttons["好"].tap()
+        } else if app.staticTexts["呼叫中…"].waitForExistence(timeout: 6) {
+            // 已连接环境：验证浮层 + 挂断
             snapshot(app, "81-语音呼叫浮层")
             let hangup = app.buttons.matching(NSPredicate(format: "label CONTAINS %@", "phone.down")).firstMatch
             if hangup.exists { hangup.tap() }

@@ -224,6 +224,8 @@ struct ChatListView: View {
     @State private var chip = "所有"
     @State private var showNewChat = false
     @State private var showNewGroup = false
+    // 来电浮层/通话错误 alert 的条件在 body 里 → 观察 CallEngine
+    @ObservedObject private var callEngine = CallEngine.shared
     private let chips = ["所有", "未读", "特别关注", "群组", "已归档"]
 
     @State private var path = NavigationPath()
@@ -334,8 +336,13 @@ struct ChatListView: View {
             }
             .toolbar(.hidden, for: .navigationBar)
             .onAppear { CallEngine.shared.wire(client: core.client) }
+            .alert("通话", isPresented: .init(
+                get: { callEngine.error != nil && callEngine.phase == .idle },
+                set: { if !$0 { callEngine.clearError() } })) {
+                Button("好", role: .cancel) {}
+            } message: { Text(callEngine.error ?? "") }
             .overlay {
-                if CallEngine.shared.phase != .idle {
+                if callEngine.phase != .idle {
                     CallOverlayView(client: core.client) { jid in
                         core.chats().first(where: { $0.jid == jid })?.title
                             ?? core.messages(chatJid: jid).last.map { _ in jid } ?? jid
@@ -483,6 +490,8 @@ struct ChatView: View {
     }
     let chatJid: String
     @ObservedObject var core = ProtocolCore.shared
+    // 通话浮层/alert 的可见性条件在本视图 body 里 → 必须观察 CallEngine
+    @ObservedObject private var callEngine = CallEngine.shared
     @State private var title = ""
     @State private var input = ""
     @State private var msgs: [MessageRow] = []
@@ -593,13 +602,18 @@ struct ChatView: View {
         .sheet(isPresented: $showSearch) { MessageSearchSheet(chatJid: chatJid) }
         // 通话浮层：来电全屏/主叫状态（之前只挂在列表页——会话页内不可见）
         .overlay {
-            if CallEngine.shared.phase != .idle {
+            if callEngine.phase != .idle {
                 CallOverlayView(client: core.client) { jid in
                     core.chats().first(where: { $0.jid == jid })?.title
                         ?? core.messages(chatJid: jid).last.map { _ in jid } ?? jid
                 }
             }
         }
+        .alert("通话", isPresented: .init(
+            get: { callEngine.error != nil && callEngine.phase == .idle },
+            set: { if !$0 { callEngine.clearError() } })) {
+            Button("好", role: .cancel) {}
+        } message: { Text(callEngine.error ?? "") }
         .navigationTitle(title.isEmpty ? chatJid : title)
         .navigationBarTitleDisplayMode(.inline)
         .toolbar {
