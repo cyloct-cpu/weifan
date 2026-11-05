@@ -78,76 +78,144 @@ struct LanguagePickerView: View {
 
 struct PairingView: View {
     @ObservedObject var core = ProtocolCore.shared
-    @State private var pairCode: String?
-    @State private var qrImage: UIImage?
+    @State private var mode = 0                  // 0=手机号 1=二维码
+    @State private var code = "86"               // 国家码（86 是灰色提示）
+    @State private var phone = ""
     @State private var started = false
+    @State private var qrStarted = false
+
+    /// 纯数字：国家码 + 手机号（对齐 Android normalizePhone，区号空则默认 86）
+    private var digits: String? {
+        let c = code.filter(\.isNumber)
+        let p = phone.filter(\.isNumber)
+        guard p.count >= 6 else { return nil }
+        return (c.isEmpty ? "86" : c) + p
+    }
 
     var body: some View {
-        VStack(spacing: 20) {
-            Text("关联 WhatsApp")
-                .font(.title2.bold())
-            Text("在手机 WhatsApp → 已链接的设备 → 链接设备，扫描下方二维码")
-                .font(.subheadline)
-                .foregroundStyle(.secondary)
-                .multilineTextAlignment(.center)
-                .padding(.horizontal, 32)
+        ScrollView {
+            VStack(spacing: 16) {
+                Text("关联 WhatsApp").font(.system(size: 20, weight: .bold))
+                Picker("", selection: $mode) {
+                    Text("手机号").tag(0)
+                    Text("二维码").tag(1)
+                }
+                .pickerStyle(.segmented)
+                .padding(.horizontal, 24)
 
+                if mode == 0 { phoneFlow } else { qrFlow }
+
+                if let err = core.pairError {
+                    Text(err).font(.footnote).foregroundStyle(.red)
+                        .multilineTextAlignment(.center).padding(.horizontal, 24)
+                }
+            }
+            .padding(.vertical, 24)
+        }
+        .onAppear {
+            // 默认进手机号流程；切到二维码才发 QR 请求（对齐 Android 进面板才发起）
+            if mode == 1 && !qrStarted { requestQR() }
+        }
+        .onChange(of: mode) { m in
+            if m == 1 && !qrStarted { requestQR() }
+        }
+    }
+
+    // MARK: 手机号流程（对齐 Android：输入手机号 → 拿 8 位码 → 去 WhatsApp 输入）
+
+    @ViewBuilder private var phoneFlow: some View {
+        VStack(spacing: 12) {
+            Text("在手机 WhatsApp → 已链接的设备 → 使用电话号码关联，输入下方号码")
+                .font(.subheadline).foregroundStyle(.secondary)
+                .multilineTextAlignment(.center).padding(.horizontal, 28)
+
+            // 「+」固定 + 国家码（86 灰提示）+ 手机号
+            HStack(spacing: 0) {
+                Text("+").font(.system(size: 17)).padding(.leading, 14)
+                TextField("86", text: $code)
+                    .keyboardType(.numberPad)
+                    .frame(width: 56)
+                    .font(.system(size: 17))
+                    .multilineTextAlignment(.center)
+                Divider().frame(height: 22)
+                TextField("请输入手机号码", text: $phone)
+                    .keyboardType(.numberPad)
+                    .font(.system(size: 17))
+                    .padding(.horizontal, 12)
+            }
+            .frame(height: 50)
+            .background(Capsule().fill(Color(hex: 0xF2F2F7)))
+            .padding(.horizontal, 24)
+
+            Button {
+                guard let d = digits else {
+                    core.pairError = "号码不完整（含国家码，至少 6 位手机号）"
+                    return
+                }
+                do {
+                    try core.client.pair(withPhone: d)
+                    started = true
+                    core.pairError = nil
+                } catch {
+                    core.pairError = error.localizedDescription
+                }
+            } label: {
+                Text("下一步").font(.system(size: 16))
+                    .frame(maxWidth: .infinity).frame(height: 52)
+                    .background(Capsule().fill(Color(hex: 0x25D366)))
+                    .foregroundStyle(.white)
+            }
+            .padding(.horizontal, 24)
+            .disabled(digits == nil)
+
+            if started || core.pairCode != nil {
+                VStack(spacing: 8) {
+                    Text("手机 WhatsApp 里会显示 8 位验证码，输入后完成关联")
+                        .font(.footnote).foregroundStyle(.secondary)
+                        .multilineTextAlignment(.center)
+                    if let c = core.pairCode {
+                        Text(c).font(.system(size: 28, weight: .bold, design: .monospaced))
+                            .textSelection(.enabled)
+                        Text("已复制到剪贴板，可直接粘贴").font(.caption2).foregroundStyle(.green)
+                    } else {
+                        ProgressView().padding(.vertical, 8)
+                    }
+                }
+                .padding(.top, 8)
+            }
+        }
+    }
+
+    // MARK: 二维码流程
+
+    @ViewBuilder private var qrFlow: some View {
+        VStack(spacing: 14) {
+            Text("在手机 WhatsApp → 已链接的设备 → 链接设备，扫描下方二维码")
+                .font(.subheadline).foregroundStyle(.secondary)
+                .multilineTextAlignment(.center).padding(.horizontal, 28)
             ZStack {
-                RoundedRectangle(cornerRadius: 16)
-                    .fill(Color.white)
-                    .frame(width: 240, height: 240)
-                    .shadow(radius: 4)
-                if let qrImage {
-                    Image(uiImage: qrImage)
-                        .resizable()
-                        .interpolation(.none)
-                        .scaledToFit()
-                        .frame(width: 216, height: 216)
-                } else if let pairCode {
-                    Text(pairCode)
-                        .font(.title3.monospaced())
+                RoundedRectangle(cornerRadius: 16).fill(Color.white)
+                    .frame(width: 240, height: 240).shadow(radius: 4)
+                if let img = core.qrImage {
+                    Image(uiImage: img).resizable().interpolation(.none)
+                        .scaledToFit().frame(width: 216, height: 216)
                 } else {
                     ProgressView()
                 }
             }
-
-            if let err = core.pairError {
-                Text(err).font(.footnote).foregroundStyle(.red)
-            }
-
-            Text("二维码约 20 秒自动刷新，白屏请重新进入")
+            Text("二维码约 20 秒自动刷新，白屏请切回再进入")
                 .font(.caption2).foregroundStyle(.secondary)
-
-            if !started, let err = core.pairError {
-                Text(err).font(.footnote).foregroundStyle(.red)
-            }
-            Spacer()
-        }
-        .padding(.top, 48)
-        // 进页即出码（对齐参考：配对页进入就直接展示二维码，20 秒自动刷新）
-        .onAppear {
-            guard !started else { return }
-            started = true
-            core.startQRPiring { png in
-                qrImage = UIImage(data: png)
-            }
+            Button("重新获取二维码") { qrStarted = false; requestQR() }
+                .font(.footnote)
         }
     }
 
-    /// 本地渲染 QR（协议层的 PNG 回调在本版 xcframework 里还没有——用码串现场画，等价）
-    static func makeQR(_ code: String) -> UIImage? {
-        let filter = CIFilter.qrCodeGenerator()
-        filter.message = Data(code.utf8)
-        filter.correctionLevel = "M"
-        guard let output = filter.outputImage else { return nil }
-        let scaled = output.transformed(by: CGAffineTransform(scaleX: 8, y: 8))
-        let context = CIContext()
-        guard let cg = context.createCGImage(scaled, from: scaled.extent) else { return nil }
-        return UIImage(cgImage: cg)
+    private func requestQR() {
+        qrStarted = true
+        core.pairError = nil
+        core.pairQR()
     }
 }
-
-// MARK: - 会话列表
 
 struct ChatListView: View {
     @ObservedObject var core = ProtocolCore.shared

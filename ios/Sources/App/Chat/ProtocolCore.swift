@@ -139,7 +139,14 @@ final class ProtocolCore: ObservableObject {
         }
 
         // ---- 挂回调 ----
-        pairHandler.onCode = { _ in }   // 配对码由 PairingView 直接持有 handler 使用
+        pairHandler.onQR = { [weak self] png in
+            Task { @MainActor in self?.qrImage = UIImage(data: png) }
+        }
+        pairHandler.onCode = { [weak self] code in
+            // 拿到码立刻进剪贴板：用户去 WhatsApp「关联设备 → 使用电话号码」长按粘贴
+            if !code.isEmpty { UIPasteboard.general.string = code }
+            Task { @MainActor in self?.pairCode = code }
+        }
         pairHandler.onError = { [weak self] msg in
             Task { @MainActor in self?.pairError = msg }
         }
@@ -180,6 +187,17 @@ final class ProtocolCore: ObservableObject {
     // MARK: - 配对
 
     @Published var pairError: String? = nil
+    /// 手机号配对返回的 8 位码（对齐 Android onPairCode）
+    @Published var pairCode: String? = nil
+    /// 二维码图片（协议层渲染好的 PNG）
+    @Published var qrImage: UIImage? = nil
+
+    /// 发起二维码配对（对齐 Android requestQR：已连接先断开，30s 超时）
+    func pairQR() {
+        // gomobile 生成的 Swift 接口是 throws 风格
+        do { try client.pairWithQR() }
+        catch { pairError = error.localizedDescription }
+    }
     /// 群事件（kicked 等）出口；ChatView/列表页 bind
     var onGroupEvent: ((Data) -> Void)? = nil
     func bindKicked(_ handler: @escaping (String) -> Void) {
