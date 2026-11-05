@@ -233,6 +233,10 @@ final class WeiFanUITests: XCTestCase {
         row.tap()
         XCTAssertTrue(app.navigationBars["翻译服务"].waitForExistence(timeout: 10))
 
+        // DeepL/Google 未配置也应有橙色提示（第三轮反馈：最上面两家没小字）
+        XCTAssertTrue(app.staticTexts["未配置 · 点开填密钥"].waitForExistence(timeout: 5),
+                      "DeepL/Google 未配置卡没有状态提示")
+
         // 点 Azure 卡 → 配置密钥对话框（订阅密钥预填由运行前 simctl defaults write 注入；
         // headless 键盘 typeText 不稳，不走真打字）
         let azure = app.staticTexts.matching(NSPredicate(format: "label BEGINSWITH %@", "Azure")).firstMatch

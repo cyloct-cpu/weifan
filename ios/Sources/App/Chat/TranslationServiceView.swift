@@ -430,10 +430,13 @@ struct TranslationServiceView: View {
                 }
             }
             Text(ch.note).font(.caption2).foregroundStyle(.secondary).lineLimit(2)
-            if let card = ch.card, !card.implemented {
-                Text(ch.configured ? "密钥已就绪 · 引擎接入后自动生效"
-                                   : "Swift 引擎下一轮接入")
-                    .font(.caption2).foregroundStyle(.orange)
+            if let card = ch.card {
+                // 九家统一状态提示：已就绪=青色，待办=橙色
+                let ready = card.implemented && ch.configured
+                let status = card.implemented
+                    ? (ch.configured ? "已就绪 · 参与自动优选" : "未配置 · 点开填密钥")
+                    : (ch.configured ? "密钥已就绪 · 引擎接入后自动生效" : "Swift 引擎下一轮接入")
+                Text(status).font(.caption2).foregroundStyle(ready ? Color.teal : .orange)
             }
         }
         .padding(10)
