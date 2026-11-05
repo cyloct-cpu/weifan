@@ -498,7 +498,9 @@ struct ChatView: View {
     @State private var viewerItems: [MessageRow] = []
     @State private var viewerIndex = 0
     @State private var quickLookURL: URL?
-    @State private var voice = VoiceRecorder()
+    // VoiceRecorder 是 ObservableObject：必须用 StateObject 才会订阅 @Published seconds
+    // （之前用 @State——引用类型不触发刷新，录音计时永远显示 0s）
+    @StateObject private var voice = VoiceRecorder()
     @State private var recording = false
     @State private var kickedFrom: String?
 

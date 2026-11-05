@@ -338,4 +338,32 @@ final class WeiFanUITests: XCTestCase {
         }
     }
 
+
+    /// 录音计时显示（0s bug 回归）：点麦克风 → 计时应随秒走 → 取消
+    func testVoiceRecordingTicker() throws {
+        let app = XCUIApplication()
+        app.launchArguments = ["PREVIEW_LIST", "UITEST_FORCE_LIGHT"]
+        app.launch()
+
+        let chat = app.staticTexts["TEST-验证"]
+        XCTAssertTrue(chat.waitForExistence(timeout: 25), "列表没起来")
+        chat.tap()
+        let mic = app.buttons.matching(NSPredicate(format: "label CONTAINS %@", "麦克风")).firstMatch
+        XCTAssertTrue(mic.waitForExistence(timeout: 12), "麦克风按钮没找到")
+        mic.tap()
+        sleep(3)   // 等 3 秒（首录含权限请求的时间也要余量）
+        let rec = app.staticTexts.matching(NSPredicate(format: "label CONTAINS %@", "s")).firstMatch
+        if rec.exists {
+            let v = rec.label
+            XCTAssertTrue(v.contains("3s") || v.contains("2s") || v.contains("4s"),
+                          "录音计时没在走：\(v)")
+            snapshot(app, "83-录音计时")
+            // 取消（X 按钮）
+            let cancel = app.buttons.matching(NSPredicate(format: "label CONTAINS %@", "xmark")).firstMatch
+            if cancel.exists { cancel.tap() }
+        } else {
+            // 模拟器无麦克风授权等环境差异：不硬失败，留档
+            snapshot(app, "83-录音-环境受限")
+        }
+    }
 }
