@@ -30,6 +30,8 @@ targets:
       - path: Assets.xcassets
     dependencies:
       - package: WeiFanCore
+      - framework: Frameworks/WeifanProtocol.xcframework
+        embed: true
       - target: WeiFanKeyboard
         embed: true
       - target: WeiFanShare
@@ -41,7 +43,6 @@ targets:
         SWIFT_OBJC_BRIDGING_HEADER: Sources/App/ProtocolBridging.h
         HEADER_SEARCH_PATHS: "$(inherited) $(PROJECT_DIR)/Frameworks/ProtocolHeaders"
         OTHER_LDFLAGS: "$(inherited) -framework WeifanProtocol"
-        FRAMEWORK_SEARCH_PATHS: "$(inherited) $(PROJECT_DIR)/Frameworks/WeifanProtocol.xcframework/ios-arm64_x86_64-simulator"
         INFOPLIST_FILE: Resources/Info-App.plist
         CODE_SIGN_ENTITLEMENTS: Resources/WeiFan.entitlements
         GENERATE_INFOPLIST_FILE: NO
