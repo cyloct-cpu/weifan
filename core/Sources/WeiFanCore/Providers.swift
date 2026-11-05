@@ -236,13 +236,17 @@ public struct LLMTranslationProvider: TranslationProviding {
     private let baseURL: URL
     private let model: String
     private let session: URLSession
+    /// 用户自定义提示词（Android prompt_tpl 同义；nil = 用内置）
+    private let promptOverride: String?
 
-    public init(apiKey: String, baseURL: URL, model: String, name: String = "LLM", session: URLSession = .shared) {
+    public init(apiKey: String, baseURL: URL, model: String, name: String = "LLM",
+                session: URLSession = .shared, promptOverride: String? = nil) {
         self.apiKey = apiKey
         self.baseURL = baseURL
         self.model = model
         self.name = name
         self.session = session
+        self.promptOverride = promptOverride
     }
 
     public func translate(_ request: TranslationRequest) async throws -> TranslationResult {
@@ -253,7 +257,9 @@ public struct LLMTranslationProvider: TranslationProviding {
             "model": model,
             "temperature": 0.2,
             "messages": [
-                ["role": "system", "content": Self.systemPrompt(for: request)],
+                ["role": "system", "content": promptOverride?.isEmpty == false
+                    ? promptOverride!
+                    : Self.systemPrompt(for: request)],
                 ["role": "user", "content": request.text]
             ]
         ]

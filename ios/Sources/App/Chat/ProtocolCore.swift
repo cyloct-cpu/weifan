@@ -84,7 +84,7 @@ final class ProtocolCore: ObservableObject {
 
     let client: MobileWeifanClient
     let db: ChatDatabase
-    let core: TranslationCore
+    var core: TranslationCore
 
     @Published var paired: Bool
         /// 程序化打开会话（新建会话/新建联系人/建群后跳转用）。
@@ -175,6 +175,15 @@ final class ProtocolCore: ObservableObject {
         msgHandler.onEvent = { data in
             Task { @MainActor in self.onGroupEvent?(data) }
         }
+    }
+
+    /// 翻译设置落库后同步到运行中的管线（对齐 Android SettingsActivity 的 apply 流程）：
+    /// core.settings 直接换新；translateIncomingAsync 走的快捷键（history_engine/prompt_tpl）一并同步，
+    /// 保证历史翻译、提示词覆盖立即生效，不用重启。
+    func applySettings(_ s: AppSettings) {
+        core.settings = s
+        UserDefaults.standard.set(s.historyEngine, forKey: "history_engine")
+        UserDefaults.standard.set(s.promptTemplate, forKey: "prompt_tpl")
     }
 
     @Published var connectError: String? = nil

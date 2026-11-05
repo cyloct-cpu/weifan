@@ -15,8 +15,13 @@ struct WeiFanApp: App {
     var body: some Scene {
         WindowGroup {
             RootView()
-                .preferredColorScheme(.light)   // 安卓默认浅色主题
+                // 外观：昼夜切换（Android theme_mode 同键；跟随系统 = nil 交给系统）
+                .preferredColorScheme(Self.scheme(model.settings.themeMode))
                 .environmentObject(model)
+                // 翻译服务页等保存设置后立即反映（UserDefaults didChange → 重载）
+                .onReceive(NotificationCenter.default.publisher(for: UserDefaults.didChangeNotification)) { _ in
+                    model.reload()
+                }
                 .onOpenURL { url in
                     // weifan://share?text=... 供快捷指令或其它 App 唤起
                     guard url.scheme == "weifan",
@@ -24,6 +29,14 @@ struct WeiFanApp: App {
                           let text = items.first(where: { $0.name == "text" })?.value else { return }
                     model.prefill = text
                 }
+        }
+    }
+
+    static func scheme(_ mode: String) -> ColorScheme? {
+        switch mode {
+        case "light": return .light
+        case "dark": return .dark
+        default: return nil
         }
     }
 }

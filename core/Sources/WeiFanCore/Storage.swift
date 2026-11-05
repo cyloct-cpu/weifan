@@ -58,6 +58,20 @@ public struct AppSettings: Codable, Equatable, Sendable {
     public var glossary: [GlossaryEntry] = []
     /// 是否把译文同时写入剪贴板（分享扩展用）
     public var copyToClipboardOnShare: Bool = true
+    /// AI 提示词覆盖（空 = 用各引擎内置提示词；(TO)/(TONE) 占位）
+    public var promptTemplate: String = ""
+    /// 译文颜色（0xRRGGBB；默认青蓝 0x0A7EA4）
+    public var translationColorHex: Int = 0x0A7EA4
+    /// 原文字号（sp，与 Android src_sp 同义）
+    public var sourceTextSp: Double = 15
+    /// 译文字号（sp，与 Android trans_sp 同义）
+    public var translationTextSp: Double = 13
+    /// 历史消息独立翻译引擎（B5；空 = 跟随全局路由）
+    public var historyEngine: String = ""
+    /// 外观：system / light / dark（Android theme_mode 同义）
+    public var themeMode: String = "system"
+    /// 已停用的服务商 id（网格开关；路由时跳过）
+    public var disabledProviders: Set<String> = []
 
     public init() {}
 
@@ -74,6 +88,13 @@ public struct AppSettings: Codable, Equatable, Sendable {
         pinnedLanguages = try c.decodeIfPresent([LanguageCode].self, forKey: .pinnedLanguages) ?? d.pinnedLanguages
         glossary = try c.decodeIfPresent([GlossaryEntry].self, forKey: .glossary) ?? d.glossary
         copyToClipboardOnShare = try c.decodeIfPresent(Bool.self, forKey: .copyToClipboardOnShare) ?? d.copyToClipboardOnShare
+        promptTemplate = try c.decodeIfPresent(String.self, forKey: .promptTemplate) ?? d.promptTemplate
+        translationColorHex = try c.decodeIfPresent(Int.self, forKey: .translationColorHex) ?? d.translationColorHex
+        sourceTextSp = try c.decodeIfPresent(Double.self, forKey: .sourceTextSp) ?? d.sourceTextSp
+        translationTextSp = try c.decodeIfPresent(Double.self, forKey: .translationTextSp) ?? d.translationTextSp
+        historyEngine = try c.decodeIfPresent(String.self, forKey: .historyEngine) ?? d.historyEngine
+        themeMode = try c.decodeIfPresent(String.self, forKey: .themeMode) ?? d.themeMode
+        disabledProviders = try c.decodeIfPresent(Set<String>.self, forKey: .disabledProviders) ?? d.disabledProviders
     }
 }
 

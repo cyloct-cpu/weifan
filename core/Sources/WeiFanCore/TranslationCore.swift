@@ -203,30 +203,35 @@ public struct TranslationCore: Sendable {
 
     private func makeProvider(for route: TranslationRoute,
                               target: LanguageCode) throws -> TranslationProviding {
+        // 网格开关：用户停用的服务商不参与路由（对齐 Android chain_off）
+        let off = settings.disabledProviders
         switch route {
         case .fastMT:
             // 优先 DeepL（中→欧语质量更稳），不支持的语言回落 Google
-            if target.supportedByDeepL, let key = credentials.deepLAPIKey, !key.isEmpty {
+            if target.supportedByDeepL, let key = credentials.deepLAPIKey, !key.isEmpty,
+               !off.contains("deepl") {
                 return DeepLTranslationProvider(apiKey: key, endpoint: credentials.deepLEndpoint, session: session)
             }
-            if let key = credentials.googleAPIKey, !key.isEmpty {
+            if let key = credentials.googleAPIKey, !key.isEmpty, !off.contains("google") {
                 return GoogleTranslationProvider(apiKey: key, session: session)
             }
-            if let key = credentials.llmAPIKey, !key.isEmpty {
+            if let key = credentials.llmAPIKey, !key.isEmpty, !off.contains("llm") {
                 // 没配机翻就别硬失败，退到大模型
                 return LLMTranslationProvider(apiKey: key, baseURL: credentials.llmBaseURL,
-                                              model: credentials.llmModel, name: "LLM(兜底)", session: session)
+                                              model: credentials.llmModel, name: "LLM(兜底)", session: session,
+                                              promptOverride: settings.promptTemplate.isEmpty ? nil : settings.promptTemplate)
             }
             throw TranslationError.missingCredential("Google / DeepL / 大模型 任一")
         case .languageModel:
-            guard let key = credentials.llmAPIKey, !key.isEmpty else {
-                if let google = credentials.googleAPIKey, !google.isEmpty {
-                    return GoogleTranslationProvider(apiKey: google, session: session)
-                }
-                throw TranslationError.missingCredential("大模型 API Key")
+            if let key = credentials.llmAPIKey, !key.isEmpty, !off.contains("llm") {
+                return LLMTranslationProvider(apiKey: key, baseURL: credentials.llmBaseURL,
+                                              model: credentials.llmModel, name: "LLM", session: session,
+                                              promptOverride: settings.promptTemplate.isEmpty ? nil : settings.promptTemplate)
             }
-            return LLMTranslationProvider(apiKey: key, baseURL: credentials.llmBaseURL,
-                                          model: credentials.llmModel, name: "LLM", session: session)
+            if let google = credentials.googleAPIKey, !google.isEmpty, !off.contains("google") {
+                return GoogleTranslationProvider(apiKey: google, session: session)
+            }
+            throw TranslationError.missingCredential("大模型 API Key")
         }
     }
 }

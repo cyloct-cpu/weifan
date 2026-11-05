@@ -5,6 +5,7 @@
 
 import SwiftUI
 import CoreImage.CIFilterBuiltins
+import WeiFanCore
 import AVFoundation
 import PhotosUI
 
@@ -22,6 +23,9 @@ struct ChatRootView: View {
         // 安卓没有「界面语言选择」页（中文单语），这里去掉，直接按配对状态分流
         if ProcessInfo.processInfo.arguments.contains("PREVIEW_LIST") {
             ChatListView()
+        } else if ProcessInfo.processInfo.arguments.contains("PREVIEW_TRANSLATION") {
+            // 调试预览：直接进翻译服务页（不需要配对）
+            NavigationStack { TranslationServiceView() }
         } else if !core.paired {
             PairingView()
         } else {
@@ -1024,6 +1028,8 @@ struct BubbleView: View {
     @State private var player: AVAudioPlayer?
     // P7：链接预览（og 元数据）
     @State private var linkPreview: LinkPreview?
+    // 字号/颜色设置统一走 ProtocolCore 的 AppSettings（翻译服务页 applySettings 后即时生效）
+    private var settings: AppSettings { ProtocolCore.shared.core.settings }
 
     var body: some View {
         HStack {
@@ -1034,17 +1040,16 @@ struct BubbleView: View {
                     LinkPreviewCard(lp: lp)
                 }
                 if !m.text.isEmpty, !isCardKind {
-                    // B4：原文字号可调（Android src_sp 同键）
+                    // B4：原文字号可调（Android src_sp 同键）——统一走 AppSettings（翻译服务页写入）
                     Text(m.text)
-                        .font(.system(size: UserDefaults.standard.object(forKey: "src_sp") as? Double ?? 15))
+                        .font(.system(size: settings.sourceTextSp))
                         .foregroundStyle(.primary)
                 }
                 if !m.fromMe, !m.translated.isEmpty {
                     // B4：译文字号与颜色独立可调（Android trans_sp / trans_color 同键）
                     Text(m.translated)
-                        .font(.system(size: UserDefaults.standard.object(forKey: "trans_sp") as? Double ?? 13,
-                                      weight: .medium))
-                        .foregroundStyle(Color(hex: UInt32(UserDefaults.standard.object(forKey: "trans_color") as? Int ?? 0x0A7EA4)))
+                        .font(.system(size: settings.translationTextSp, weight: .medium))
+                        .foregroundStyle(Color(hex: UInt32(settings.translationColorHex)))
                 }
                 if m.fromMe, !m.original.isEmpty, m.original != m.text {
                     Text(m.original).font(.caption).foregroundStyle(.secondary)
