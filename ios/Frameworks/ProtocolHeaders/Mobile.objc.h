@@ -318,6 +318,14 @@ ptt=true 表示语音条样式（官方语音条要求 ogg/opus；AAC 会以普�
  */
 - (NSString* _Nonnull)sendForwardText:(NSString* _Nullable)chatJid text:(NSString* _Nullable)text error:(NSError* _Nullable* _Nullable)error;
 /**
+ * SendGifFromPath 发送 GIF（对齐参考 media_gif）。
+
+WhatsApp 没有独立的 GIF 消息类型：GIF = VideoMessage + gifAttribution 字段。
+服务端据此在对方端把视频当循环 GIF 播放（不显示进度条）。
+需要真实的 mp4（H.264）文件，不能是 image/gif。
+ */
+- (NSString* _Nonnull)sendGifFromPath:(NSString* _Nullable)chatJid path:(NSString* _Nullable)path caption:(NSString* _Nullable)caption seconds:(long)seconds error:(NSError* _Nullable* _Nullable)error;
+/**
  * SendImageFromPath 发送本地图片（经代理上传）。caption 可空。
  */
 - (NSString* _Nonnull)sendImageFromPath:(NSString* _Nullable)chatJid path:(NSString* _Nullable)path caption:(NSString* _Nullable)caption error:(NSError* _Nullable* _Nullable)error;
