@@ -1171,99 +1171,80 @@ struct BubbleView: View {
     }
 
     private var textBubbleContent: some View {
-        if quoteText.isEmpty && bubbleTextsIsSingleLine {
-            // 纯文本：时间+回执内联在句尾（气泡完全贴内容，对齐 WhatsApp Web 短消息）
-            AnyView(HStack(spacing: 0) { trailingText })
-        } else {
-            AnyView(VStack(alignment: .leading, spacing: 3) {
+        VStack(alignment: .leading, spacing: 3) {
+            if isCardKind {
+                // 投票/位置/联系人/事件/产品卡：卡内容 + 右下时间小行（卡本身有宽度，不会撑满）
+                media
+                trailingRow
+            } else {
                 if !quoteText.isEmpty {
                     quoteBlock
                 }
-                bubbleTexts
-                timeRow
-            })
+                if let lp = linkPreview {
+                    LinkPreviewCard(lp: lp)
+                }
+                textLinesWithInlineTime
+            }
         }
     }
 
-    /// 是否纯文本（无引用/链接卡；有译文或原文说明是多元素）
-    private var bubbleTextsIsSingleLine: Bool {
-        linkPreview == nil && !isCardKind
-            && (m.fromMe ? (m.original.isEmpty || m.original == m.text) : m.translated.isEmpty)
-    }
-
-    /// 句尾内联：正文 + 时间 + 回执勾（Text 拼接，基线对齐）
-    private var trailingText: Text {
-        let time = Text("  " + Self.time(m.ts))
+    /// 时间+回执 Text 段（挂到最后一行行尾；对齐 WhatsApp：时间永远跟最后一行）
+    private var timeTickText: Text {
+        var t = Text("  " + Self.time(m.ts))
             .font(.system(size: 10)).foregroundColor(Color.primary.opacity(0.45))
-        let tick: Text
         if m.fromMe {
             let color = receipt == "read" ? Color(hex: 0x34B7F1) : Color.primary.opacity(0.4)
-            if receipt == "sent" {
-                tick = Text(" ").font(.system(size: 9)) + Text(Image(systemName: "checkmark"))
+            t = t + Text(Image(systemName: "checkmark"))
+                .font(.system(size: 9, weight: .bold)).foregroundColor(color)
+            if receipt != "sent" {
+                t = t + Text(Image(systemName: "checkmark"))
                     .font(.system(size: 9, weight: .bold)).foregroundColor(color)
-            } else {
-                tick = Text(" ").font(.system(size: 9))
-                    + Text(Image(systemName: "checkmark")).font(.system(size: 9, weight: .bold)).foregroundColor(color)
-                    + Text(Image(systemName: "checkmark")).font(.system(size: 9, weight: .bold)).foregroundColor(color)
+            }
+        }
+        return t
+    }
+
+    /// 全部文本行；时间+勾内联在最后一行（无 Spacer，气泡严格贴内容）
+    @ViewBuilder private var textLinesWithInlineTime: some View {
+        let body = Text(m.text)
+            .font(.system(size: settings.sourceTextSp)).foregroundColor(.primary)
+        if m.fromMe {
+            if !m.text.isEmpty { body }
+            if !m.original.isEmpty, m.original != m.text {
+                // 原文行是最后一行 → 时间挂这
+                (Text(m.original).font(.caption).foregroundColor(Color.primary.opacity(0.55))
+                 + timeTickText)
+            } else if !m.text.isEmpty {
+                body + timeTickText
             }
         } else {
-            tick = Text("")
-        }
-        return Text(m.text).font(.system(size: settings.sourceTextSp)).foregroundColor(.primary)
-            + time + tick
-    }
-
-    private var bubbleTexts: some View {
-        VStack(alignment: .leading, spacing: 3) {
-            if let lp = linkPreview {
-                LinkPreviewCard(lp: lp)
-            }
-            if !m.text.isEmpty, !isCardKind {
-                // B4：原文字号可调（Android src_sp 同键）——统一走 AppSettings（翻译服务页写入）
-                Text(m.text)
-                    .font(.system(size: settings.sourceTextSp))
-                    .foregroundStyle(.primary)
-            }
-            if !m.fromMe, !m.translated.isEmpty {
-                // B4：译文字号与颜色独立可调（Android trans_sp / trans_color 同键）
-                Text(m.translated)
-                    .font(.system(size: settings.translationTextSp, weight: .medium))
-                    .foregroundStyle(Color(hex: UInt32(settings.translationColorHex)))
-            }
-            if m.fromMe, !m.original.isEmpty, m.original != m.text {
-                Text(m.original).font(.caption).foregroundStyle(Color.primary.opacity(0.55))
+            if !m.text.isEmpty { body }
+            if !m.translated.isEmpty {
+                // 译文行是最后一行 → 时间挂这
+                (Text(m.translated)
+                  .font(.system(size: settings.translationTextSp, weight: .medium))
+                  .foregroundColor(Color(hex: UInt32(settings.translationColorHex)))
+                 + timeTickText)
+            } else if !m.text.isEmpty {
+                body + timeTickText
             }
         }
     }
 
-    /// 时间行：气泡内右下、独立一行右对齐（对齐 WhatsApp Web：时间与回执不挤占文本宽度）
-    private var timeRow: some View {
+    /// 卡片类消息的时间行（不撑宽：卡是固定宽度子视图，VStack 宽度由卡决定）
+    private var trailingRow: some View {
         HStack(spacing: 3) {
-            Spacer(minLength: 0)
             Text(Self.time(m.ts)).font(.system(size: 10))
                 .foregroundStyle(Color.primary.opacity(0.45))
             if m.fromMe {
-                receiptTicks
+                Image(systemName: "checkmark").font(.system(size: 9, weight: .bold))
+                if receipt != "sent" {
+                    Image(systemName: "checkmark").font(.system(size: 9, weight: .bold))
+                }
             }
         }
-    }
-
-    /// 回执图标：单灰勾=已发出 / 灰双勾=已送达 / 蓝双勾=已读
-    @ViewBuilder private var receiptTicks: some View {
-        let gray = Color.primary.opacity(0.4)
-        let blue = Color(hex: 0x34B7F1)
-        if receipt == "sent" {
-            Image(systemName: "checkmark").font(.system(size: 9, weight: .bold)).foregroundStyle(gray)
-        } else {
-            // 双勾：两个并排小勾
-            ZStack {
-                Image(systemName: "checkmark").font(.system(size: 9, weight: .bold))
-                    .offset(x: -2.5)
-                Image(systemName: "checkmark").font(.system(size: 9, weight: .bold))
-                    .offset(x: 2.5)
-            }
-            .foregroundStyle(receipt == "read" ? blue : gray)
-        }
+        .frame(maxWidth: .infinity, alignment: .trailing)
+        .foregroundStyle(receipt == "read" ? Color(hex: 0x34B7F1) : Color.primary.opacity(0.4))
     }
     /// 图片/视频/贴纸：无气泡底
     private var isMediaBubble: Bool {
@@ -1278,7 +1259,7 @@ struct BubbleView: View {
             VStack(alignment: .leading, spacing: 3) {
                 media
                     .foregroundStyle(m.mediaMime.contains("pdf") ? Color(hex: 0xE53935) : .orange)
-                if m.fromMe { timeRow }
+                if m.fromMe { trailingRow }
             }
             .padding(.horizontal, 9).padding(.vertical, 8)
             .frame(maxWidth: 290, alignment: .leading)
