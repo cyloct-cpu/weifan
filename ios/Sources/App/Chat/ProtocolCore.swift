@@ -617,7 +617,8 @@ final class ProtocolCore: ObservableObject {
 
     // MARK: - 回执（蓝色 ✓✓）
 
-    @Published var readReceipts: [String: Bool] = [:]
+    /// 消息回执三态（WhatsApp 语义）：sent=单灰勾已发出 / delivered=灰双勾已送达 / read=蓝双勾已读
+    @Published var receiptStates: [String: String] = [:]
     var onReadReceipts: ((String, String, [String]) -> Void)? = nil
 
     func bindReadReceipts(_ handler: @escaping (String, String, [String]) -> Void) {
@@ -628,8 +629,13 @@ final class ProtocolCore: ObservableObject {
     }
 
     func handleReadReceipts(chatJid: String, type: String, ids: [String]) {
-        guard type == "read" else { return }
-        for id in ids { readReceipts[id] = true }
+        // delivered/read 都可能到达；read 优先级高，不允许被 delivered 降级
+        for id in ids {
+            let old = receiptStates[id] ?? "sent"
+            if type == "read" || (type == "delivered" && old != "read") {
+                receiptStates[id] = type
+            }
+        }
     }
 
     // MARK: - 消息查询（给 View 用）

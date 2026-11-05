@@ -508,7 +508,7 @@ struct ChatView: View {
                 ScrollView {
                     LazyVStack(spacing: 4) {
                         ForEach(msgs) { m in
-                            BubbleView(m: m, read: core.readReceipts[m.id] == true,
+                            BubbleView(m: m, receipt: core.receiptStates[m.id] ?? "sent",
                                        chatMsgs: msgs,
                                        onOpenImage: { idx in viewerItems = mediaOf("image"); viewerIndex = idx },
                                        onOpenFile: { quickLookURL = $0 })
@@ -1045,11 +1045,8 @@ struct ChatWallpaperView: View {
 
 struct BubbleView: View {
     let m: MessageRow
-    let read: Bool
-    let chatMsgs: [MessageRow]
-    var onOpenImage: (Int) -> Void
-    var onOpenFile: (URL) -> Void
-
+    /// 回执三态：sent=单灰勾 / delivered=灰双勾 / read=蓝双勾（WhatsApp 语义）
+    var receipt: String = "sent"
     @State private var localURL: URL?
     @State private var playing = false
     @State private var player: AVAudioPlayer?
@@ -1057,6 +1054,9 @@ struct BubbleView: View {
     @State private var linkPreview: LinkPreview?
     // 字号/颜色设置统一走 ProtocolCore 的 AppSettings（翻译服务页 applySettings 后即时生效）
     private var settings: AppSettings { ProtocolCore.shared.core.settings }
+    let chatMsgs: [MessageRow]
+    var onOpenImage: (Int) -> Void
+    var onOpenFile: (URL) -> Void
 
     var body: some View {
         HStack(alignment: .bottom) {
@@ -1168,14 +1168,12 @@ struct BubbleView: View {
     }
 
     private var textBubbleContent: some View {
-        HStack(alignment: .bottom, spacing: 5) {
-            VStack(alignment: .leading, spacing: 5) {
-                if !quoteText.isEmpty {
-                    quoteBlock
-                }
-                bubbleTexts
+        VStack(alignment: .leading, spacing: 3) {
+            if !quoteText.isEmpty {
+                quoteBlock
             }
-            timeColumn
+            bubbleTexts
+            timeRow
         }
     }
 
@@ -1202,16 +1200,33 @@ struct BubbleView: View {
         }
     }
 
-    /// 时间+回执在气泡内右下、贴内容（去掉 maxWidth infinity——之前它把气泡撑满整行）
-    private var timeColumn: some View {
+    /// 时间行：气泡内右下、独立一行右对齐（对齐 WhatsApp Web：时间与回执不挤占文本宽度）
+    private var timeRow: some View {
         HStack(spacing: 3) {
+            Spacer(minLength: 0)
             Text(Self.time(m.ts)).font(.system(size: 10))
                 .foregroundStyle(Color.primary.opacity(0.45))
             if m.fromMe {
-                Image(systemName: "checkmark.circle.fill")
-                    .font(.system(size: 10))
-                    .foregroundStyle(read ? Color(hex: 0x34B7F1) : Color.primary.opacity(0.35))
+                receiptTicks
             }
+        }
+    }
+
+    /// 回执图标：单灰勾=已发出 / 灰双勾=已送达 / 蓝双勾=已读
+    @ViewBuilder private var receiptTicks: some View {
+        let gray = Color.primary.opacity(0.4)
+        let blue = Color(hex: 0x34B7F1)
+        if receipt == "sent" {
+            Image(systemName: "checkmark").font(.system(size: 9, weight: .bold)).foregroundStyle(gray)
+        } else {
+            // 双勾：两个并排小勾
+            ZStack {
+                Image(systemName: "checkmark").font(.system(size: 9, weight: .bold))
+                    .offset(x: -2.5)
+                Image(systemName: "checkmark").font(.system(size: 9, weight: .bold))
+                    .offset(x: 2.5)
+            }
+            .foregroundStyle(receipt == "read" ? blue : gray)
         }
     }
     /// 图片/视频/贴纸：无气泡底
@@ -1224,10 +1239,10 @@ struct BubbleView: View {
     /// 说明文字在卡外下方直接贴壁纸，收件时间随说明行、发件时间+回执在卡内右下
     private var documentBubble: some View {
         VStack(alignment: m.fromMe ? .trailing : .leading, spacing: 3) {
-            HStack(alignment: .bottom, spacing: 6) {
+            VStack(alignment: .leading, spacing: 3) {
                 media
                     .foregroundStyle(m.mediaMime.contains("pdf") ? Color(hex: 0xE53935) : .orange)
-                if m.fromMe { timeColumn }
+                if m.fromMe { timeRow }
             }
             .padding(.horizontal, 9).padding(.vertical, 8)
             .frame(maxWidth: 290, alignment: .leading)
