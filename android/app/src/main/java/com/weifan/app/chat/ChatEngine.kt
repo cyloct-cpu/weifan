@@ -707,6 +707,29 @@ class ChatEngine private constructor(context: Context) :
         }.start()
     }
 
+    /** 发送 GIF（video + gifPlayback，对端按循环 GIF 播放） */
+    fun sendGifAsync(chatJid: String, path: String, caption: String, seconds: Int,
+                     onResult: (String?, String?) -> Unit) {
+        Thread {
+            try {
+                val msgId = client.sendGifFromPath(chatJid, path, caption, seconds.toLong())
+                val now = System.currentTimeMillis()
+                db.insertMessage(MessageRow(
+                    id = msgId, chatJid = chatJid, senderJid = "", fromMe = true,
+                    text = caption, original = "", translated = "", translatedLang = "",
+                    ts = now, mediaKind = "video", mediaMime = "video/mp4",
+                    mediaName = java.io.File(path).name, mediaSize = java.io.File(path).length(),
+                    mediaPath = path, mediaThumb = "",
+                    mediaMeta = org.json.JSONObject().put("gif", true).toString()))
+                db.upsertChat(chatJid, "", if (caption.isBlank()) "[GIF]" else caption,
+                    now, incrementUnread = false)
+                main.post { onResult(msgId, null) }
+            } catch (e: Throwable) {
+                main.post { onResult(null, e.message ?: e.toString()) }
+            }
+        }.start()
+    }
+
     /** 发送活动邀请（EventMessage）。成功后落库一条 media_kind="event" 的消息。 */
     fun sendEventAsync(chatJid: String, name: String, desc: String,
                        startMs: Long, endMs: Long, location: String, link: String,

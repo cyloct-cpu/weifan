@@ -92,6 +92,7 @@ class ChatActivity : BaseActivity() {
 
     companion object {
         private const val REQ_PICK_IMAGE = 11
+        private const val REQ_PICK_GIF = 7003
         private const val REQ_PICK_VIDEO = 14
         private const val REQ_PICK_STICKER = 15
         private const val REQ_PICK_DOC = 12
@@ -2356,6 +2357,15 @@ class ChatActivity : BaseActivity() {
         callDialog = dlg
     }
 
+    /** 选一个 mp4 当 GIF 发送（WhatsApp 的 GIF 本质就是 video + gifPlayback） */
+    private fun pickGif() {
+        val i = Intent(Intent.ACTION_OPEN_DOCUMENT).apply {
+            addCategory(Intent.CATEGORY_OPENABLE)
+            type = "video/*"
+        }
+        startActivityForResult(i, REQ_PICK_GIF)
+    }
+
     /** 启动视频发送（摄像头采集 + 编码推流） */
     private fun startVideoSend() {
         if (callVideoEncoder != null) return
@@ -2753,6 +2763,7 @@ class ChatActivity : BaseActivity() {
             "📊  投票" to "poll",
             "📅  活动" to "event",
             "😀  新建贴图" to "sticker",
+            "🎞  动图 GIF" to "gif",
             "🏪  商品" to "product",
             "⚡  快速回复" to "quick",
             "✅  添加待办" to "todo",
@@ -2800,6 +2811,7 @@ class ChatActivity : BaseActivity() {
                         "poll" -> showPollDialog()
                         "event" -> showEventDialog()
                         "product" -> showProductDialog()
+                        "gif" -> pickGif()
                         "fx" -> showFxDialog()
                         "todo" -> startActivity(
                             Intent(this@ChatActivity, FollowupTodosActivity::class.java)
@@ -4230,6 +4242,16 @@ class ChatActivity : BaseActivity() {
         val path = copyUriToCache(uri, requestCode) ?: run {
             Toast.makeText(this, "读取文件失败", Toast.LENGTH_SHORT).show(); return
         }
+        if (requestCode == REQ_PICK_GIF) {
+            val path = copyUriToCache(uri, REQ_PICK_GIF) ?: return
+            sendBtn.isEnabled = false
+            engine.sendGifAsync(chatJid, path, "", 3) { _, err ->
+                sendBtn.isEnabled = true
+                if (err != null) Toast.makeText(this, "GIF 发送失败：$err",
+                    Toast.LENGTH_LONG).show() else renderMessages()
+            }
+            return
+        }
         // 不直接发：先进预览页，看清内容并补一句说明（批3-c）。
         // 预览页发送完会 finish，本页 onResume 里重新 renderMessages。
         startActivity(Intent(this, MediaSendPreviewActivity::class.java)
@@ -4251,6 +4273,7 @@ class ChatActivity : BaseActivity() {
                 REQ_PICK_IMAGE -> ".jpg"
                 REQ_PICK_VIDEO -> ".mp4"
                 REQ_PICK_STICKER -> ".webp"
+                REQ_PICK_GIF -> ".mp4"
                 else -> ""
             })
         val f = java.io.File(dir, name)
