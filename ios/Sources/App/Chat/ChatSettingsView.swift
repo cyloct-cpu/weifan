@@ -250,11 +250,11 @@ struct TodoListView: View {
                     ForEach(tabs, id: \.1) { t in
                         Text(t.0)
                             .font(.system(size: 15))
-                            .foregroundStyle(tab == t.1 ? Color(hex: 0x5E5E5E) : Color(hex: 0x111111))
+                            .foregroundStyle(tab == t.1 ? .primary : .primary)
                             .padding(.horizontal, 12).padding(.vertical, 6)
-                            .background(Capsule().fill(tab == t.1 ? Color(hex: 0xEBEBEF) : .white))
+                            .background(Capsule().fill(tab == t.1 ? Color.dyn(0xEBEBEF, 0x2A3942) : Color.dyn(0xFFFFFF, 0x202C33)))
                             .overlay(Capsule().stroke(
-                                tab == t.1 ? Color(hex: 0xD1D1D6) : Color(hex: 0xE0E0E4), lineWidth: 1))
+                                tab == t.1 ? Color.dyn(0xD1D1D6, 0x3B4A52) : Color.dyn(0xE0E0E4, 0x2A3942), lineWidth: 1))
                             .onTapGesture { tab = t.1 }
                     }
                 }
@@ -265,8 +265,8 @@ struct TodoListView: View {
             // 统计卡片（对齐 Android：padding 16/12/16/4，两卡各 weight=1，间距 6，卡内 14/12，
             // 标签 12sp secondary + 数字 22sp bold primary + marginTop 2）
             HStack(spacing: 6) {
-                statCard("逾期", overdueCount, overdueCount > 0 ? Color(hex: 0xE53935) : Color(hex: 0x111111))
-                statCard("待跟进", pendingCount, Color(hex: 0x111111))
+                statCard("逾期", overdueCount, overdueCount > 0 ? Color(hex: 0xE53935) : .primary)
+                statCard("待跟进", pendingCount, .primary)
             }
             .padding(.horizontal, 16).padding(.top, 12).padding(.bottom, 4)
 
@@ -274,14 +274,14 @@ struct TodoListView: View {
                 Spacer()
                 Text(tab == "DONE" ? "还没有完成的待办"
                      : tab == "TODAY" ? "今天没有待办" : "点右上角 ＋ 记一条")
-                    .font(.system(size: 14)).foregroundStyle(Color(hex: 0x8E8E93))
+                    .font(.system(size: 14)).foregroundStyle(.secondary)
                 Spacer()
             } else {
                 ScrollView {
                     LazyVStack(spacing: 0) {
                         ForEach(shown) { t in
                             todoRow(t)
-                            Rectangle().fill(Color(hex: 0xE5E5EA))
+                            Rectangle().fill(Color.dyn(0xE5E5EA, 0x222D34))
                                 .frame(height: 1).padding(.leading, 70)
                         }
                     }
@@ -306,13 +306,13 @@ struct TodoListView: View {
     /// 统计卡片：标签 12sp + 数字 22sp bold（对齐 Android statCard）
     private func statCard(_ label: String, _ value: Int, _ color: Color) -> some View {
         VStack(alignment: .leading, spacing: 2) {
-            Text(label).font(.system(size: 12)).foregroundStyle(Color(hex: 0x8E8E93))
+            Text(label).font(.system(size: 12)).foregroundStyle(.secondary)
             Text("\(value)").font(.system(size: 22, weight: .bold)).foregroundStyle(color)
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .padding(.horizontal, 14).padding(.vertical, 12)
-        .background(RoundedRectangle(cornerRadius: 14).fill(Color.white))
-        .overlay(RoundedRectangle(cornerRadius: 14).stroke(Color(hex: 0xE5E5EA), lineWidth: 1))
+        .background(RoundedRectangle(cornerRadius: 14).fill(Color.dyn(0xFFFFFF, 0x1F2C33)))
+        .overlay(RoundedRectangle(cornerRadius: 14).stroke(Color.dyn(0xE5E5EA, 0x222D34), lineWidth: 1))
     }
 
     /// 待办行（对齐 Android item_followup_todo：外层 16/10/16/2，卡片内上下 12 / start 8 / end 4）
@@ -323,25 +323,25 @@ struct TodoListView: View {
             Button { toggle(t) } label: {
                 Image(systemName: t.done ? "checkmark.circle.fill" : "circle")
                     .font(.system(size: 20))
-                    .foregroundStyle(t.done ? Color(hex: 0x25D366) : Color(hex: 0xC7C7CC))
+                    .foregroundStyle(t.done ? Color(hex: 0x25D366) : Color.dyn(0xC7C7CC, 0x54656F))
             }
             VStack(alignment: .leading, spacing: 3) {
                 Text(t.content)
                     .font(.system(size: 16))
                     .strikethrough(t.done)
-                    .foregroundStyle(t.done ? Color(hex: 0x8E8E93) : Color(hex: 0x111111))
+                    .foregroundStyle(t.done ? .secondary : .primary)
                     .lineLimit(3)
                 if t.dueTs > 0 {
                     Text((overdue ? "⚠ 已过期 " : "到期 ") + Self.day(t.dueTs))
                         .font(.system(size: 12))
-                        .foregroundStyle(overdue ? Color(hex: 0xE53935) : Color(hex: 0x8E8E93))
+                        .foregroundStyle(overdue ? Color(hex: 0xE53935) : .secondary)
                 }
             }
             Spacer(minLength: 0)
         }
         .padding(.leading, 8).padding(.trailing, 4).padding(.vertical, 12)
-        .background(RoundedRectangle(cornerRadius: 14).fill(Color.white))
-        .overlay(RoundedRectangle(cornerRadius: 14).stroke(Color(hex: 0xE5E5EA), lineWidth: 1))
+        .background(RoundedRectangle(cornerRadius: 14).fill(Color.dyn(0xFFFFFF, 0x1F2C33)))
+        .overlay(RoundedRectangle(cornerRadius: 14).stroke(Color.dyn(0xE5E5EA, 0x222D34), lineWidth: 1))
         .padding(.horizontal, 16).padding(.top, 10).padding(.bottom, 2)
     }
 

@@ -179,4 +179,40 @@ final class WeiFanUITests: XCTestCase {
             if cancel.exists { cancel.tap() }
         }
     }
+
+    /// 2026-11-06 用户反馈：切夜态看不清 —— 动态色扫过后夜态巡检截图
+    func testDarkModeReadability() throws {
+        let app = XCUIApplication()
+        app.launchArguments = ["PREVIEW_LIST", "UITEST_FORCE_DARK"]
+        app.launch()
+
+        XCTAssertTrue(app.buttons["header_menu"].waitForExistence(timeout: 25), "列表没起来")
+        sleep(1)
+        snapshot(app, "50-夜-会话列表")
+
+        // 进会话看气泡（夜态发件绿/收件黑）
+        let firstChat = app.staticTexts["TEST-验证"]
+        if firstChat.waitForExistence(timeout: 5) {
+            firstChat.tap()
+            sleep(2)
+            snapshot(app, "53-夜-会话气泡")
+            app.navigationBars.buttons.element(boundBy: 0).tap()
+        }
+
+        // 进设置 → 翻译服务
+        app.buttons["header_menu"].tap()
+        let settingsItem = app.buttons["设置"]
+        XCTAssertTrue(settingsItem.waitForExistence(timeout: 8))
+        settingsItem.tap()
+        XCTAssertTrue(app.navigationBars["聊天设置"].waitForExistence(timeout: 10))
+        sleep(1)
+        snapshot(app, "51-夜-聊天设置")
+
+        let row = app.buttons["row_translation_service"]
+        XCTAssertTrue(row.waitForExistence(timeout: 8))
+        row.tap()
+        XCTAssertTrue(app.navigationBars["翻译服务"].waitForExistence(timeout: 10))
+        sleep(1)
+        snapshot(app, "52-夜-翻译服务")
+    }
 }

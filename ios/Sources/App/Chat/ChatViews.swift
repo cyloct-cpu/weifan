@@ -145,7 +145,7 @@ struct PairingView: View {
                     .padding(.horizontal, 12)
             }
             .frame(height: 50)
-            .background(Capsule().fill(Color(hex: 0xF2F2F7)))
+            .background(Capsule().fill(Color.dyn(0xF2F2F7, 0x202C33)))
             .padding(.horizontal, 24)
 
             Button {
@@ -195,7 +195,7 @@ struct PairingView: View {
                 .font(.subheadline).foregroundStyle(.secondary)
                 .multilineTextAlignment(.center).padding(.horizontal, 28)
             ZStack {
-                RoundedRectangle(cornerRadius: 16).fill(Color.white)
+                RoundedRectangle(cornerRadius: 16).fill(Color.dyn(0xFFFFFF, 0x1F2C33))
                     .frame(width: 240, height: 240).shadow(radius: 4)
                 if let img = core.qrImage {
                     Image(uiImage: img).resizable().interpolation(.none)
@@ -236,7 +236,7 @@ struct ChatListView: View {
                 HStack(spacing: 0) {
                     Text("WeFlip")
                         .font(.system(size: 18, weight: .semibold))
-                        .foregroundStyle(Color(hex: 0x111111))
+                        .foregroundStyle(.primary)
                     Spacer()
                     Menu {
                         Button { showNewChat = true } label: { Label("新建会话（加好友）", systemImage: "person.badge.plus") }
@@ -249,33 +249,33 @@ struct ChatListView: View {
                         Image(systemName: "ellipsis")
                             .font(.system(size: 19, weight: .medium))
                             .rotationEffect(.degrees(90))
-                            .foregroundStyle(Color(hex: 0x111111))
+                            .foregroundStyle(.primary)
                             .frame(width: 32, height: 32)
                     }
                     .accessibilityIdentifier("header_menu")
                 }
                 .padding(.horizontal, 12)
                 .frame(height: 48)
-                .background(Color.white)
+                .background(Color.dyn(0xFFFFFF, 0x111B21))
 
                 // 搜索框：.searchable 依附系统导航栏，隐藏导航栏后失效，改为自绘
                 // 对齐安卓：40dp 高、圆角 20、#F2F2F7 底、图标 14sp + hint 15sp
                 HStack(spacing: 8) {
                     Image(systemName: "magnifyingglass")
-                        .font(.system(size: 14)).foregroundStyle(Color(hex: 0x6F6F6F))
+                        .font(.system(size: 14)).foregroundStyle(.secondary)
                     TextField("搜索或开始新聊天", text: $query)
                         .font(.system(size: 15))
                         .textFieldStyle(.plain)
                     if !query.isEmpty {
                         Button { query = "" } label: {
                             Image(systemName: "xmark.circle.fill")
-                                .font(.system(size: 14)).foregroundStyle(Color(hex: 0x8E8E93))
+                                .font(.system(size: 14)).foregroundStyle(.secondary)
                         }
                     }
                 }
                 .padding(.horizontal, 12)
                 .frame(height: 40)
-                .background(RoundedRectangle(cornerRadius: 20).fill(Color(hex: 0xF2F2F7)))
+                .background(RoundedRectangle(cornerRadius: 20).fill(Color.dyn(0xF2F2F7, 0x202C33)))
                 .padding(.horizontal, 12).padding(.vertical, 6)
 
                 // 连接状态条
@@ -295,13 +295,13 @@ struct ChatListView: View {
                             // 选中 #EBEBEF + 描边 #E0E0E4 + 文字 #5E5E5E；未选白底 + #E0E0E4 描边
                             Text(c)
                                 .font(.system(size: 15))
-                                .foregroundStyle(chip == c ? Color(hex: 0x5E5E5E) : Color(hex: 0x111111))
+                                .foregroundStyle(chip == c ? .primary : .primary)
                                 .padding(.horizontal, 12).padding(.vertical, 6)
                                 .background(
-                                    Capsule().fill(chip == c ? Color(hex: 0xEBEBEF) : .white)
+                                    Capsule().fill(chip == c ? Color.dyn(0xEBEBEF, 0x2A3942) : Color.dyn(0xFFFFFF, 0x202C33))
                                 )
                                 .overlay(
-                                    Capsule().stroke(chip == c ? Color(hex: 0xD1D1D6) : Color(hex: 0xE0E0E4), lineWidth: 1)
+                                    Capsule().stroke(chip == c ? Color.dyn(0xD1D1D6, 0x3B4A52) : Color.dyn(0xE0E0E4, 0x2A3942), lineWidth: 1)
                                 )
                                 .onTapGesture { chip = c }
                         }
@@ -324,7 +324,7 @@ struct ChatListView: View {
                                 }
                                 .buttonStyle(.plain)
                                 // 通栏 1dp 分隔线，左缩进 70（对齐安卓 dividerInset 46+12+12）
-                                Rectangle().fill(Color(hex: 0xE5E5EA))
+                                Rectangle().fill(Color.dyn(0xE5E5EA, 0x222D34))
                                     .frame(height: 1)
                                     .padding(.leading, 70)
                             }
@@ -396,9 +396,9 @@ struct ChatListRow: View {
                     .frame(width: 46, height: 46).clipShape(RoundedRectangle(cornerRadius: 23))
             } else {
                 ZStack {
-                    RoundedRectangle(cornerRadius: 23).fill(Color(hex: 0xF2F2F7))
+                    RoundedRectangle(cornerRadius: 23).fill(Color.dyn(0xF2F2F7, 0x202C33))
                     Text(String(chat.title.first ?? "#"))
-                        .font(.system(size: 20)).foregroundStyle(Color(hex: 0x6F6F6F))
+                        .font(.system(size: 20)).foregroundStyle(.secondary)
                 }
                 .frame(width: 46, height: 46)
             }
@@ -409,15 +409,15 @@ struct ChatListRow: View {
                 Text(chat.title.isEmpty
                      ? "+" + String(String(chat.jid.split(separator: "@").first ?? "").filter(\.isNumber))
                      : chat.title)
-                    .font(.system(size: 16)).foregroundStyle(Color(hex: 0x111111)).lineLimit(1)
+                    .font(.system(size: 16)).foregroundStyle(.primary).lineLimit(1)
                 Text(chat.lastMessage)
-                    .font(.system(size: 13)).foregroundStyle(Color(hex: 0x8E8E93)).lineLimit(1)
+                    .font(.system(size: 13)).foregroundStyle(.secondary).lineLimit(1)
             }
             .padding(.leading, 12)
             Spacer(minLength: 8)
             VStack(alignment: .trailing, spacing: 4) {
                 Text(Self.time(chat.lastTs))
-                    .font(.system(size: 12)).foregroundStyle(Color(hex: 0x8E8E93))
+                    .font(.system(size: 12)).foregroundStyle(.secondary)
                 if chat.unread > 0 {
                     Text("\(chat.unread)")
                         .font(.system(size: 12, weight: .bold)).foregroundStyle(.white)
@@ -465,7 +465,7 @@ struct ChatView: View {
             showLangPicker = false
         } label: {
             HStack {
-                Text(name).foregroundStyle(Color(hex: 0x111111))
+                Text(name).foregroundStyle(.primary)
                 Spacer()
                 if current == code {
                     Image(systemName: "checkmark").foregroundStyle(Color(hex: 0x25D366))
@@ -544,7 +544,7 @@ struct ChatView: View {
                 Button { showAttach = true } label: {
                     Image(systemName: "plus")
                         .font(.system(size: 17, weight: .medium))
-                        .foregroundStyle(Color(hex: 0x6F6F6F))
+                        .foregroundStyle(.secondary)
                         .frame(width: 28, height: 28)
                 }.disabled(recording)
                 .accessibilityIdentifier("composer_attach")
@@ -580,7 +580,7 @@ struct ChatView: View {
                 }
             }
             .padding(.horizontal, 10).padding(.vertical, 6)
-            .background(Capsule().fill(Color(hex: 0xF2F2F7)))
+            .background(Capsule().fill(Color.dyn(0xF2F2F7, 0x202C33)))
             .padding(.horizontal, 8).padding(.vertical, 6)
         }
         .sheet(isPresented: $showLangPicker) { CustomerLanguageSheet(chatJid: chatJid) }
@@ -763,7 +763,7 @@ struct CustomerLanguageSheet: View {
             dismiss()
         } label: {
             HStack {
-                Text(name).foregroundStyle(Color(hex: 0x111111))
+                Text(name).foregroundStyle(.primary)
                 Spacer()
                 if sel == code {
                     Image(systemName: "checkmark").foregroundStyle(Color(hex: 0x25D366))
@@ -1005,9 +1005,9 @@ private func roundAction(icon: String, filled: Bool, action: @escaping () -> Voi
     Button(action: action) {
         Image(systemName: icon)
             .font(.system(size: 16))
-            .foregroundStyle(filled ? .white : Color(hex: 0x111111))
+            .foregroundStyle(filled ? .white : .primary)
             .frame(width: 48, height: 48)
-            .background(Circle().fill(filled ? Color(hex: 0x25D366) : Color.white))
+            .background(Circle().fill(filled ? Color(hex: 0x25D366) : Color.dyn(0xFFFFFF, 0x2A3942)))
             .overlay(Circle().stroke(Color(hex: 0x14000000), lineWidth: 1))
     }
 }
@@ -1064,8 +1064,8 @@ struct BubbleView: View {
             }
             .padding(10)
             // 照搬 WaSpec：BUBBLE_SENT #E0FCD6 / BUBBLE_RECEIVED 白 / 圆角 10 / 最大宽 280dp
-            .background(m.fromMe ? Color(hex: 0xE0FCD6)
-                        : Color(uiColor: .systemBackground))
+            .background(m.fromMe ? Color.dyn(0xE0FCD6, 0x005C4B)
+                        : Color.dyn(0xFFFFFF, 0x1F2C33))
             .clipShape(RoundedRectangle(cornerRadius: 10))
             .overlay(RoundedRectangle(cornerRadius: 10)
                 .stroke(mediaKindNeedsStroke ? Color.primary.opacity(0.08) : .clear, lineWidth: 1))
@@ -1366,6 +1366,16 @@ extension URL: Identifiable {
 }
 
 extension Color {
+    /// 动态明暗色（对齐 Android 昼夜主题）：light=昼，dark=夜（WhatsApp 同款暗板）
+    static func dyn(_ light: UInt32, _ dark: UInt32) -> Color {
+        Color(uiColor: UIColor { trait in
+            let hex = trait.userInterfaceStyle == .dark ? dark : light
+            return UIColor(red: CGFloat((hex >> 16) & 0xFF) / 255,
+                           green: CGFloat((hex >> 8) & 0xFF) / 255,
+                           blue: CGFloat(hex & 0xFF) / 255, alpha: 1)
+        })
+    }
+
     init(hex: UInt32) {
         self.init(.sRGB,
                   red: Double((hex >> 16) & 0xFF) / 255,

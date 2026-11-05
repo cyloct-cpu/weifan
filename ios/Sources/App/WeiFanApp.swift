@@ -10,6 +10,12 @@ struct WeiFanApp: App {
         if ProcessInfo.processInfo.arguments.contains("UITEST_RESET_ONBOARDING") {
             UserDefaults.standard.removeObject(forKey: "onboard_lang_done")
         }
+        // UI 测试：强制夜态（截图核对昼夜切换的可读性）
+        if ProcessInfo.processInfo.arguments.contains("UITEST_FORCE_DARK") {
+            var s = UserDefaultsSettingsStore().load()
+            s.themeMode = "dark"
+            UserDefaultsSettingsStore().save(s)
+        }
     }
 
     var body: some Scene {
