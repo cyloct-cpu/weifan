@@ -215,4 +215,39 @@ final class WeiFanUITests: XCTestCase {
         sleep(1)
         snapshot(app, "52-夜-翻译服务")
     }
+
+    /// 2026-11-06 第三轮反馈：七家占位引擎卡片也要能点开填密钥（对齐安卓 openProviderDialog）
+    func testProviderKeyDialogs() throws {
+        let app = XCUIApplication()
+        app.launchArguments = ["PREVIEW_LIST"]
+        app.launch()
+
+        XCTAssertTrue(app.buttons["header_menu"].waitForExistence(timeout: 25), "列表没起来")
+        app.buttons["header_menu"].tap()
+        let settingsItem = app.buttons["设置"]
+        XCTAssertTrue(settingsItem.waitForExistence(timeout: 8))
+        settingsItem.tap()
+        XCTAssertTrue(app.navigationBars["聊天设置"].waitForExistence(timeout: 10))
+        let row = app.buttons["row_translation_service"]
+        XCTAssertTrue(row.waitForExistence(timeout: 8))
+        row.tap()
+        XCTAssertTrue(app.navigationBars["翻译服务"].waitForExistence(timeout: 10))
+
+        // 点 Azure 卡 → 配置密钥对话框（订阅密钥预填由运行前 simctl defaults write 注入；
+        // headless 键盘 typeText 不稳，不走真打字）
+        let azure = app.staticTexts.matching(NSPredicate(format: "label BEGINSWITH %@", "Azure")).firstMatch
+        XCTAssertTrue(azure.waitForExistence(timeout: 8), "Azure 卡没找到")
+        azure.tap()
+        XCTAssertTrue(app.navigationBars["配置密钥"].waitForExistence(timeout: 8), "密钥对话框没弹出")
+        let sec = app.secureTextFields.firstMatch
+        XCTAssertTrue(sec.waitForExistence(timeout: 5), "订阅密钥输入框没找到")
+        let existing = sec.value as? String ?? ""
+        XCTAssertFalse(existing.isEmpty, "预填的 cred_azure_key 没读到")
+        snapshot(app, "60-Azure密钥对话框")
+        app.navigationBars["配置密钥"].buttons["保存"].tap()
+        // 保存后卡片应变为「密钥已就绪」
+        XCTAssertTrue(app.staticTexts["密钥已就绪 · 引擎接入后自动生效"].waitForExistence(timeout: 8),
+                      "保存后 Azure 卡没有变成已就绪态")
+        snapshot(app, "61-Azure已就绪")
+    }
 }

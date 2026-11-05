@@ -15,13 +15,26 @@ import WeiFanCore
 
 // MARK: - 服务商卡片数据（与 Android 网格一一对应）
 
+/// 单个密钥字段（对齐 Android Field(id/label/hint/secret/optional)）
+struct ProviderField: Identifiable {
+    let id: String
+    let label: String
+    let hint: String
+    var secret: Bool = false
+    var optional: Bool = false
+}
+
 struct ProviderCard: Identifiable {
     let id: String
     let name: String
     let desc: String
     let implemented: Bool
-    /// 是否有密钥录入界面（deepl/google 直连 Keychain；其余引擎下一轮接入）
-    var hasKeyEntry: Bool { id == "deepl" || id == "google" }
+    /// 密钥字段规格（与 Android Providers.DEFS 逐字一致）
+    var fields: [ProviderField] = []
+    /// deepl/google 走 Keychain（WeiFanCore 引擎在用）；其余先落 UserDefaults cred_*
+    var usesKeychain: Bool = false
+    /// 是否有密钥录入界面
+    var hasKeyEntry: Bool { usesKeychain }
 }
 
 // MARK: - 自定义接口档案（与 Android customs_json 同构）
@@ -91,6 +104,20 @@ enum CustomLLMEngine {
     }
 }
 
+/// 渠道凭据存取：键名与 Android 完全一致（cred_<providerId>_<fieldId>），
+/// 引擎下一轮接入后直接读同一份；deepl/google 例外走 Keychain（WeiFanCore 在用）。
+enum ProviderCredStore {
+    static func value(_ provider: String, _ field: String) -> String {
+        UserDefaults.standard.string(forKey: "cred_\(provider)_\(field)") ?? ""
+    }
+    static func set(_ provider: String, _ field: String, _ v: String) {
+        UserDefaults.standard.set(v, forKey: "cred_\(provider)_\(field)")
+    }
+    static func isConfigured(_ card: ProviderCard) -> Bool {
+        card.fields.filter { !$0.optional }.allSatisfy { !value(card.id, $0.id).isEmpty }
+    }
+}
+
 // MARK: - 页面
 
 struct TranslationServiceView: View {
@@ -126,25 +153,44 @@ struct TranslationServiceView: View {
 
     private let settingsStore = UserDefaultsSettingsStore()
 
+    // 字段规格逐字对齐 Android Providers.DEFS（id/label/hint/secret/optional）
     private let providers: [ProviderCard] = [
         ProviderCard(id: "deepl", name: "DeepL API Free",
-                     desc: "每月 50 万字符免费（免费版 key 以 :fx 结尾）", implemented: true),
+                     desc: "每月 50 万字符免费（免费版 key 以 :fx 结尾）", implemented: true,
+                     fields: [ProviderField(id: "key", label: "API Key", hint: "xxxxxxxx-xxxx-…:fx", secret: true)],
+                     usesKeychain: true),
         ProviderCard(id: "google", name: "Google Cloud Translation",
-                     desc: "每月 50 万字符免费额度", implemented: true),
+                     desc: "每月 50 万字符免费额度", implemented: true,
+                     fields: [ProviderField(id: "key", label: "API Key", hint: "AIza…", secret: true)],
+                     usesKeychain: true),
         ProviderCard(id: "azure", name: "Azure 微软翻译",
-                     desc: "F0 每月 200 万字符免费", implemented: false),
+                     desc: "F0 每月 200 万字符免费", implemented: false,
+                     fields: [ProviderField(id: "key", label: "订阅密钥", hint: "32 位十六进制", secret: true),
+                              ProviderField(id: "region", label: "区域（选填）", hint: "eastasia", optional: true)]),
         ProviderCard(id: "baidu", name: "百度翻译开放平台",
-                     desc: "通用版 5 万/月（高级版 100 万）", implemented: false),
+                     desc: "通用版 5 万/月（高级版 100 万）", implemented: false,
+                     fields: [ProviderField(id: "appid", label: "App ID", hint: "2024……"),
+                              ProviderField(id: "secret", label: "Secret Key", hint: "……", secret: true)]),
         ProviderCard(id: "tencent", name: "腾讯云机器翻译 TMT",
-                     desc: "个人实名后每月约 500 万字符", implemented: false),
+                     desc: "个人实名后每月约 500 万字符", implemented: false,
+                     fields: [ProviderField(id: "secretId", label: "SecretId", hint: "AKID……"),
+                              ProviderField(id: "secretKey", label: "SecretKey", hint: "……", secret: true),
+                              ProviderField(id: "region", label: "地域（选填）", hint: "ap-guangzhou", optional: true)]),
         ProviderCard(id: "volcano", name: "火山引擎翻译",
-                     desc: "新用户约 100 万字符免费额度", implemented: false),
+                     desc: "新用户约 100 万字符免费额度", implemented: false,
+                     fields: [ProviderField(id: "accessKeyId", label: "AccessKey ID", hint: "AKLT……"),
+                              ProviderField(id: "secretKey", label: "Secret Key", hint: "……", secret: true)]),
         ProviderCard(id: "aliyun", name: "阿里云翻译",
-                     desc: "个人版每月 100 万字符免费", implemented: false),
+                     desc: "个人版每月 100 万字符免费", implemented: false,
+                     fields: [ProviderField(id: "accessKeyId", label: "AccessKey ID", hint: "LTAI……"),
+                              ProviderField(id: "accessKeySecret", label: "AccessKey Secret", hint: "……", secret: true)]),
         ProviderCard(id: "volcanollm", name: "火山引擎大模型翻译",
-                     desc: "大模型翻译，32 种语言", implemented: false),
+                     desc: "大模型翻译，32 种语言", implemented: false,
+                     fields: [ProviderField(id: "key", label: "API Key", hint: "火山控制台获取的 API Key", secret: true)]),
         ProviderCard(id: "yandex", name: "Yandex Translate",
-                     desc: "按字符计费（新号有试用金）", implemented: false),
+                     desc: "按字符计费（新号有试用金）", implemented: false,
+                     fields: [ProviderField(id: "key", label: "API Key", hint: "AQVN…", secret: true),
+                              ProviderField(id: "folderId", label: "Folder ID", hint: "b1g……")]),
     ]
 
     var body: some View {
@@ -168,6 +214,10 @@ struct TranslationServiceView: View {
         .navigationTitle("翻译服务")
         .navigationBarTitleDisplayMode(.inline)
         .onAppear(perform: loadAll)
+        .onReceive(NotificationCenter.default.publisher(for: .weifanCredsChanged)) { _ in
+            // cred_* 落 UserDefaults 后刷新网格状态（configured 为计算属性，需要一次渲染失效）
+            settings = settingsStore.load()
+        }
         .sheet(isPresented: $editingNew) {
             CustomProfileEditor(profile: CustomProfile(id: UUID().uuidString, name: "", key: "",
                                                        baseUrl: "", model: "")) { saved in
@@ -200,8 +250,12 @@ struct TranslationServiceView: View {
             }
         }
         .sheet(item: $keyDialog) { card in
-            ProviderKeyDialog(card: card) {
-                creds = core.core.credentials   // 保存后刷新 configured 状态
+            if card.usesKeychain {
+                ProviderKeyDialog(card: card) {
+                    creds = core.core.credentials   // 保存后刷新 configured 状态
+                }
+            } else {
+                ProviderFieldsDialog(card: card)
             }
         }
     }
@@ -252,7 +306,7 @@ struct TranslationServiceView: View {
                         Label("按我的排序（网格拖动）",
                               systemImage: settings.providerSelection == "priority" ? "checkmark" : "")
                     }
-                    ForEach(channels.filter { $0.configured }) { ch in
+                    ForEach(channels.filter { $0.configured && ($0.card?.usesKeychain == true || $0.custom != nil) }) { ch in
                         Button {
                             settings.providerSelection = ch.id
                             persist()
@@ -345,12 +399,14 @@ struct TranslationServiceView: View {
     }
 
     private func isConfigured(_ card: ProviderCard) -> Bool {
-        guard card.implemented else { return false }
-        switch card.id {
-        case "deepl": return !(creds.deepLAPIKey ?? "").isEmpty
-        case "google": return !(creds.googleAPIKey ?? "").isEmpty
-        default: return false
+        if card.usesKeychain {
+            switch card.id {
+            case "deepl": return !(creds.deepLAPIKey ?? "").isEmpty
+            case "google": return !(creds.googleAPIKey ?? "").isEmpty
+            default: return false
+            }
         }
+        return ProviderCredStore.isConfigured(card)
     }
 
     /// 单颗渠道卡（对齐 Android channelCapsule：开关=启用，点卡=配密钥，长按=拖）
@@ -366,18 +422,18 @@ struct TranslationServiceView: View {
                         get: { !off },
                         set: { on in setProvider(ch.id, on: on) }))
                         .labelsHidden()
-                } else if ch.card?.implemented == true {
-                    // 引擎有、密钥没配：开关默认关，点开=去填密钥
+                } else {
+                    // 没配密钥：开关默认关，点开关/点卡片都去填密钥
                     Toggle("", isOn: .constant(false))
                         .labelsHidden()
-                        .onTapGesture { if ch.card?.hasKeyEntry == true { keyDialog = ch.card } }
-                } else {
-                    Toggle("", isOn: .constant(false)).labelsHidden().disabled(true)
+                        .onTapGesture { if ch.card != nil { keyDialog = ch.card } }
                 }
             }
             Text(ch.note).font(.caption2).foregroundStyle(.secondary).lineLimit(2)
             if let card = ch.card, !card.implemented {
-                Text("Swift 引擎下一轮接入").font(.caption2).foregroundStyle(.orange)
+                Text(ch.configured ? "密钥已就绪 · 引擎接入后自动生效"
+                                   : "Swift 引擎下一轮接入")
+                    .font(.caption2).foregroundStyle(.orange)
             }
         }
         .padding(10)
@@ -389,7 +445,9 @@ struct TranslationServiceView: View {
         .opacity(off ? 0.45 : 1)
         .onTapGesture {
             if let c = ch.custom { editingProfile = c }
-            else if let card = ch.card, card.implemented, !ch.configured, card.hasKeyEntry {
+            else if let card = ch.card {
+                // 已配且是 Keychain 引擎 → 不用再配；其余一律可点开填/改密钥
+                if card.hasKeyEntry && ch.configured { return }
                 keyDialog = card
             }
         }
@@ -880,6 +938,70 @@ struct ProviderKeyDialog: View {
             }
         }
     }
+}
+
+
+// MARK: - 通用渠道密钥录入（七家占位引擎；字段规格对齐 Android，键名 cred_<id>_<field>）
+
+struct ProviderFieldsDialog: View {
+    let card: ProviderCard
+    @Environment(\.dismiss) private var dismiss
+
+    @State private var values: [String: String] = [:]
+    @State private var saved = false
+
+    var body: some View {
+        NavigationStack {
+            Form {
+                Section(card.name + " 密钥") {
+                    ForEach(card.fields) { f in
+                        if f.secret {
+                            SecureField(f.hint, text: binding(f))
+                                .autocorrectionDisabled()
+                                .textInputAutocapitalization(.never)
+                        } else {
+                            TextField("\(f.label)（\(f.hint)）", text: binding(f))
+                                .autocorrectionDisabled()
+                                .textInputAutocapitalization(.never)
+                        }
+                    }
+                }
+                Section {
+                    Text("密钥保存在本机（键名与安卓版一致），翻译引擎接入后自动生效，不用重新填。免费额度：" + card.desc)
+                        .font(.footnote).foregroundStyle(.secondary)
+                }
+            }
+            .navigationTitle("配置密钥")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) { Button("取消") { dismiss() } }
+                ToolbarItem(placement: .confirmationAction) {
+                    Button(saved ? "已保存" : "保存") {
+                        for f in card.fields {
+                            ProviderCredStore.set(card.id, f.id,
+                                                  (values[f.id] ?? "").trimmingCharacters(in: .whitespaces))
+                        }
+                        saved = true
+                        NotificationCenter.default.post(name: .weifanCredsChanged, object: nil)
+                        DispatchQueue.main.asyncAfter(deadline: .now() + 0.6) { dismiss() }
+                    }
+                    .disabled(!card.fields.filter { !$0.optional }.allSatisfy { !(values[$0.id] ?? "").isEmpty })
+                }
+            }
+            .onAppear {
+                for f in card.fields { values[f.id] = ProviderCredStore.value(card.id, f.id) }
+            }
+        }
+    }
+
+    private func binding(_ f: ProviderField) -> Binding<String> {
+        Binding(get: { values[f.id] ?? "" },
+                set: { values[f.id] = $0 })
+    }
+}
+
+extension Notification.Name {
+    static let weifanCredsChanged = Notification.Name("weifan.creds.changed")
 }
 
 // MARK: - 自定义接口编辑器
