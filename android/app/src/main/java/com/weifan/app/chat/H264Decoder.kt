@@ -30,6 +30,9 @@ class H264Decoder {
     private var height = 0
     @Volatile private var running = false
     private var pendingSpsPps: ByteArray? = null
+    /** 首帧实际上屏回调（UI 用它隐藏「等待对方画面」占位） */
+    var onFirstFrame: (() -> Unit)? = null
+    @Volatile private var firstFrameFired = false
 
     /** 挂上 TextureView；surface 就绪后才能 configure codec */
     fun attach(tv: TextureView) {
@@ -184,6 +187,10 @@ class H264Decoder {
             val outIdx = c.dequeueOutputBuffer(info, 0)
             if (outIdx >= 0) {
                 c.releaseOutputBuffer(outIdx, true)   // render=true 直接上屏
+                if (!firstFrameFired) {
+                    firstFrameFired = true
+                    android.os.Handler(android.os.Looper.getMainLooper()).post { onFirstFrame?.invoke() }
+                }
             } else if (outIdx == MediaCodec.INFO_OUTPUT_FORMAT_CHANGED) {
                 val f = c.outputFormat
                 Log.i(TAG, "output ${f.getInteger(MediaFormat.KEY_WIDTH)}x${f.getInteger(MediaFormat.KEY_HEIGHT)}")

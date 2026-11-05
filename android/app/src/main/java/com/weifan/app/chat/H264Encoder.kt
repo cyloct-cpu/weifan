@@ -53,6 +53,8 @@ class H264Encoder(
     private var thread: HandlerThread? = null
     private var handler: Handler? = null
     private var inputSurface: Surface? = null
+    /** 可选：本地自画面输出面（Camera2 多输出面，同一次捕获同时喂编码器与预览） */
+    var previewSurface: Surface? = null
     @Volatile private var running = false
     private var headerSent = false
 
@@ -118,12 +120,16 @@ class H264Encoder(
     private fun createSession(d: CameraDevice) {
         val surf = inputSurface ?: return
         try {
+            // 自画面（PIP TextureView）与编码器输入面一起挂进同一次捕获：
+            // 相机帧同时到达两个面——编码器发给对端，预览给用户看自己
+            val outputs = if (previewSurface != null) listOf(surf, previewSurface!!) else listOf(surf)
             @Suppress("DEPRECATION")
-            d.createCaptureSession(listOf(surf), object : CameraCaptureSession.StateCallback() {
+            d.createCaptureSession(outputs, object : CameraCaptureSession.StateCallback() {
                 override fun onConfigured(s: CameraCaptureSession) {
                     session = s
                     val req = d.createCaptureRequest(CameraDevice.TEMPLATE_RECORD).apply {
                         addTarget(surf)
+                        if (previewSurface != null) addTarget(previewSurface!!)
                         set(CaptureRequest.CONTROL_MODE, CaptureRequest.CONTROL_MODE_AUTO)
                     }.build()
                     s.setRepeatingRequest(req, null, handler)

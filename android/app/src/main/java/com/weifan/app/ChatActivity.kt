@@ -82,6 +82,7 @@ class ChatActivity : BaseActivity() {
     private var callSpeaker = false
     /** 视频渲染视图与解码器（video=true 时创建） */
     private var videoSurface: android.view.TextureView? = null
+    private var selfPipView: android.view.TextureView? = null
     private var callVideoDecoder: com.weifan.app.chat.H264Decoder? = null
     private var callVideoEncoder: com.weifan.app.chat.H264Encoder? = null
     private var groupMembers: List<Pair<String, String>> = emptyList()   // phone → 名字
@@ -209,11 +210,8 @@ class ChatActivity : BaseActivity() {
         }
         titleCol.addView(subtitle)
 
+        handlePreviewCall(intent)
         // 调试预览：am start --es previewCall voice|video 可直接看通话界面（不需要真实配对）
-        when (intent.getStringExtra("previewCall")) {
-            "voice" -> main.postDelayed({ showCallingUI(false, "preview") }, 600)
-            "video" -> main.postDelayed({ showCallingUI(true, "preview") }, 600)
-        }
 
         // 来电监听：挂到 ChatActivity 生命周期上，收到即弹全屏来电界面
         engine.onIncomingCall = { from, callId, video ->
@@ -2251,17 +2249,41 @@ class ChatActivity : BaseActivity() {
             minimumHeight = (resources.displayMetrics.heightPixels * 0.70f).toInt()
         }
         if (video) {
-            // 视频区占剩余空间，有画面就渲染在这里（无画面时显示头像占位）
+            // 视频区占满剩余空间：对端画面（H264 解码）渲染于主 TextureView，
+            // 右上角 PIP 是本机摄像头自画面（Camera2 多输出面，前置镜像）
             callVideoDecoder = com.weifan.app.chat.H264Decoder()
             videoSurface = android.view.TextureView(this)
-            root.addView(videoSurface, LinearLayout.LayoutParams(
+            val videoFrame = FrameLayout(this).apply {
+                setBackgroundColor(Color.parseColor("#0B141A"))
+            }
+            videoFrame.addView(videoSurface, FrameLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT))
+            // 对端首帧到达前的占位（onFirstFrame 回调后隐藏）
+            val wait = TextView(this).apply {
+                text = "等待对方画面…"
+                textSize = 13f
+                setTextColor(Color.parseColor("#8696A0"))
+                gravity = Gravity.CENTER
+            }
+            videoFrame.addView(wait, FrameLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT))
+            val pip = android.view.TextureView(this).apply {
+                scaleX = -1f   // 自拍镜像
+            }
+            selfPipView = pip
+            videoFrame.addView(pip, FrameLayout.LayoutParams(dp(110), dp(150)).apply {
+                gravity = Gravity.TOP or Gravity.END
+                marginEnd = dp(10); topMargin = dp(10)
+            })
+            root.addView(videoFrame, LinearLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT, 0, 1f))
             val tv = videoSurface
             if (tv != null) callVideoDecoder?.attach(tv)
+            callVideoDecoder?.onFirstFrame = { main.post { wait.visibility = View.GONE } }
             engine.attachVideoSink { frame -> callVideoDecoder?.feed(frame) }
             engine.startVideoReceiveAsync()
             // 发送侧：摄像头 → H.264 编码 → Go SendVideo（需 CAMERA 权限）
-            startVideoSend()
+            startVideoSend(pip)
         }
         root.addView(initialAvatar(name, dp(96)), LinearLayout.LayoutParams(dp(96), dp(96)).apply {
             if (video) { topMargin = dp(12); height = dp(64); width = dp(64) }
@@ -2350,10 +2372,16 @@ class ChatActivity : BaseActivity() {
         dlg.setView(root)
         dlg.show()
         dlg.window?.setBackgroundDrawableResource(android.R.color.transparent)
-        // 高度取屏高 72%：太矮会露出下面聊天页背景（实测），太高会顶到状态栏
-        dlg.window?.setLayout(
-            (resources.displayMetrics.widthPixels * 0.96f).toInt(),
-            (resources.displayMetrics.heightPixels * 0.72f).toInt())
+        // 视频通话全屏（画面需要空间）；语音保持 72% 高度小窗
+        if (video) {
+            dlg.window?.setLayout(
+                ViewGroup.LayoutParams.MATCH_PARENT,
+                ViewGroup.LayoutParams.MATCH_PARENT)
+        } else {
+            dlg.window?.setLayout(
+                (resources.displayMetrics.widthPixels * 0.96f).toInt(),
+                (resources.displayMetrics.heightPixels * 0.72f).toInt())
+        }
         callDialog = dlg
     }
 
@@ -2367,7 +2395,7 @@ class ChatActivity : BaseActivity() {
     }
 
     /** 启动视频发送（摄像头采集 + 编码推流） */
-    private fun startVideoSend() {
+    private fun startVideoSend(preview: android.view.TextureView? = null) {
         if (callVideoEncoder != null) return
         if (checkSelfPermission(android.Manifest.permission.CAMERA)
                 != android.content.pm.PackageManager.PERMISSION_GRANTED) {
@@ -2383,7 +2411,11 @@ class ChatActivity : BaseActivity() {
                 this,
                 onFrame = { frame -> engine.sendVideoFrame(frame) },
                 onError = { e -> Toast.makeText(this, "摄像头异常：$e", Toast.LENGTH_SHORT).show() }
-            ).also { it.start() }
+            ).also { enc ->
+                // 自画面：相机会话第二输出面（前置镜像由 TextureView scaleX=-1 呈现）
+                preview?.let { enc.previewSurface = android.view.Surface(it.surfaceTexture) }
+                enc.start()
+            }
         }
     }
 
@@ -3316,6 +3348,19 @@ class ChatActivity : BaseActivity() {
         return out
     }
 
+    override fun onNewIntent(intent: Intent) {
+        super.onNewIntent(intent)
+        handlePreviewCall(intent)
+    }
+
+    /** 调试预览分发（onCreate 与 onNewIntent 共用） */
+    private fun handlePreviewCall(intent: Intent?) {
+        when (intent?.getStringExtra("previewCall")) {
+            "voice" -> main.postDelayed({ showCallingUI(false, "preview") }, 600)
+            "video" -> main.postDelayed({ showCallingUI(true, "preview") }, 600)
+        }
+    }
+
     override fun onRequestPermissionsResult(requestCode: Int, permissions: Array<out String>, grantResults: IntArray) {
         super.onRequestPermissionsResult(requestCode, permissions, grantResults)
         if (requestCode == 4102) {
@@ -3323,6 +3368,15 @@ class ChatActivity : BaseActivity() {
                 showRecordDialog()
             } else {
                 Toast.makeText(this, "未授权麦克风，无法发送语音", Toast.LENGTH_SHORT).show()
+            }
+            return
+        }
+        if (requestCode == 4105) {
+            if (grantResults.firstOrNull() == android.content.pm.PackageManager.PERMISSION_GRANTED) {
+                // 授权后重试视频发送（带自画面 PIP）
+                startVideoSend(selfPipView)
+            } else {
+                Toast.makeText(this, "未授权相机，无法发送视频画面", Toast.LENGTH_LONG).show()
             }
             return
         }
