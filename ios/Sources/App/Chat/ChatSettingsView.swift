@@ -12,7 +12,6 @@ import SQLite3
 
 struct ChatSettingsView: View {
     @ObservedObject var core = ProtocolCore.shared
-    @AppStorage("wa_proxy") private var waProxy = ""
     @AppStorage("wa_auto_translate_incoming") private var autoTranslate = true
     @State private var backupURL: URL?
     @State private var exporting = false
@@ -33,21 +32,12 @@ struct ChatSettingsView: View {
             }
 
             Section("WhatsApp 连接") {
-                // 状态/配对两行已去：能进本页必然已配对（未配对被配对页拦截），显示无信息量。
-                // 代理保留：国内网络真机调试时配置出口用（模拟器留空走 TUN）。
-                VStack(alignment: .leading, spacing: 4) {
-                    Text("代理（按需，留空=直连）").font(.caption).foregroundStyle(.secondary)
-                    TextField("http://… 或 socks5://…", text: $waProxy)
-                        .textFieldStyle(.roundedBorder)
-                        .autocorrectionDisabled()
-                        .textInputAutocapitalization(.never)
-                    Text("改动后重启 App 生效。Android 端同名配置 wa_proxy。")
-                        .font(.caption2).foregroundStyle(.secondary)
-                }
+                // 与 Android 完全同构：本段只有收件自动翻译开关。
+                // wa_proxy 不在 UI 暴露（Android 亦只在 Prefs 层），真机特殊网络用 defaults 配置。
+                Toggle("收件自动翻译", isOn: $autoTranslate)
             }
 
             Section("翻译设置") {
-                Toggle("收件自动翻译", isOn: $autoTranslate)
                 NavigationLink("翻译服务（九家 + 自定义接口）") { SettingsView() }
             }
 
