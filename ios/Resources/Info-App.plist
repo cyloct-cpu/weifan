@@ -28,7 +28,9 @@
     <dict>
         <key>UIColorName</key>
         <string></string>
-    </dict>
+        <key>NSContactsUsageDescription</key>
+    <string>用于把客户存进手机通讯录，并在发联系人卡片时选择号码</string>
+</dict>
     <key>UISupportedInterfaceOrientations</key>
     <array>
         <string>UIInterfaceOrientationPortrait</string>

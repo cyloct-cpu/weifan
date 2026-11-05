@@ -87,7 +87,17 @@ final class ProtocolCore: ObservableObject {
     let core: TranslationCore
 
     @Published var paired: Bool
-    @Published var connected: Bool = false
+        /// 程序化打开会话（新建会话/新建联系人/建群后跳转用）。
+    /// iOS 的 NavigationStack 无 path 绑定时无法 push，这里用"待处理 jid"让列表页消费。
+    @Published var pendingChatJid: String?
+    @Published var pendingChatTitle: String = ""
+
+    func openChat(jid: String, title: String) {
+        pendingChatTitle = title
+        pendingChatJid = jid
+    }
+
+@Published var connected: Bool = false
     /// 收到新消息的会话 jid 集合（UI 刷新用，Counter 模式避免 Diffable 抖动）
     @Published var inboxTick: Int = 0
 

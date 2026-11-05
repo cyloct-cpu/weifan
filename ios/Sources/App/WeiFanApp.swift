@@ -81,22 +81,17 @@ final class AppModel: ObservableObject {
     }
 }
 
+/// 主界面：对齐 Android 版的「会话列表为主」结构。
+///
+/// 之前是 5 个 TabView（聊天/翻译/客户/术语/设置），与 Android 的两级导航差别很大。
+/// Android 是：会话列表 → 会话（两级），其余功能从列表右上角菜单进。
+/// 这里改成同构：RootView 只放会话栈，翻译/客户/术语/设置都进 ChatListView 的菜单。
 struct RootView: View {
     @EnvironmentObject private var model: AppModel
 
     var body: some View {
-        TabView {
-            // 阶段 1：多设备客户端形态（语言选择 → 配对 → 会话列表/会话页）
-            NavigationStack { ChatRootView() }
-                .tabItem { Label("聊天", systemImage: "bubble.left.and.bubble.right") }
-            NavigationStack { SendView() }
-                .tabItem { Label("翻译", systemImage: "character.bubble") }
-            NavigationStack { CustomersView() }
-                .tabItem { Label("客户", systemImage: "person.2") }
-            NavigationStack { GlossaryView() }
-                .tabItem { Label("术语", systemImage: "textformat.abc") }
-            NavigationStack { SettingsView() }
-                .tabItem { Label("设置", systemImage: "gearshape") }
+        NavigationStack {
+            ChatRootView()
         }
     }
 }

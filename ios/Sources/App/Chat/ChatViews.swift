@@ -17,8 +17,11 @@ struct ChatRootView: View {
     @State private var forceOnboarding = ProcessInfo.processInfo.arguments.contains("UITEST_RESET_ONBOARDING")
 
     var body: some View {
-        if forceOnboarding || !langDone {
-            LanguagePickerView(onDone: { forceOnboarding = false })
+        // 调试预览：launch 参数 PREVIEW_LIST=1 直接看会话列表 UI（不需要真实配对），
+        // 用于 UI 与 Android 版对比截图
+        // 安卓没有「界面语言选择」页（中文单语），这里去掉，直接按配对状态分流
+        if ProcessInfo.processInfo.arguments.contains("PREVIEW_LIST") {
+            ChatListView()
         } else if !core.paired {
             PairingView()
         } else {
@@ -150,10 +153,14 @@ struct ChatListView: View {
     @ObservedObject var core = ProtocolCore.shared
     @State private var query = ""
     @State private var chip = "所有"
+    @State private var showNewChat = false
+    @State private var showNewGroup = false
     private let chips = ["所有", "未读", "特别关注", "群组", "已归档"]
 
+    @State private var path = NavigationPath()
+
     var body: some View {
-        NavigationStack {
+        NavigationStack(path: $path) {
             VStack(spacing: 0) {
                 // 连接状态条
                 if !core.connected {
@@ -167,12 +174,18 @@ struct ChatListView: View {
                 ScrollView(.horizontal, showsIndicators: false) {
                     HStack(spacing: 8) {
                         ForEach(chips, id: \.self) { c in
+                            // 照搬 Android chip：文字 15sp，内 padding 8/6，
+                            // 选中 #EBEBEF + 描边 #E0E0E4 + 文字 #5E5E5E；未选白底 + #E0E0E4 描边
                             Text(c)
-                                .font(.callout)
+                                .font(.system(size: 15))
+                                .foregroundStyle(chip == c ? Color(hex: 0x5E5E5E) : Color(hex: 0x111111))
                                 .padding(.horizontal, 12).padding(.vertical, 6)
-                                .background(chip == c ? Color.teal.opacity(0.15) : Color(uiColor: .secondarySystemFill))
-                                .foregroundStyle(chip == c ? .teal : .secondary)
-                                .clipShape(Capsule())
+                                .background(
+                                    Capsule().fill(chip == c ? Color(hex: 0xEBEBEF) : .white)
+                                )
+                                .overlay(
+                                    Capsule().stroke(chip == c ? Color(hex: 0xD1D1D6) : Color(hex: 0xE0E0E4), lineWidth: 1)
+                                )
                                 .onTapGesture { chip = c }
                         }
                     }
@@ -198,7 +211,16 @@ struct ChatListView: View {
             }
             .toolbar {
                 ToolbarItem(placement: .topBarTrailing) {
-                    NavigationLink { ChatSettingsView() } label: { Image(systemName: "gearshape") }
+                    Menu {
+                        // 对齐 Android showListMenu：新建会话（加好友）/ 新建群聊 / 新建联系人 / 设置
+                        Button { showNewChat = true } label: { Label("新建会话（加好友）", systemImage: "person.badge.plus") }
+                        Button { showNewGroup = true } label: { Label("新建群聊", systemImage: "person.3") }
+                        NavigationLink { NewContactView() } label: { Label("新建联系人（存手机通讯录）", systemImage: "person.crop.circle.badge.plus") }
+                        Divider()
+                        NavigationLink { ChatSettingsView() } label: { Label("设置", systemImage: "gearshape") }
+                    } label: {
+                        Image(systemName: "plus")
+                    }
                 }
             }
             .onAppear { CallEngine.shared.wire(client: core.client) }
@@ -210,8 +232,14 @@ struct ChatListView: View {
                     }
                 }
             }
-            .searchable(text: $query, prompt: "搜索或开始新聊天")
+            .searchable(text: $query, placement: .navigationBarDrawer(displayMode: .always), prompt: "搜索或开始新聊天")
             .onAppear { core.connectAsync() }
+            .onChange(of: core.pendingChatJid) { jid in
+                // 新建会话/联系人/建群后程序化进会话（iOS 16 兼容写法）
+                if let jid { path.append(jid); core.pendingChatJid = nil }
+            }
+            .sheet(isPresented: $showNewChat) { NewChatSheet() }
+            .sheet(isPresented: $showNewGroup) { NewGroupSheet() }
         }
     }
 
@@ -247,33 +275,41 @@ struct ChatListRow: View {
     @State private var avatar: UIImage?
 
     var body: some View {
-        HStack(spacing: 12) {
+        // 数值全部照搬 Android ChatListActivity.chatRow：
+        // 行 padding 12/10、minHeight 68dp、头像 46dp(圆角 23)、标题 16sp、副标题 13sp
+        HStack(spacing: 0) {
             if let avatar {
                 Image(uiImage: avatar).resizable().scaledToFill()
-                    .frame(width: 48, height: 48).clipShape(Circle())
+                    .frame(width: 46, height: 46).clipShape(RoundedRectangle(cornerRadius: 23))
             } else {
                 ZStack {
-                    Circle().fill(Color.teal.opacity(0.2))
+                    RoundedRectangle(cornerRadius: 23).fill(Color(hex: 0xF2F2F7))
                     Text(String(chat.title.first ?? "#"))
-                        .font(.headline).foregroundStyle(.teal)
+                        .font(.system(size: 20)).foregroundStyle(Color(hex: 0x6F6F6F))
                 }
-                .frame(width: 48, height: 48)
+                .frame(width: 46, height: 46)
             }
-            VStack(alignment: .leading, spacing: 3) {
-                Text(chat.title).font(.body.weight(.medium)).lineLimit(1)
-                Text(chat.lastMessage).font(.subheadline).foregroundStyle(.secondary).lineLimit(1)
+            VStack(alignment: .leading, spacing: 2) {
+                Text(chat.title)
+                    .font(.system(size: 16)).foregroundStyle(Color(hex: 0x111111)).lineLimit(1)
+                Text(chat.lastMessage)
+                    .font(.system(size: 13)).foregroundStyle(Color(hex: 0x8E8E93)).lineLimit(1)
             }
-            Spacer()
+            .padding(.leading, 12)
+            Spacer(minLength: 8)
             VStack(alignment: .trailing, spacing: 4) {
-                Text(Self.time(chat.lastTs)).font(.caption2).foregroundStyle(.secondary)
+                Text(Self.time(chat.lastTs))
+                    .font(.system(size: 12)).foregroundStyle(Color(hex: 0x8E8E93))
                 if chat.unread > 0 {
                     Text("\(chat.unread)")
-                        .font(.caption2.bold()).foregroundStyle(.white)
-                        .padding(.horizontal, 7).padding(.vertical, 2)
-                        .background(Color.teal).clipShape(Capsule())
+                        .font(.system(size: 12, weight: .bold)).foregroundStyle(.white)
+                        .padding(.horizontal, 6).padding(.vertical, 2)
+                        .background(Color(hex: 0x25D366)).clipShape(Capsule())
                 }
             }
         }
+        .padding(.horizontal, 12).padding(.vertical, 10)
+        .frame(minHeight: 68)
         .task(id: chat.jid) {
             // 头像：协议层 getProfilePicture（字节 → UIImage），失败静默
             let bytes = try? ProtocolCore.shared.client.getProfilePicture(chat.jid)
@@ -350,21 +386,33 @@ struct ChatView: View {
                 .padding(.horizontal, 12).padding(.vertical, 4)
                 .background(Color(uiColor: .secondarySystemBackground))
             }
-            HStack(spacing: 8) {
-                Button { showAttach = true } label: { Image(systemName: "plus.circle.fill") }
-                    .font(.title2).foregroundStyle(.teal)
-                    .disabled(recording)
+            // 照搬 Android 输入区：灰胶囊(圆角23) + ＋28dp + 输入 16sp
+            // + 发送/麦克风 48dp 白底 + 1dp 淡描边 + 深色图标
+            HStack(spacing: 6) {
+                Button { showAttach = true } label: {
+                    Image(systemName: "plus")
+                        .font(.system(size: 17, weight: .medium))
+                        .foregroundStyle(Color(hex: 0x6F6F6F))
+                        .frame(width: 28, height: 28)
+                }.disabled(recording)
+
                 TextField("输入中文，发出自动翻译", text: $input, axis: .vertical)
-                    .textFieldStyle(.roundedBorder)
+                    .font(.system(size: 16))
+                    .textFieldStyle(.plain)
                     .lineLimit(1...4)
                     .disabled(recording)
-                // U3 对应：空输入尾部是麦克风，有字切发送（Android 同构；iOS 版为点按开/关录音）
+
                 if recording {
-                    Text("●\(voice.seconds)s").font(.callout.monospaced()).foregroundStyle(.red)
-                    Button("发送") { voice.stop(send: true); recording = false }.buttonStyle(.borderedProminent)
-                    Button("取消", role: .cancel) { voice.stop(send: false); recording = false }
+                    Text("●\(voice.seconds)s")
+                        .font(.system(size: 13).monospaced()).foregroundStyle(.red)
+                    roundAction(icon: "paperplane.fill", filled: true) {
+                        voice.stop(send: true); recording = false
+                    }
+                    roundAction(icon: "xmark", filled: false) {
+                        voice.stop(send: false); recording = false
+                    }
                 } else if input.trimmingCharacters(in: .whitespaces).isEmpty {
-                    Button {
+                    roundAction(icon: "mic.fill", filled: false) {
                         voice.finished = { url, sec in
                             core.sendMediaAsync(chatJid: chatJid, kind: "audio",
                                                 localURL: url, ptt: true, seconds: Int64(sec)) { err in
@@ -373,17 +421,13 @@ struct ChatView: View {
                         }
                         voice.start()
                         recording = true
-                    } label: { Image(systemName: "mic.fill").frame(width: 40, height: 40) }
-                        .buttonStyle(.borderedProminent)
-                } else {
-                    Button {
-                        sendText()
-                    } label: {
-                        Image(systemName: "paperplane.fill").frame(width: 40, height: 40)
                     }
-                    .buttonStyle(.borderedProminent)
+                } else {
+                    roundAction(icon: "paperplane.fill", filled: false) { sendText() }
                 }
             }
+            .padding(.horizontal, 10).padding(.vertical, 6)
+            .background(Capsule().fill(Color(hex: 0xF2F2F7)))
             .padding(.horizontal, 8).padding(.vertical, 6)
         }
         .navigationTitle(title.isEmpty ? chatJid : title)
@@ -705,6 +749,18 @@ struct EventDialog: View {
     }
 }
 
+/// 输入区圆钮：48dp，白底 + 1dp 淡描边 + 深色图标（对齐 Android input_circle_black）
+private func roundAction(icon: String, filled: Bool, action: @escaping () -> Void) -> some View {
+    Button(action: action) {
+        Image(systemName: icon)
+            .font(.system(size: 16))
+            .foregroundStyle(filled ? .white : Color(hex: 0x111111))
+            .frame(width: 48, height: 48)
+            .background(Circle().fill(filled ? Color(hex: 0x25D366) : Color.white))
+            .overlay(Circle().stroke(Color(hex: 0x14000000), lineWidth: 1))
+    }
+}
+
 // MARK: - 气泡（阶段 2：媒体渲染 + 时间回执）
 
 struct BubbleView: View {
@@ -722,7 +778,7 @@ struct BubbleView: View {
 
     var body: some View {
         HStack {
-            if m.fromMe { Spacer(minLength: 48) }
+            if m.fromMe { Spacer(minLength: 30) }
             VStack(alignment: .leading, spacing: 3) {
                 media
                 if let lp = linkPreview {
@@ -750,11 +806,13 @@ struct BubbleView: View {
                 .frame(maxWidth: .infinity, alignment: .trailing)
             }
             .padding(10)
-            .background(m.fromMe ? Color(hex: 0xD9FDD3) : Color(uiColor: .secondarySystemBackground))
+            // 照搬 WaSpec：BUBBLE_SENT #E0FCD6 / BUBBLE_RECEIVED 白 / 圆角 10 / 最大宽 280dp
+            .background(m.fromMe ? Color(hex: 0xE0FCD6)
+                        : Color(uiColor: .systemBackground))
             .clipShape(RoundedRectangle(cornerRadius: 10))
             .overlay(RoundedRectangle(cornerRadius: 10)
                 .stroke(mediaKindNeedsStroke ? Color.primary.opacity(0.08) : .clear, lineWidth: 1))
-            if !m.fromMe { Spacer(minLength: 48) }
+            if !m.fromMe { Spacer(minLength: 30) }
         }
         .task(id: m.id) {
             // P7：链接预览（有 URL、无媒体、未抓过 → 后台抓 og）
