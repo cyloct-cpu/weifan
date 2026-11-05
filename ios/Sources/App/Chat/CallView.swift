@@ -31,13 +31,16 @@ final class CallEngine: NSObject, ObservableObject {
     /// 来电还是拨出
     private var isIncoming = false
     @Published var phaseRaw = 0
+    /// 对端视频帧已到达（通话界面切视频渲染）
+    @Published var remoteVideoActive = false
     /// 实时音频统计（上行/下行帧）——下行 0 = RTP 没通（网络/UDP/代理问题，非 App 代码）
-    @Published var statsLine = "" 
+    @Published var statsLine = ""
 
     private var audioEngine: AVAudioEngine?
     private var playerNode: AVAudioPlayerNode?
     private var ticker: Timer?
     private var statsTimer: Timer?
+    private var videoHandler: VideoFrameHandler?
     private var wired = false
 
     func wire(client: MobileWeifanClient) {
@@ -84,8 +87,15 @@ final class CallEngine: NSObject, ObservableObject {
         handler.onFrame = { [weak self] pcm in
             self?.playPeerPCM(pcm)
         }
+        // 对端视频：H.264 Annex-B 帧 → 解码渲染（出向采集下一轮）
+        let vh = VideoFrameHandler()
+        videoHandler = vh
+        RemoteVideoRenderer.shared.onFirstFrame = { [weak self] in
+            Task { @MainActor in self?.remoteVideoActive = true }
+        }
         client.setCallListener(handler)
         client.setAudioListener(handler)
+        client.setVideoListener(vh)
     }
 
     /// 主叫。未连接 WhatsApp 直接给出明确错误（之前静默失败，用户以为按钮坏了）
@@ -132,6 +142,11 @@ final class CallEngine: NSObject, ObservableObject {
         phase = .active
         wasActive = true
         seconds = 0
+        // 订阅对端视频流（接通后拉 H.264）
+        DispatchQueue.global(qos: .userInitiated).async { [weak self] in
+            let client = ProtocolCore.shared.client
+            _ = try? client.startVideoReceive()
+        }
         startStatsPolling()
         startMic()
         ticker = Timer.scheduledTimer(withTimeInterval: 1, repeats: true) { [weak self] _ in
@@ -216,6 +231,8 @@ final class CallEngine: NSObject, ObservableObject {
         statsTimer?.invalidate(); statsTimer = nil
         statsLine = ""
         phaseRaw = 0
+        remoteVideoActive = false
+        RemoteVideoRenderer.shared.reset()
         recordCallLog()
         audioEngine?.stop()
         audioEngine = nil
@@ -317,6 +334,167 @@ final class CallEventHandler: NSObject, MobileCallListenerProtocol, MobileAudioL
     func onAudioFrame(_ data: Data?) { if let data { onFrame?(data) } }
 }
 
+// MARK: - 对端视频（H.264 Annex-B → VideoToolbox 经 AVSampleBufferDisplayLayer 解码渲染）
+//
+// 协议链：meowcaller ReceiveVideo → mobile.go OnVideoFrame(Annex-B au) → 这里。
+// 每次回调 = 一个访问单元：SPS/PPS 建格式描述，其余 NAL 转 AVCC 喂 layer。
+// 出向视频（摄像头采集+编码）尚未实现（下一轮，模拟器也没有摄像头）。
+
+final class VideoFrameHandler: NSObject, MobileVideoListenerProtocol {
+    func onVideoFrame(_ data: Data?) {
+        guard let data, !data.isEmpty else { return }
+        RemoteVideoRenderer.shared.ingest(data)
+    }
+}
+
+final class RemoteVideoRenderer {
+    static let shared = RemoteVideoRenderer()
+    let displayLayer = AVSampleBufferDisplayLayer()
+    private let lock = NSLock()
+    private var formatDesc: CMVideoFormatDescription?
+    private var sps: Data?
+    private var pps: Data?
+    private(set) var hasVideo = false
+    var onFirstFrame: (() -> Void)?
+
+    func ingest(_ data: Data) {
+        let nals = Self.splitAnnexB(data)
+        lock.lock()
+        var body: [Data] = []
+        for nal in nals {
+            guard !nal.isEmpty else { continue }
+            switch nal[0] & 0x1F {
+            case 7:                     // SPS
+                if nal != sps { sps = nal; formatDesc = nil }
+            case 8:                     // PPS
+                if nal != pps { pps = nal; formatDesc = nil }
+            case 6: break               // SEI 可跳过
+            default: body.append(nal)
+            }
+            if nal[0] & 0x1F == 5 { hasVideo = true }  // IDR
+        }
+        if formatDesc == nil, let sps, let pps {
+            formatDesc = try? Self.makeFormat(sps: sps, pps: pps)
+        }
+        guard let fd = formatDesc, !body.isEmpty else {
+            lock.unlock(); return
+        }
+        // Annex-B NAL → AVCC（4 字节大端长度前缀）
+        var avcc = Data()
+        for nal in body {
+            var len = UInt32(nal.count).bigEndian
+            withUnsafeBytes(of: &len) { avcc.append(contentsOf: $0) }
+            avcc.append(nal)
+        }
+        lock.unlock()
+
+        avcc.withUnsafeBytes { raw -> Void in
+            guard var base = raw.baseAddress else { return }
+            var block: CMBlockBuffer?
+            CMBlockBufferCreateWithMemoryBlock(allocator: nil, memoryBlock: nil,
+                                               blockLength: avcc.count, blockAllocator: nil,
+                                               customBlockSource: nil, offsetToData: 0,
+                                               dataLength: avcc.count, flags: 0, blockBufferOut: &block)
+            _ = CMBlockBufferReplaceDataBytes(with: &base, blockBuffer: block!,
+                                              offsetIntoDestination: 0, dataLength: avcc.count)
+            var sampleSize = avcc.count
+            var timing = CMSampleTimingInfo(
+                duration: CMTime.invalid,
+                presentationTimeStamp: CMClockGetTime(CMClockGetHostTimeClock()),
+                decodeTimeStamp: CMTime.invalid)
+            var sample: CMSampleBuffer?
+            CMSampleBufferCreateReady(allocator: nil, dataBuffer: block!,
+                                      formatDescription: fd, sampleCount: 1,
+                                      sampleTimingEntryCount: 1, sampleTimingArray: &timing,
+                                      sampleSizeEntryCount: 1, sampleSizeArray: &sampleSize,
+                                      sampleBufferOut: &sample)
+            if let sample {
+                DispatchQueue.main.async {
+                    if self.displayLayer.status == .failed { self.displayLayer.flush() }
+                    self.displayLayer.enqueue(sample)
+                    if !self.hasVideoNotified {
+                        self.hasVideoNotified = true
+                        self.onFirstFrame?()
+                    }
+                }
+            }
+        }
+    }
+
+    private var hasVideoNotified = false
+
+    func reset() {
+        lock.lock(); formatDesc = nil; sps = nil; pps = nil; hasVideoNotified = false
+        lock.unlock()
+        DispatchQueue.main.async {
+            self.displayLayer.flush()
+            self.hasVideo = false
+        }
+    }
+
+    static func splitAnnexB(_ data: Data) -> [Data] {
+        var out: [Data] = []
+        var start: Data.Index?
+        var i = data.startIndex
+        var zeros = 0
+        while i < data.endIndex {
+            let b = data[i]
+            if b == 0 { zeros += 1 } else {
+                if b == 1, zeros >= 2 {
+                    if let s = start { out.append(data[s..<i]) }
+                    start = data.index(after: i)
+                }
+                zeros = 0
+            }
+            i = data.index(after: i)
+        }
+        if let s = start { out.append(data[s...]) }
+        return out
+    }
+
+    /// SPS/PPS → avcC 盒 → H.264 CMFormatDescription（AVSampleBufferDisplayLayer 解码用）
+    static func makeFormat(sps: Data, pps: Data) -> CMFormatDescription? {
+        guard sps.count > 4 else { return nil }
+        var avcC = Data([0x01, sps[1], sps[2], sps[3], 0xFF, 0xE1])
+        var spsLen = UInt16(sps.count).bigEndian
+        withUnsafeBytes(of: &spsLen) { avcC.append(contentsOf: $0) }
+        avcC.append(sps)
+        avcC.append(0x01)
+        var ppsLen = UInt16(pps.count).bigEndian
+        withUnsafeBytes(of: &ppsLen) { avcC.append(contentsOf: $0) }
+        avcC.append(pps)
+
+        let atoms = ["avcC": avcC as CFData] as CFDictionary
+        let extensions = [kCMFormatDescriptionExtension_SampleDescriptionExtensionAtoms: atoms] as CFDictionary
+        var desc: CMFormatDescription?
+        let rc = CMVideoFormatDescriptionCreate(allocator: nil,
+                                                codecType: kCMVideoCodecType_H264,
+                                                width: 0, height: 0,
+                                                extensions: extensions,
+                                                formatDescriptionOut: &desc)
+        guard rc == noErr else { return nil }
+        return desc
+    }
+}
+
+/// UIViewRepresentable 包装显示层
+struct RemoteVideoView: UIViewRepresentable {
+    func makeUIView(context: Context) -> UIView {
+        let v = UIView()
+        let layer = RemoteVideoRenderer.shared.displayLayer
+        layer.videoGravity = .resizeAspectFill
+        layer.frame = UIScreen.main.bounds
+        v.layer.addSublayer(layer)
+        return v
+    }
+    func updateUIView(_ uiView: UIView, context: Context) {
+        CATransaction.begin()
+        CATransaction.setDisableActions(true)
+        RemoteVideoRenderer.shared.displayLayer.frame = uiView.bounds
+        CATransaction.commit()
+    }
+}
+
 // MARK: - 通话 UI（来电全屏 + 通话中；亮清晰版，状态/统计实时）
 
 struct CallOverlayView: View {
@@ -326,10 +504,16 @@ struct CallOverlayView: View {
 
     var body: some View {
         ZStack {
-            // 深灰渐变底（纯黑太黑看不清）
-            LinearGradient(colors: [Color(hex: 0x24343C), Color(hex: 0x121A1F)],
-                           startPoint: .top, endPoint: .bottom)
-                .ignoresSafeArea()
+            // 对端视频（帧到达后铺满；未到时显示渐变）
+            if engine.remoteVideoActive {
+                RemoteVideoView()
+                    .ignoresSafeArea()
+                    .background(Color.black.ignoresSafeArea())
+            } else {
+                LinearGradient(colors: [Color(hex: 0x24343C), Color(hex: 0x121A1F)],
+                               startPoint: .top, endPoint: .bottom)
+                    .ignoresSafeArea()
+            }
             VStack(spacing: 30) {
                 VStack(spacing: 10) {
                     ZStack {
