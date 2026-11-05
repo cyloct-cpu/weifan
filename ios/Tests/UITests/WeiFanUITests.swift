@@ -304,4 +304,38 @@ final class WeiFanUITests: XCTestCase {
         sleep(2)
         snapshot(app, "71-亮-会话新设计")
     }
+
+    /// 语音条渲染 / 联络人资料页 / 通话冒烟（第十一轮检查项）—— 单次进会话顺序完成
+    func testVoiceCallContactPage() throws {
+        let app = XCUIApplication()
+        app.launchArguments = ["PREVIEW_LIST", "UITEST_FORCE_LIGHT"]
+        app.launch()
+
+        let chat = app.staticTexts["TEST-验证"]
+        XCTAssertTrue(chat.waitForExistence(timeout: 25), "列表没起来")
+        chat.tap()
+        XCTAssertTrue(app.buttons["call_voice"].waitForExistence(timeout: 12), "通话按钮没找到")
+        sleep(1)
+        snapshot(app, "80-会话-语音条与工具栏")
+
+        // ① 联络人资料页
+        let info = app.buttons["chat_info"]
+        XCTAssertTrue(info.waitForExistence(timeout: 8), "i 按钮没找到")
+        info.tap()
+        XCTAssertTrue(app.navigationBars["联络人资料"].waitForExistence(timeout: 10), "资料页没推入")
+        sleep(1)
+        snapshot(app, "82-联络人资料页")
+        app.navigationBars.buttons.element(boundBy: 0).tap()
+        XCTAssertTrue(app.buttons["call_voice"].waitForExistence(timeout: 10), "回到会话页失败")
+
+        // ② 语音通话冒烟：浮层出现则验证+挂断；未连接时起呼立即失败属预期（真机连上再验）
+        app.buttons["call_voice"].tap()
+        if app.staticTexts["呼叫中…"].waitForExistence(timeout: 6) {
+            snapshot(app, "81-语音呼叫浮层")
+            let hangup = app.buttons.matching(NSPredicate(format: "label CONTAINS %@", "phone.down")).firstMatch
+            if hangup.exists { hangup.tap() }
+            sleep(2)
+        }
+    }
+
 }

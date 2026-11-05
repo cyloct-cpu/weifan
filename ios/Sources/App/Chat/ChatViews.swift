@@ -589,6 +589,15 @@ struct ChatView: View {
         }
         .sheet(isPresented: $showLangPicker) { CustomerLanguageSheet(chatJid: chatJid) }
         .sheet(isPresented: $showSearch) { MessageSearchSheet(chatJid: chatJid) }
+        // 通话浮层：来电全屏/主叫状态（之前只挂在列表页——会话页内不可见）
+        .overlay {
+            if CallEngine.shared.phase != .idle {
+                CallOverlayView(client: core.client) { jid in
+                    core.chats().first(where: { $0.jid == jid })?.title
+                        ?? core.messages(chatJid: jid).last.map { _ in jid } ?? jid
+                }
+            }
+        }
         .navigationTitle(title.isEmpty ? chatJid : title)
         .navigationBarTitleDisplayMode(.inline)
         .toolbar {
@@ -599,10 +608,12 @@ struct ChatView: View {
                         CallEngine.shared.wire(client: core.client)
                         CallEngine.shared.startCall(client: core.client, jid: chatJid, video: false)
                     } label: { Image(systemName: "phone") }
+                    .accessibilityIdentifier("call_voice")
                     Button {
                         CallEngine.shared.wire(client: core.client)
                         CallEngine.shared.startCall(client: core.client, jid: chatJid, video: true)
                     } label: { Image(systemName: "video") }
+                    .accessibilityIdentifier("call_video")
                     // 对齐 Android customerLanguageButton：会话级指定客户语言与引擎
                     // （不用 SF textformat 符号——中文系统会本地化成「甲乙丙」）
                     Button { showLangPicker = true } label: {
@@ -621,6 +632,7 @@ struct ChatView: View {
                     NavigationLink { ContactInfoView(chatJid: chatJid, title: title) } label: {
                         Image(systemName: "info.circle")
                     }
+                    .accessibilityIdentifier("chat_info")
                 }
             }
         }
@@ -1070,6 +1082,8 @@ struct BubbleView: View {
                 mediaBubble
             } else if isDocument {
                 documentBubble
+            } else if isAudio {
+                audioBubble
             } else {
                 textBubble
             }
@@ -1251,6 +1265,38 @@ struct BubbleView: View {
         ["image", "video", "sticker"].contains(m.mediaKind)
     }
     private var isDocument: Bool { m.mediaKind == "document" }
+    private var isAudio: Bool { m.mediaKind == "audio" }
+
+    /// 语音条：气泡内播放行 + 时间（audio 不渲染在 textBubble 分支里的回归修复）
+    private var audioBubble: some View {
+        VStack(alignment: .leading, spacing: 3) {
+            HStack(alignment: .bottom, spacing: 6) {
+                media
+                timeRowNoSpacer
+            }
+        }
+        .padding(.horizontal, 9).padding(.vertical, 8)
+        .frame(maxWidth: 290, alignment: .leading)
+        .background(m.fromMe ? Color.dyn(0xE0FCD6, 0x005C4B)
+                    : Color.dyn(0xFFFFFF, 0x1F2C33))
+        .clipShape(RoundedRectangle(cornerRadius: 16))
+    }
+
+    /// 无 Spacer 的时间小行（audio/document 卡内右下；宽度由主内容决定）
+    private var timeRowNoSpacer: some View {
+        HStack(spacing: 3) {
+            Text(Self.time(m.ts)).font(.system(size: 10))
+                .foregroundStyle(Color.primary.opacity(0.45))
+            if m.fromMe {
+                Image(systemName: "checkmark").font(.system(size: 9, weight: .bold))
+                if receipt != "sent" {
+                    Image(systemName: "checkmark").font(.system(size: 9, weight: .bold))
+                }
+            }
+        }
+        .frame(maxWidth: .infinity, alignment: .trailing)
+        .foregroundStyle(receipt == "read" ? Color(hex: 0x34B7F1) : Color.primary.opacity(0.4))
+    }
 
     /// 文档消息（对齐参考）：中性灰气泡（双方向同色）装文件卡；
     /// 说明文字在卡外下方直接贴壁纸，收件时间随说明行、发件时间+回执在卡内右下
@@ -1343,6 +1389,7 @@ struct BubbleView: View {
                     }
                 }
                 Text(Self.duration(m)).font(.caption2.monospaced()).foregroundStyle(.secondary)
+                    .fixedSize()
             }
             .onDisappear { player?.stop(); playing = false }
         case "document":
@@ -1458,6 +1505,7 @@ struct BubbleView: View {
 
 // MARK: - 联系人信息（只读）
 
+/// 联络人资料（对齐 WATransChat contact_info：号码行/本地备注/客户备注/媒体分区）
 struct ContactInfoView: View {
     let chatJid: String
     let title: String
@@ -1466,52 +1514,264 @@ struct ContactInfoView: View {
     @State private var blocked = false
     @State private var blockError: String?
 
+    // 备注双字段（参考图）：本地备注=称呼（displayName）/ 客户备注=成交意向·偏好·跟进（notes）
+    // 均存本机 CustomerProfile（matchKey=jid），与安卓同构
+    private let profileStore = UserDefaultsProfileStore()
+    @State private var alias = ""
+    @State private var notes = ""
+    @State private var savedToast = false
+
+    @State private var mediaTab = 0
+    private let tabs = ["文件", "图片与视频", "链接", "音乐与音频"]
+
+    /// +手机号（jid 去后缀）
+    private var phoneDisplay: String {
+        let num = chatJid
+            .replacingOccurrences(of: "@s.whatsapp.net", with: "")
+            .replacingOccurrences(of: "@lid", with: "")
+        return num.hasPrefix("+") ? num : "+" + num
+    }
+
+    private var messages: [MessageRow] { core.messages(chatJid: chatJid) }
+    private var docMsgs: [MessageRow] { messages.filter { $0.mediaKind == "document" } }
+    private var mediaMsgs: [MessageRow] { messages.filter { ["image", "video"].contains($0.mediaKind) } }
+    private var audioMsgs: [MessageRow] { messages.filter { $0.mediaKind == "audio" } }
+    private var linkURLs: [URL] {
+        var seen = Set<String>()
+        return messages.compactMap { m in
+            guard !m.text.isEmpty, let raw = LinkPreviewFetcher.firstURL(m.text),
+                  seen.insert(raw).inserted, let u = URL(string: raw) else { return nil }
+            return u
+        }
+    }
+
     var body: some View {
-        List {
-            Section {
-                VStack(spacing: 10) {
+        ScrollView {
+            VStack(spacing: 14) {
+                // 头部：头像 + 名称 + 号码
+                VStack(spacing: 8) {
                     if let avatar {
                         Image(uiImage: avatar).resizable().scaledToFill()
-                            .frame(width: 96, height: 96).clipShape(Circle())
+                            .frame(width: 108, height: 108).clipShape(Circle())
                     } else {
                         ZStack {
-                            Circle().fill(Color.teal.opacity(0.2))
+                            Circle().fill(Color(hex: 0x0A7EA4).opacity(0.15))
                             Text(String((title.isEmpty ? chatJid : title).first ?? "#"))
-                                .font(.largeTitle).foregroundStyle(.teal)
+                                .font(.largeTitle).foregroundStyle(Color(hex: 0x0A7EA4))
                         }
-                        .frame(width: 96, height: 96)
+                        .frame(width: 108, height: 108)
                     }
-                    Text(title.isEmpty ? chatJid : title).font(.title3.weight(.medium))
-                    Text(chatJid).font(.caption).foregroundStyle(.secondary)
+                    Text(title.isEmpty ? chatJid : title)
+                        .font(.title3.weight(.semibold)).multilineTextAlignment(.center)
+                    Text(phoneDisplay).font(.callout).foregroundStyle(.secondary)
                 }
                 .frame(maxWidth: .infinity)
-            }
-            Section("状态") {
-                LabeledContent("连接", value: core.connected ? "在线" : "未连接")
-            }
-            Section("操作") {
-                Button(blocked ? "解除拉黑" : "拉黑此联系人", role: blocked ? .none : .destructive) {
-                    if let e = BlocklistHelper.setBlocked(client: core.client, jid: chatJid, blocked: !blocked) {
-                        blockError = e
-                    } else {
-                        blocked.toggle()
+                .padding(.vertical, 18)
+                .frame(maxWidth: .infinity)
+                .background(Color(uiColor: .secondarySystemGroupedBackground))
+                .clipShape(RoundedRectangle(cornerRadius: 14))
+
+                // 本地备注（仅保存在 WeFlip）= 称呼
+                VStack(alignment: .leading, spacing: 8) {
+                    Text("本地备注（仅保存在 WeFlip）").font(.footnote).foregroundStyle(.secondary)
+                    TextField("给这位客户起个好认的名字", text: $alias)
+                        .textFieldStyle(.roundedBorder)
+                    Button {
+                        saveProfile()
+                    } label: {
+                        Text(savedToast ? "已保存" : "保存备注")
+                            .frame(maxWidth: .infinity, minHeight: 42)
                     }
+                    .buttonStyle(.borderedProminent)
                 }
+                .padding(12)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .background(Color(uiColor: .secondarySystemGroupedBackground))
+                .clipShape(RoundedRectangle(cornerRadius: 14))
+
+                // 客户备注（仅保存在本机）= 成交意向/偏好/跟进
+                VStack(alignment: .leading, spacing: 8) {
+                    Text("客户备注（仅保存在本机）").font(.footnote).foregroundStyle(.secondary)
+                    TextEditor(text: $notes)
+                        .frame(minHeight: 88)
+                        .font(.system(size: 14))
+                        .scrollContentBackground(.hidden)
+                        .background(Color(uiColor: .tertiarySystemBackground))
+                        .clipShape(RoundedRectangle(cornerRadius: 8))
+                        .overlay(alignment: .topLeading) {
+                            if notes.isEmpty {
+                                Text("点此添加成交意向、商品偏好、跟进计划…")
+                                    .font(.system(size: 14)).foregroundStyle(.tertiary)
+                                    .padding(.horizontal, 6).padding(.vertical, 8)
+                                    .allowsHitTesting(false)
+                            }
+                        }
+                    .onSubmit { saveProfile() }
+                }
+                .padding(12)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .background(Color(uiColor: .secondarySystemGroupedBackground))
+                .clipShape(RoundedRectangle(cornerRadius: 14))
+
+                // 媒体、连接和文件
+                VStack(alignment: .leading, spacing: 10) {
+                    Text("媒体、连接和文件").font(.footnote).foregroundStyle(.secondary)
+                    ScrollView(.horizontal, showsIndicators: false) {
+                        HStack(spacing: 8) {
+                            ForEach(Array(tabs.enumerated()), id: \.offset) { i, name in
+                                Button { mediaTab = i } label: {
+                                    Text(name).font(.footnote)
+                                        .padding(.horizontal, 12).padding(.vertical, 6)
+                                        .background(Capsule().fill(mediaTab == i ? Color(hex: 0x0A7EA4) : Color(uiColor: .tertiarySystemBackground)))
+                                        .foregroundStyle(mediaTab == i ? .white : .primary)
+                                }
+                            }
+                        }
+                    }
+                    mediaSection
+                }
+                .padding(12)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .background(Color(uiColor: .secondarySystemGroupedBackground))
+                .clipShape(RoundedRectangle(cornerRadius: 14))
+
+                // 操作：拉黑（保留，参考图红色操作行）
+                VStack(alignment: .leading, spacing: 8) {
+                    Text("操作").font(.footnote).foregroundStyle(.secondary)
+                    Button {
+                        if let e = BlocklistHelper.setBlocked(client: core.client, jid: chatJid, blocked: !blocked) {
+                            blockError = e
+                        } else {
+                            blocked.toggle()
+                        }
+                    } label: {
+                        Text(blocked ? "解除拉黑" : "拉黑此联系人")
+                            .frame(maxWidth: .infinity, minHeight: 42)
+                    }
+                    .buttonStyle(.bordered)
+                    .foregroundStyle(.red)
+                    Text(blocked ? "已拉黑：对方消息将不再进入本机" : "拉黑后对方的消息不再进入本机")
+                        .font(.caption2).foregroundStyle(.secondary)
+                }
+                .padding(12)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .background(Color(uiColor: .secondarySystemGroupedBackground))
+                .clipShape(RoundedRectangle(cornerRadius: 14))
             }
-            Section {
-                Text(blocked ? "已拉黑：对方消息将不再到达" : "拉黑后对方的消息不再进入本机")
-                    .font(.caption2).foregroundStyle(.secondary)
-            }
+            .padding(12)
         }
+        .background(Color(uiColor: .systemGroupedBackground))
         .navigationTitle("联络人资料")
         .navigationBarTitleDisplayMode(.inline)
         .task {
             if let b = try? core.client.getProfilePicture(chatJid) { avatar = UIImage(data: Data(b)) }
             blocked = BlocklistHelper.isBlocked(client: core.client, jid: chatJid)
+            let p = profileStore.profile(matching: chatJid)
+            if let p {
+                // 称呼默认回显 JID（与参考图一致），客户改过则显示改过的
+                alias = p.displayName == chatJid || p.displayName.isEmpty ? chatJid : p.displayName
+                notes = p.notes
+            } else {
+                alias = chatJid
+            }
         }
         .alert("拉黑失败", isPresented: .init(get: { blockError != nil }, set: { if !$0 { blockError = nil } })) {
             Button("好", role: .cancel) {}
         } message: { Text(blockError ?? "") }
+    }
+
+    private func saveProfile() {
+        var p = profileStore.profile(matching: chatJid)
+            ?? CustomerProfile(matchKey: chatJid, displayName: chatJid)
+        p.displayName = alias.trimmingCharacters(in: .whitespaces).isEmpty ? chatJid : alias.trimmingCharacters(in: .whitespaces)
+        p.notes = notes
+        p.updatedAt = Date()
+        profileStore.upsert(p)
+        savedToast = true
+        DispatchQueue.main.asyncAfter(deadline: .now() + 1.2) { savedToast = false }
+    }
+
+    @ViewBuilder private var mediaSection: some View {
+        switch mediaTab {
+        case 0:
+            if docMsgs.isEmpty { emptyHint } else {
+                VStack(spacing: 8) {
+                    ForEach(docMsgs) { m in
+                        HStack(spacing: 10) {
+                            Image(systemName: "doc.fill")
+                                .foregroundStyle(m.mediaMime.contains("pdf") ? Color(hex: 0xE53935) : .orange)
+                            VStack(alignment: .leading, spacing: 2) {
+                                Text(m.mediaName.isEmpty ? "文档" : m.mediaName)
+                                    .font(.callout).lineLimit(1)
+                                Text(Self.docDate(m.ts)).font(.caption2).foregroundStyle(.secondary)
+                            }
+                            Spacer()
+                            if m.mediaSize > 0 {
+                                Text(ByteCountFormatter.string(fromByteCount: m.mediaSize, countStyle: .file))
+                                    .font(.caption2).foregroundStyle(.secondary)
+                            }
+                        }
+                    }
+                }
+            }
+        case 1:
+            if mediaMsgs.isEmpty { emptyHint } else {
+                LazyVGrid(columns: [GridItem(.flexible(), spacing: 6), GridItem(.flexible(), spacing: 6), GridItem(.flexible(), spacing: 6)], spacing: 6) {
+                    ForEach(mediaMsgs) { m in
+                        Group {
+                            if let th = MediaStore.thumbnail(m) {
+                                Image(uiImage: th).resizable().scaledToFill()
+                            } else if m.fromMe, !m.mediaPath.isEmpty,
+                                      let local = MediaStore.localFile(for: m.id, mime: m.mediaMime) {
+                                Image(uiImage: UIImage(contentsOfFile: local.path) ?? UIImage()).resizable().scaledToFill()
+                            } else {
+                                Rectangle().fill(Color(uiColor: .tertiarySystemFill))
+                                    .overlay(ProgressView())
+                            }
+                        }
+                        .frame(height: 104).clipped()
+                        .clipShape(RoundedRectangle(cornerRadius: 8))
+                    }
+                }
+            }
+        case 2:
+            if linkURLs.isEmpty { emptyHint } else {
+                VStack(spacing: 8) {
+                    ForEach(linkURLs) { u in
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text(u.absoluteString).font(.callout).foregroundStyle(Color(hex: 0x0A7EA4))
+                                .lineLimit(1)
+                            if let host = u.host { Text(host).font(.caption2).foregroundStyle(.secondary) }
+                        }
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                    }
+                }
+            }
+        default:
+            if audioMsgs.isEmpty { emptyHint } else {
+                VStack(spacing: 8) {
+                    ForEach(audioMsgs) { m in
+                        HStack(spacing: 10) {
+                            Image(systemName: "waveform").foregroundStyle(Color(hex: 0x0A7EA4))
+                            Text("语音消息").font(.callout)
+                            Spacer()
+                            Text(BubbleView.duration(m)).font(.caption2.monospaced()).foregroundStyle(.secondary)
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    private var emptyHint: some View {
+        Text("暂无内容").font(.caption).foregroundStyle(.tertiary)
+            .frame(maxWidth: .infinity).padding(.vertical, 10)
+    }
+
+    static func docDate(_ ms: Int64) -> String {
+        let df = DateFormatter()
+        df.dateFormat = "yyyy-MM-dd HH:mm"
+        return df.string(from: Date(timeIntervalSince1970: TimeInterval(ms) / 1000))
     }
 }
 
