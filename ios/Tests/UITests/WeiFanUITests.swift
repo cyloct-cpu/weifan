@@ -254,4 +254,30 @@ final class WeiFanUITests: XCTestCase {
                       "保存后 Azure 卡没有变成已就绪态")
         snapshot(app, "61-Azure已就绪")
     }
+
+    /// 二分定位：blob disabledProviders 被谁写 —— 只导航不点任何菜单
+    func testBlobProbeNavigationOnly() throws {
+        let app = XCUIApplication()
+        app.launchArguments = ["PREVIEW_LIST"]
+        app.launch()
+        let menu = app.buttons["header_menu"]
+        XCTAssertTrue(menu.waitForExistence(timeout: 25))
+        menu.tap()
+        let settingsItem = app.buttons["设置"]
+        XCTAssertTrue(settingsItem.waitForExistence(timeout: 8))
+        settingsItem.tap()
+        XCTAssertTrue(app.navigationBars["聊天设置"].waitForExistence(timeout: 10))
+        let row = app.buttons["row_translation_service"]
+        XCTAssertTrue(row.waitForExistence(timeout: 8))
+        row.tap()
+        XCTAssertTrue(app.navigationBars["翻译服务"].waitForExistence(timeout: 10))
+        // 二分 A：只点开+关闭三档菜单（模板选择器不进）
+        let autoRow = app.buttons["自动（按语种优选）"]
+        if autoRow.exists && autoRow.isHittable {
+            autoRow.tap()
+            sleep(1)
+            app.buttons["自动（按语种优选）"].firstMatch.tap()
+        }
+        sleep(3)
+    }
 }

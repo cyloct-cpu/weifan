@@ -16,6 +16,13 @@ struct WeiFanApp: App {
             s.themeMode = "dark"
             UserDefaultsSettingsStore().save(s)
         }
+        // 调试：清渠道停用表（旧版本开关语义留下的 disabledProviders 残留；
+        // 必须走 UserDefaults API——直接改 plist 文件会被 cfprefsd 缓存冲回）
+        if ProcessInfo.processInfo.arguments.contains("UITEST_RESET_PROVIDER_STATE") {
+            var s = UserDefaultsSettingsStore().load()
+            s.disabledProviders = []
+            UserDefaultsSettingsStore().save(s)
+        }
     }
 
     var body: some Scene {
