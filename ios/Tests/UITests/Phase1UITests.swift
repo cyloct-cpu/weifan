@@ -71,3 +71,52 @@ final class Phase1UITests: XCTestCase {
     }
 
 }
+
+
+/// 双端 UI 对比巡览：复用 test02 已验证导航，逐页截图与安卓对照
+final class CompareTourTests: XCTestCase {
+    override func setUpWithError() throws { continueAfterFailure = true }
+
+    private func shot(_ app: XCUIApplication, _ name: String) {
+        let a = XCTAttachment(screenshot: XCUIScreen.main.screenshot())
+        a.name = "cmp-" + name
+        a.lifetime = .keepAlways
+        add(a)
+    }
+
+    func testTourAllPages() throws {
+        let app = XCUIApplication()
+        app.launchArguments = ["UITEST_FAKE_PAIRED"]
+        app.launch()
+        _ = app.staticTexts["TEST-验证"].waitForExistence(timeout: 10)
+        shot(app, "1-list")
+
+        // 会话页（与 test02 同路径）
+        app.staticTexts["TEST-验证"].firstMatch.tap()
+        _ = app.staticTexts["Hola, ¿cómo estás? Es un placer conocerte."].waitForExistence(timeout: 10)
+        sleep(1)
+        shot(app, "2-chat")
+
+        // 附件面板（composer ＋ 已挂 accessibilityIdentifier）
+        let attachBtn = app.buttons["composer_attach"].firstMatch
+        if attachBtn.waitForExistence(timeout: 4) {
+            attachBtn.tap(); usleep(1_500_000)
+            shot(app, "5-attach")
+        }
+        // 返回列表
+        app.navigationBars.firstMatch.buttons.element(boundBy: 0).tap()
+        usleep(1_500_000)
+
+        // 聊天设置（⚙）→ 待办
+        let gear = app.buttons.matching(NSPredicate(format: "label CONTAINS %@", "gearshape")).firstMatch
+        if gear.waitForExistence(timeout: 4) {
+            gear.tap(); usleep(1_500_000)
+            shot(app, "6-settings")
+            let todoLink = app.staticTexts["跟进待办"].firstMatch
+            if todoLink.waitForExistence(timeout: 4) {
+                todoLink.tap(); usleep(1_500_000)
+                shot(app, "4-todos")
+            }
+        }
+    }
+}

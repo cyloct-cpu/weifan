@@ -541,6 +541,7 @@ struct ChatView: View {
                         .foregroundStyle(Color(hex: 0x6F6F6F))
                         .frame(width: 28, height: 28)
                 }.disabled(recording)
+                .accessibilityIdentifier("composer_attach")
 
                 TextField("输入中文，发出自动翻译", text: $input, axis: .vertical)
                     .font(.system(size: 16))
@@ -604,7 +605,7 @@ struct ChatView: View {
                 if chatJid.contains("@g.us") {
                     NavigationLink { GroupInfoView(chatJid: chatJid, title: title) } label: {
                         Image(systemName: "info.circle")
-                    }
+                    }.accessibilityIdentifier("chat_info_group")
                 } else {
                     NavigationLink { ContactInfoView(chatJid: chatJid, title: title) } label: {
                         Image(systemName: "info.circle")
