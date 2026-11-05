@@ -33,17 +33,17 @@ struct ChatSettingsView: View {
             }
 
             Section("WhatsApp 连接") {
+                // 状态/配对两行已去：能进本页必然已配对（未配对被配对页拦截），显示无信息量。
+                // 代理保留：国内网络真机调试时配置出口用（模拟器留空走 TUN）。
                 VStack(alignment: .leading, spacing: 4) {
-                    Text("代理（国内网络必需）").font(.caption).foregroundStyle(.secondary)
-                    TextField("http://127.0.0.1:7892 或 socks5://…", text: $waProxy)
+                    Text("代理（按需，留空=直连）").font(.caption).foregroundStyle(.secondary)
+                    TextField("http://… 或 socks5://…", text: $waProxy)
                         .textFieldStyle(.roundedBorder)
                         .autocorrectionDisabled()
                         .textInputAutocapitalization(.never)
                     Text("改动后重启 App 生效。Android 端同名配置 wa_proxy。")
                         .font(.caption2).foregroundStyle(.secondary)
                 }
-                LabeledContent("状态", value: core.connected ? "已连接" : "未连接")
-                LabeledContent("配对", value: core.paired ? "已配对" : "未配对")
             }
 
             Section("翻译设置") {
