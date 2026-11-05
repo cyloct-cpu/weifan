@@ -669,10 +669,24 @@ class PairingActivity : BaseActivity(), PairListener {
             raw.contains("429") || raw.contains("rate-overlimit", true) ->
                 "WhatsApp 暂时限制了请求频率。请等 1–2 分钟再点「下一步」，不要连续重试。"
             raw.contains("ALREADY_PAIRED") -> "本机已配对，需先在设置里注销后再配对。"
+            // 网络类：EOF / WebSocket dial / connect timeouts 都是连不上 web.whatsapp.com
+            raw.contains("EOF") || raw.contains("WebSocket", true) ||
+                raw.contains("failed to dial", true) || raw.contains("connect:", true) ->
+                "无法连接 WhatsApp 服务器（网络被阻断）。\n" +
+                "请到「设置 → 网络代理」填写可用的代理地址（如 http://192.168.1.x:7892），" +
+                "或在手机上开启全局代理后重试。"
             else -> raw
         }
         statusText.text = "配对失败：$friendly"
         statusText.setTextColor(WaSpec.LOGOUT_BANNER_TEXT)
+        // 网络类错误：直接给一个「去设置代理」的入口，省得用户找
+        if (friendly.contains("代理")) {
+            nextBtn.text = "去设置代理"
+            nextBtn.isEnabled = true
+            nextBtn.setOnClickListener {
+                startActivity(android.content.Intent(this, SettingsActivity::class.java))
+            }
+        }
         // 429 之后进入 90 秒冷却，按钮置灰并倒计时，防止用户继续点导致更长封禁
         if (raw.contains("429") || raw.contains("rate-overlimit", true)) {
             startRateCooldown(90)
