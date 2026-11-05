@@ -25,10 +25,15 @@ final class CallEngine: NSObject, ObservableObject {
     @Published var muted = false
     @Published var speakerOn = true
     @Published var error: String?
+    /// meowcaller 原始相位（1=拨出 2=响铃 3=连接中 4=Active 5=结束）——诊断「卡信令还是卡媒体」
+    @Published var phaseRaw = 0
+    /// 实时音频统计（上行/下行帧）——下行 0 = RTP 没通（网络/UDP/代理问题，非 App 代码）
+    @Published var statsLine = "" 
 
     private var audioEngine: AVAudioEngine?
     private var playerNode: AVAudioPlayerNode?
     private var ticker: Timer?
+    private var statsTimer: Timer?
     private var wired = false
 
     func wire(client: MobileWeifanClient) {
@@ -52,6 +57,7 @@ final class CallEngine: NSObject, ObservableObject {
         handler.onState = { [weak self] phase in
             Task { @MainActor in
                 guard let self else { return }
+                self.phaseRaw = phase
                 // meowcaller.CallPhase（session.go iota）：
                 // 0=Idle 1=Calling 2=Ringing 3=Connecting 4=Active 5=Ended 6=WaitingRoom
                 // （之前的映射把 Ringing 当接通、把 Active 当结束——对方没响铃就进通话计时、
@@ -127,14 +133,33 @@ final class CallEngine: NSObject, ObservableObject {
     private func activate() {
         phase = .active
         seconds = 0
+        startStatsPolling()
         startMic()
         ticker = Timer.scheduledTimer(withTimeInterval: 1, repeats: true) { [weak self] _ in
             Task { @MainActor in self?.seconds += 1 }
         }
     }
 
+    /// 每 2s 拉一次 CallStats：上行帧在涨=我方在发；下行 0=对方音频没进来
+    private func startStatsPolling() {
+        statsTimer?.invalidate()
+        let client = ProtocolCore.shared.client
+        statsTimer = Timer.scheduledTimer(withTimeInterval: 2, repeats: true) { [weak self] _ in
+            let raw = client.callStats()
+            guard let d = raw.data(using: .utf8),
+                  let o = try? JSONSerialization.jsonObject(with: d) as? [String: Any],
+                  let tx = o["txFrames"] as? Int, let rx = o["rxFrames"] as? Int else { return }
+            DispatchQueue.main.async {
+                self?.statsLine = "上行 \(tx) 帧 · 下行 \(rx) 帧"
+            }
+        }
+    }
+
     func teardown() {
         ticker?.invalidate(); ticker = nil
+        statsTimer?.invalidate(); statsTimer = nil
+        statsLine = ""
+        phaseRaw = 0
         audioEngine?.stop()
         audioEngine = nil
         playerNode?.stop(); playerNode = nil
@@ -235,7 +260,7 @@ final class CallEventHandler: NSObject, MobileCallListenerProtocol, MobileAudioL
     func onAudioFrame(_ data: Data?) { if let data { onFrame?(data) } }
 }
 
-// MARK: - 通话 UI（来电全屏 + 通话中）
+// MARK: - 通话 UI（来电全屏 + 通话中；亮清晰版，状态/统计实时）
 
 struct CallOverlayView: View {
     @ObservedObject var engine = CallEngine.shared
@@ -244,53 +269,101 @@ struct CallOverlayView: View {
 
     var body: some View {
         ZStack {
-            Color.black.ignoresSafeArea()
-            VStack(spacing: 28) {
-                Text(peerTitle(engine.peerJid))
-                    .font(.title2).foregroundStyle(.white)
+            // 深灰渐变底（纯黑太黑看不清）
+            LinearGradient(colors: [Color(hex: 0x24343C), Color(hex: 0x121A1F)],
+                           startPoint: .top, endPoint: .bottom)
+                .ignoresSafeArea()
+            VStack(spacing: 30) {
+                VStack(spacing: 10) {
+                    ZStack {
+                        Circle().fill(Color.white.opacity(0.14))
+                            .frame(width: 96, height: 96)
+                        Text(String(peerTitle(engine.peerJid).first ?? "#"))
+                            .font(.system(size: 40, weight: .semibold)).foregroundStyle(.white)
+                    }
+                    Text(peerTitle(engine.peerJid))
+                        .font(.title2.bold()).foregroundStyle(.white)
+                        .multilineTextAlignment(.center)
+                    Text(engine.isVideo ? "视频通话" : "语音通话")
+                        .font(.footnote).foregroundStyle(.white.opacity(0.55))
+                }
+
                 switch engine.phase {
-                case .idle: EmptyView()
+                case .idle:
+                    EmptyView()
                 case .incoming:
-                    Text("来电 · \(engine.isVideo ? "视频" : "语音")").foregroundStyle(.secondary)
-                    HStack(spacing: 60) {
-                        Button { engine.reject(client: client) } label: {
-                            Image(systemName: "phone.down.fill").font(.title)
-                                .frame(width: 80, height: 80).background(.red).clipShape(Circle())
+                    Text("来电 · \(engine.isVideo ? "视频" : "语音")")
+                        .font(.title3).foregroundStyle(.white.opacity(0.85))
+                    HStack(spacing: 64) {
+                        callButton(icon: "phone.down.fill", label: "拒接", color: .red) {
+                            engine.reject(client: client)
                         }
-                        Button { engine.accept(client: client) } label: {
-                            Image(systemName: "phone.fill").font(.title)
-                                .frame(width: 80, height: 80).background(.green).clipShape(Circle())
+                        callButton(icon: "phone.fill", label: "接听", color: .green) {
+                            engine.accept(client: client)
                         }
                     }
                 case .outgoing:
-                    Text("呼叫中…").foregroundStyle(.secondary)
-                    hangupButton
+                    Text(statusText).font(.title3).foregroundStyle(.white.opacity(0.85))
+                    if !engine.statsLine.isEmpty {
+                        Text(engine.statsLine).font(.caption.monospaced())
+                            .foregroundStyle(.white.opacity(0.5))
+                    }
+                    callButton(icon: "phone.down.fill", label: "挂断", color: .red) {
+                        engine.hangup(client: client)
+                    }
                 case .active:
-                    Text(Self.dur(engine.seconds)).font(.title3.monospaced()).foregroundStyle(.secondary)
-                    HStack(spacing: 24) {
-                        Button { engine.setMuted(!engine.muted, client: client) } label: {
-                            Image(systemName: engine.muted ? "mic.slash.fill" : "mic.fill")
-                                .frame(width: 64, height: 64)
-                                .background(engine.muted ? Color.red.opacity(0.8) : Color.white.opacity(0.2))
-                                .clipShape(Circle())
+                    Text(CallOverlayView.dur(engine.seconds))
+                        .font(.system(size: 44, weight: .light, design: .monospaced))
+                        .foregroundStyle(.white)
+                    if !engine.statsLine.isEmpty {
+                        Text(engine.statsLine).font(.caption.monospaced())
+                            .foregroundStyle(.white.opacity(0.5))
+                    }
+                    HStack(spacing: 40) {
+                        callButton(icon: engine.muted ? "mic.slash.fill" : "mic.fill",
+                                   label: engine.muted ? "已静音" : "静音",
+                                   color: engine.muted ? .red : Color.white.opacity(0.18),
+                                   iconColor: engine.muted ? .white : .white) {
+                            engine.setMuted(!engine.muted, client: client)
                         }
-                        hangupButton
-                        Button { engine.speakerOn.toggle() } label: {
-                            Image(systemName: engine.speakerOn ? "speaker.wave.3.fill" : "speaker.fill")
-                                .frame(width: 64, height: 64)
-                                .background(Color.white.opacity(0.2)).clipShape(Circle())
+                        callButton(icon: "phone.down.fill", label: "挂断", color: .red) {
+                            engine.hangup(client: client)
+                        }
+                        callButton(icon: engine.speakerOn ? "speaker.wave.3.fill" : "speaker.fill",
+                                   label: "扬声器",
+                                   color: Color.white.opacity(0.18)) {
+                            engine.speakerOn.toggle()
                         }
                     }
                 }
-                if let e = engine.error { Text(e).font(.footnote).foregroundStyle(.red) }
+                if let e = engine.error {
+                    Text(e).font(.footnote).foregroundStyle(.yellow.opacity(0.9))
+                        .multilineTextAlignment(.center).padding(.horizontal, 24)
+                }
             }
         }
     }
 
-    private var hangupButton: some View {
-        Button { engine.hangup(client: client) } label: {
-            Image(systemName: "phone.down.fill").font(.title)
-                .frame(width: 80, height: 80).background(.red).clipShape(Circle())
+    /// 拨出中的细分状态（meowcaller 相位）：卡在哪一眼可见
+    private var statusText: String {
+        switch engine.phaseRaw {
+        case 2: return "正在响铃，等待对方接听…"
+        case 3: return "接通中，建立媒体通道…"
+        default: return "呼叫中…"
+        }
+    }
+
+    private func callButton(icon: String, label: String, color: Color,
+                            iconColor: Color = .white, action: @escaping () -> Void) -> some View {
+        VStack(spacing: 8) {
+            Button(action: action) {
+                Image(systemName: icon)
+                    .font(.system(size: 22, weight: .semibold))
+                    .foregroundStyle(iconColor)
+                    .frame(width: 72, height: 72)
+                    .background(Circle().fill(color))
+            }
+            Text(label).font(.caption).foregroundStyle(.white.opacity(0.75))
         }
     }
 
