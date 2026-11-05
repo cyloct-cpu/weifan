@@ -52,11 +52,17 @@ final class CallEngine: NSObject, ObservableObject {
         handler.onState = { [weak self] phase in
             Task { @MainActor in
                 guard let self else { return }
-                // phase: Go 侧 callState 枚举（ ringing/accepted/established/ended…）
-                if phase == 4 || phase == 5 || phase == 6 {  // ended 系
-                    self.teardown()
-                } else if phase == 2 || phase == 3 {          // 接通
+                // meowcaller.CallPhase（session.go iota）：
+                // 0=Idle 1=Calling 2=Ringing 3=Connecting 4=Active 5=Ended 6=WaitingRoom
+                // （之前的映射把 Ringing 当接通、把 Active 当结束——对方没响铃就进通话计时、
+                //   真接通反而立即拆线，是「对方收不到邀请」的表象根源之一）
+                switch phase {
+                case 4:                       // Active：真正接通才进通话界面/开麦
                     if self.phase != .active { self.activate() }
+                case 5:                       // Ended
+                    self.teardown()
+                default:                      // 1/2/3/6：拨出/响铃/连接中——维持当前状态
+                    break
                 }
             }
         }
