@@ -1094,6 +1094,8 @@ struct BubbleView: View {
             if m.fromMe { Spacer(minLength: 46) }
             if isSystemLine {
                 systemLine
+            } else if isCallRecord {
+                callRecordBubble
             } else if isMediaBubble {
                 mediaBubble
             } else if isDocument {
@@ -1282,6 +1284,33 @@ struct BubbleView: View {
     }
     private var isDocument: Bool { m.mediaKind == "document" }
     private var isAudio: Bool { m.mediaKind == "audio" }
+    private var isCallRecord: Bool { m.mediaKind == "call" }
+
+    /// 通话记录气泡（对齐 WhatsApp：图标+通话类型+时长/未接，未接图标红）
+    private var callRecordBubble: some View {
+        HStack(alignment: .bottom, spacing: 8) {
+            Group {
+                if let d = m.mediaMeta.data(using: .utf8),
+                   let o = try? JSONSerialization.jsonObject(with: d) as? [String: Any],
+                   let kind = o["kind"] as? String, kind == "video" {
+                    Image(systemName: "video.fill")
+                } else {
+                    Image(systemName: "phone.fill")
+                }
+            }
+            .font(.system(size: 17))
+            .foregroundStyle(m.text.contains("未接") ? Color(hex: 0xE53935) : Color(hex: 0x25D366))
+            VStack(alignment: .leading, spacing: 2) {
+                Text(m.text).font(.callout).foregroundStyle(.primary)
+            }
+            timeRowNoSpacer
+        }
+        .padding(.horizontal, 9).padding(.vertical, 8)
+        .frame(maxWidth: 290, alignment: .leading)
+        .background(m.fromMe ? Color.dyn(0xE0FCD6, 0x005C4B)
+                    : Color.dyn(0xFFFFFF, 0x1F2C33))
+        .clipShape(RoundedRectangle(cornerRadius: 16))
+    }
 
     /// 语音条：气泡内播放行 + 时间（audio 不渲染在 textBubble 分支里的回归修复）
     private var audioBubble: some View {

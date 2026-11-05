@@ -26,6 +26,10 @@ final class CallEngine: NSObject, ObservableObject {
     @Published var speakerOn = true
     @Published var error: String?
     /// meowcaller 原始相位（1=拨出 2=响铃 3=连接中 4=Active 5=结束）——诊断「卡信令还是卡媒体」
+    /// 本端是否进过通话（区分「未接通」与「通话 N 秒」）
+    private var wasActive = false
+    /// 来电还是拨出
+    private var isIncoming = false
     @Published var phaseRaw = 0
     /// 实时音频统计（上行/下行帧）——下行 0 = RTP 没通（网络/UDP/代理问题，非 App 代码）
     @Published var statsLine = "" 
@@ -43,6 +47,8 @@ final class CallEngine: NSObject, ObservableObject {
         handler.onIncoming = { [weak self] from, cid, video in
             Task { @MainActor in
                 guard let self else { return }
+                self.isIncoming = true
+                self.wasActive = false
                 guard self.phase == .idle else {
                     // 通话中又来一通：直接拒接第二通（单路）
                     do { _ = try client.rejectCall(from, callID: cid) } catch { }
@@ -90,6 +96,8 @@ final class CallEngine: NSObject, ObservableObject {
         }
         peerJid = jid
         isVideo = video
+        isIncoming = false
+        wasActive = false
         phase = .outgoing
         DispatchQueue.global(qos: .userInitiated).async { [weak self] in
             var err: NSError?
@@ -113,16 +121,6 @@ final class CallEngine: NSObject, ObservableObject {
         activate()
     }
 
-    func reject(client: MobileWeifanClient) {
-        do { _ = try client.rejectCall(peerJid, callID: callID) } catch { }
-        teardown()
-    }
-
-    func hangup(client: MobileWeifanClient) {
-        do { _ = try client.hangupCall() } catch { }
-        teardown()
-    }
-
     func setMuted(_ m: Bool, client: MobileWeifanClient) {
         // 静音 = 停止向协议喂数据（isVoiceProcessingEnabled 只读，不能开关）
         muted = m
@@ -132,6 +130,7 @@ final class CallEngine: NSObject, ObservableObject {
 
     private func activate() {
         phase = .active
+        wasActive = true
         seconds = 0
         startStatsPolling()
         startMic()
@@ -155,11 +154,69 @@ final class CallEngine: NSObject, ObservableObject {
         }
     }
 
+    /// 拒接（来电）：写「未接来电」记录
+    func reject(client: MobileWeifanClient) {
+        do { _ = try client.rejectCall(peerJid, callID: callID) } catch { }
+        wasActive = false
+        teardown()
+    }
+
+    func hangup(client: MobileWeifanClient) {
+        do { _ = try client.hangupCall() } catch { }
+        teardown()
+    }
+
+    /// 通话落库（对齐 WhatsApp：会话里留通话记录）
+    private func recordCallLog() {
+        guard !peerJid.isEmpty else { return }
+        let dir: String
+        let label: String
+        if isIncoming {
+            if wasActive {
+                dir = "in"
+                label = "语音通话（来电）"
+            } else {
+                dir = "missed"
+                label = "未接来电"
+            }
+        } else {
+            dir = "out"
+            label = wasActive ? "语音通话（拨出）" : "语音通话（未接通）"
+        }
+        var kind = "voice"
+        var labelText = label
+        if isVideo {
+            kind = "video"
+            labelText = label.replacingOccurrences(of: "语音", with: "视频")
+        }
+        let meta: [String: Any] = ["dir": dir, "kind": kind,
+                                   "duration": wasActive ? seconds : 0]
+        let row = MessageRow(
+            id: "call-\(callID.isEmpty ? UUID().uuidString : callID)",
+            chatJid: peerJid, senderJid: "", fromMe: !isIncoming,
+            text: wasActive ? "\(labelText) · 时长 \(CallOverlayView.dur(seconds))" : labelText,
+            original: "", translated: "", translatedLang: "",
+            ts: Int64(Date().timeIntervalSince1970 * 1000),
+            mediaKind: "call", mediaMime: "", mediaName: "", mediaSize: 0,
+            mediaPath: "", mediaThumb: "",
+            mediaMeta: String(data: (try? JSONSerialization.data(withJSONObject: meta)) ?? Data(), encoding: .utf8) ?? "",
+            reaction: "")
+        let db = ProtocolCore.shared.db
+        let chatJid = peerJid
+        DispatchQueue.global(qos: .utility).async {
+            try? db.insertMessage(row)
+            try? db.upsertChat(jid: chatJid, title: "", lastMessage: row.text,
+                               lastTs: row.ts, incrementUnread: false)
+        }
+        peerJid = ""; callID = ""
+    }
+
     func teardown() {
         ticker?.invalidate(); ticker = nil
         statsTimer?.invalidate(); statsTimer = nil
         statsLine = ""
         phaseRaw = 0
+        recordCallLog()
         audioEngine?.stop()
         audioEngine = nil
         playerNode?.stop(); playerNode = nil

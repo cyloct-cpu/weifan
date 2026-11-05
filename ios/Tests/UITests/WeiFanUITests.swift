@@ -375,4 +375,23 @@ final class WeiFanUITests: XCTestCase {
             snapshot(app, "83-录音-环境受限")
         }
     }
+
+    /// 通话记录气泡渲染（种子数据三条：拨出/未接视频/来电）
+    func testCallRecordBubbles() throws {
+        let app = XCUIApplication()
+        app.launchArguments = ["PREVIEW_LIST", "UITEST_FORCE_LIGHT"]
+        app.launch()
+
+        let chat = app.staticTexts["TEST-验证"]
+        XCTAssertTrue(chat.waitForExistence(timeout: 25), "列表没起来")
+        chat.tap()
+        XCTAssertTrue(app.buttons["call_voice"].waitForExistence(timeout: 12))
+        // 滚到底看种子通话记录
+        app.swipeUp(); app.swipeUp(); app.swipeUp()
+        sleep(1)
+        snapshot(app, "84-通话记录气泡")
+        XCTAssertTrue(app.staticTexts.matching(NSPredicate(format: "label CONTAINS %@", "未接来电")).firstMatch.exists
+                      || app.staticTexts.matching(NSPredicate(format: "label CONTAINS %@", "语音通话")).firstMatch.exists,
+                      "通话记录没渲染")
+    }
 }
