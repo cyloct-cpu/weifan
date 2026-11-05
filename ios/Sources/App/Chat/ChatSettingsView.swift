@@ -20,7 +20,13 @@ struct ChatSettingsView: View {
     @State private var restoreMsg: String?
 
     var body: some View {
+        // 段结构与行顺序完全对齐 Android SettingsActivity：
+        // 通用 / WhatsApp 连接 / 翻译设置 / 客户管理 / 隐私与屏蔽 / 关于
         Form {
+            Section("通用") {
+                LabeledContent("检查更新", value: "3.9.1（55）")
+            }
+
             Section("WhatsApp 连接") {
                 VStack(alignment: .leading, spacing: 4) {
                     Text("代理（国内网络必需）").font(.caption).foregroundStyle(.secondary)
@@ -32,15 +38,15 @@ struct ChatSettingsView: View {
                         .font(.caption2).foregroundStyle(.secondary)
                 }
                 LabeledContent("状态", value: core.connected ? "已连接" : "未连接")
+                LabeledContent("配对", value: core.paired ? "已配对" : "未配对")
             }
-            Section("翻译") {
+
+            Section("翻译设置") {
                 Toggle("收件自动翻译", isOn: $autoTranslate)
-                NavigationLink("翻译服务与密钥") {
-                    // 引擎凭据沿用工具形态设置（同 Keychain，两端同规格）
-                    SettingsView()
-                }
+                NavigationLink("翻译服务（九家 + 自定义接口）") { SettingsView() }
             }
-            Section("数据") {
+
+            Section("客户管理") {
                 NavigationLink("跟进待办") { TodoListView() }
                 Button {
                     exporting = true
@@ -53,22 +59,28 @@ struct ChatSettingsView: View {
                     }
                 } label: {
                     HStack {
-                        Label("导出备份（会话 JSON）", systemImage: "archivebox")
+                        Label("备份数据", systemImage: "archivebox")
                         if exporting { ProgressView().scaleEffect(0.7) }
                     }
                 }
                 .disabled(exporting)
-                Button {
-                    showRestore = true
-                } label: {
-                    Label("从 JSON 恢复", systemImage: "arrow.down.doc")
+                Button { showRestore = true } label: {
+                    Label("恢复数据", systemImage: "arrow.down.doc")
                 }
-                Text("备份含会话与消息 JSON，不含媒体文件；恢复按主键覆盖合并。")
+                NavigationLink("新建联系人") { NewContactView() }
+                // 以下三项 Android 已有，iOS 协议层已支持但尚未接 UI
+                Text("设备管理 / 同步 WhatsApp / 退出账号：协议层已就绪，UI 待接")
                     .font(.caption2).foregroundStyle(.secondary)
             }
+
+            Section("隐私与屏蔽") {
+                Text("已拉黑联系人：可在会话长按菜单中拉黑/解除（iOS 暂无独立列表页）")
+                    .font(.caption2).foregroundStyle(.secondary)
+            }
+
             Section("关于") {
                 LabeledContent("协议层", value: "WeifanProtocol (gomobile)")
-                LabeledContent("配对状态", value: core.paired ? "已配对" : "未配对")
+                LabeledContent("版本", value: "3.9.1（55）")
             }
         }
         .navigationTitle("聊天设置")

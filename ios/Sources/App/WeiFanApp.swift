@@ -15,6 +15,7 @@ struct WeiFanApp: App {
     var body: some Scene {
         WindowGroup {
             RootView()
+                .preferredColorScheme(.light)   // 安卓默认浅色主题
                 .environmentObject(model)
                 .onOpenURL { url in
                     // weifan://share?text=... 供快捷指令或其它 App 唤起
@@ -90,8 +91,10 @@ struct RootView: View {
     @EnvironmentObject private var model: AppModel
 
     var body: some View {
-        NavigationStack {
-            ChatRootView()
-        }
+        // ChatListView 内部已有 NavigationStack（导航标题/工具栏挂在那里），
+        // 外层再包一层会导致内层失效 → 标题与 chips 不渲染（实测全黑无标题）
+        // ChatListView 内部依赖外层 NavigationStack 提供渲染上下文，
+        // 去掉会导致整页白屏（实测）。标题/chips 的问题改用内层处理。
+        NavigationStack { ChatRootView() }
     }
 }

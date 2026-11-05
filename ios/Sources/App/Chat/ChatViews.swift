@@ -230,6 +230,52 @@ struct ChatListView: View {
     var body: some View {
         NavigationStack(path: $path) {
             VStack(spacing: 0) {
+                // 自定义 header（对齐 Android：标题 18sp 左对齐 + 右上 ＋ 32dp）
+                // 不用系统导航栏：iOS 的 navigationTitle 居中且会截断（实测显示成「W...」）
+                HStack(spacing: 0) {
+                    Text("WeFlip")
+                        .font(.system(size: 18, weight: .semibold))
+                        .foregroundStyle(Color(hex: 0x111111))
+                    Spacer()
+                    Menu {
+                        Button { showNewChat = true } label: { Label("新建会话（加好友）", systemImage: "person.badge.plus") }
+                        Button { showNewGroup = true } label: { Label("新建群聊", systemImage: "person.3") }
+                        NavigationLink { NewContactView() } label: { Label("新建联系人（存手机通讯录）", systemImage: "person.crop.circle.badge.plus") }
+                        Divider()
+                        NavigationLink { ChatSettingsView() } label: { Label("设置", systemImage: "gearshape") }
+                    } label: {
+                        // 安卓是竖三点 ⋮，SF 的 ellipsis 是横的，旋转 90°
+                        Image(systemName: "ellipsis")
+                            .font(.system(size: 19, weight: .medium))
+                            .rotationEffect(.degrees(90))
+                            .foregroundStyle(Color(hex: 0x111111))
+                            .frame(width: 32, height: 32)
+                    }
+                }
+                .padding(.horizontal, 12)
+                .frame(height: 48)
+                .background(Color.white)
+
+                // 搜索框：.searchable 依附系统导航栏，隐藏导航栏后失效，改为自绘
+                // 对齐安卓：40dp 高、圆角 20、#F2F2F7 底、图标 14sp + hint 15sp
+                HStack(spacing: 8) {
+                    Image(systemName: "magnifyingglass")
+                        .font(.system(size: 14)).foregroundStyle(Color(hex: 0x6F6F6F))
+                    TextField("搜索或开始新聊天", text: $query)
+                        .font(.system(size: 15))
+                        .textFieldStyle(.plain)
+                    if !query.isEmpty {
+                        Button { query = "" } label: {
+                            Image(systemName: "xmark.circle.fill")
+                                .font(.system(size: 14)).foregroundStyle(Color(hex: 0x8E8E93))
+                        }
+                    }
+                }
+                .padding(.horizontal, 12)
+                .frame(height: 40)
+                .background(RoundedRectangle(cornerRadius: 20).fill(Color(hex: 0xF2F2F7)))
+                .padding(.horizontal, 12).padding(.vertical, 6)
+
                 // 连接状态条
                 if !core.connected {
                     Text("连接中…（需手机 WhatsApp 在线）")
@@ -261,36 +307,29 @@ struct ChatListView: View {
                 }
                 .padding(.vertical, 8)
 
+                // 用 ScrollView + VStack 而不是 List：
+                // iOS 的 List 自带 > 箭头与缩进分隔线，安卓是通栏行 + 无箭头（实测差异明显）
                 let list = filtered
                 if list.isEmpty {
                     emptyView
                 } else {
-                    List(list) { chat in
-                        NavigationLink(value: chat.jid) {
-                            ChatListRow(chat: chat)
+                    ScrollView {
+                        LazyVStack(spacing: 0) {
+                            ForEach(list) { chat in
+                                NavigationLink(value: chat.jid) {
+                                    ChatListRow(chat: chat)
+                                }
+                                .buttonStyle(.plain)
+                                // 通栏 1dp 分隔线，左缩进 70（对齐安卓 dividerInset 46+12+12）
+                                Rectangle().fill(Color(hex: 0xE5E5EA))
+                                    .frame(height: 1)
+                                    .padding(.leading, 70)
+                            }
                         }
                     }
-                    .listStyle(.plain)
                 }
             }
-            .navigationTitle("WeFlip")
-            .navigationDestination(for: String.self) { jid in
-                ChatView(chatJid: jid)
-            }
-            .toolbar {
-                ToolbarItem(placement: .topBarTrailing) {
-                    Menu {
-                        // 对齐 Android showListMenu：新建会话（加好友）/ 新建群聊 / 新建联系人 / 设置
-                        Button { showNewChat = true } label: { Label("新建会话（加好友）", systemImage: "person.badge.plus") }
-                        Button { showNewGroup = true } label: { Label("新建群聊", systemImage: "person.3") }
-                        NavigationLink { NewContactView() } label: { Label("新建联系人（存手机通讯录）", systemImage: "person.crop.circle.badge.plus") }
-                        Divider()
-                        NavigationLink { ChatSettingsView() } label: { Label("设置", systemImage: "gearshape") }
-                    } label: {
-                        Image(systemName: "plus")
-                    }
-                }
-            }
+            .toolbar(.hidden, for: .navigationBar)
             .onAppear { CallEngine.shared.wire(client: core.client) }
             .overlay {
                 if CallEngine.shared.phase != .idle {
@@ -358,7 +397,12 @@ struct ChatListRow: View {
                 .frame(width: 46, height: 46)
             }
             VStack(alignment: .leading, spacing: 2) {
-                Text(chat.title)
+                // 对齐 Android：title 为空时用 jid 前半段兜底（否则会显示成空白或错位）
+                // title 为空时显示「+号码」而不是裸数字（历史同步的消息没有 pushName，
+                // 根治需协议层补联系人接口并重编 xcframework，见交付说明）
+                Text(chat.title.isEmpty
+                     ? "+" + String(String(chat.jid.split(separator: "@").first ?? "").filter(\.isNumber))
+                     : chat.title)
                     .font(.system(size: 16)).foregroundStyle(Color(hex: 0x111111)).lineLimit(1)
                 Text(chat.lastMessage)
                     .font(.system(size: 13)).foregroundStyle(Color(hex: 0x8E8E93)).lineLimit(1)
@@ -397,6 +441,40 @@ struct ChatListRow: View {
 // MARK: - 会话页（阶段 2：媒体收发 + 长按菜单 + 语音 + 查看器）
 
 struct ChatView: View {
+    @State private var showLangPicker = false
+    @State private var showSearch = false
+    @State private var searchText = ""
+
+    private static let langOptions: [(String, String)] = [
+        ("自动检测", ""), ("英语", "en"), ("西班牙语", "es"),
+        ("葡萄牙语", "pt"), ("法语", "fr"), ("德语", "de")
+    ]
+
+    @ViewBuilder
+    private func langRow(name: String, code: String) -> some View {
+        let key = "chat_lang_\(chatJid)"
+        let current = UserDefaults.standard.string(forKey: key) ?? ""
+        Button {
+            UserDefaults.standard.set(code, forKey: key)
+            showLangPicker = false
+        } label: {
+            HStack {
+                Text(name).foregroundStyle(Color(hex: 0x111111))
+                Spacer()
+                if current == code {
+                    Image(systemName: "checkmark").foregroundStyle(Color(hex: 0x25D366))
+                }
+            }
+        }
+    }
+
+    /// 会话内搜索：原文或译文包含关键词（对齐 Android renderMessages 的过滤逻辑）
+    private var filteredMessages: [MessageRow] {
+        let all = core.messages(chatJid: chatJid)
+        guard !searchText.isEmpty else { return Array(all.suffix(50)) }
+        let q = searchText.lowercased()
+        return all.filter { $0.text.lowercased().contains(q) || $0.translated.lowercased().contains(q) }
+    }
     let chatJid: String
     @ObservedObject var core = ProtocolCore.shared
     @State private var title = ""
@@ -498,15 +576,30 @@ struct ChatView: View {
             .background(Capsule().fill(Color(hex: 0xF2F2F7)))
             .padding(.horizontal, 8).padding(.vertical, 6)
         }
+        .sheet(isPresented: $showLangPicker) { CustomerLanguageSheet(chatJid: chatJid) }
+        .sheet(isPresented: $showSearch) { MessageSearchSheet(chatJid: chatJid) }
         .navigationTitle(title.isEmpty ? chatJid : title)
         .navigationBarTitleDisplayMode(.inline)
         .toolbar {
             ToolbarItemGroup(placement: .topBarTrailing) {
                 if !chatJid.contains("@g.us") {
+                    // 对齐 Android 头部：📞 语音 / 📹 视频（之前只有语音）
                     Button {
                         CallEngine.shared.wire(client: core.client)
                         CallEngine.shared.startCall(client: core.client, jid: chatJid, video: false)
                     } label: { Image(systemName: "phone") }
+                    Button {
+                        CallEngine.shared.wire(client: core.client)
+                        CallEngine.shared.startCall(client: core.client, jid: chatJid, video: true)
+                    } label: { Image(systemName: "video") }
+                    // 对齐 Android customerLanguageButton：会话级指定客户语言与引擎
+                    Button { showLangPicker = true } label: {
+                        Image(systemName: "textformat.characters")
+                    }
+                    // 对齐 Android searchButton：会话内消息搜索
+                    Button { showSearch = true } label: {
+                        Image(systemName: "magnifyingglass")
+                    }
                 }
                 if chatJid.contains("@g.us") {
                     NavigationLink { GroupInfoView(chatJid: chatJid, title: title) } label: {
@@ -620,6 +713,89 @@ struct ChatView: View {
         msgs = core.messages(chatJid: chatJid)
         if title.isEmpty {
             title = core.chats().first(where: { $0.jid == chatJid })?.title ?? chatJid
+        }
+    }
+}
+
+// MARK: - 客户语言（对齐 Android dialog_customer_language）
+struct CustomerLanguageSheet: View {
+    let chatJid: String
+    @Environment(\.dismiss) private var dismiss
+    @State private var sel: String = ""
+
+    private static let options: [(String, String)] = [
+        ("自动检测", ""), ("英语", "en"), ("西班牙语", "es"),
+        ("葡萄牙语", "pt"), ("法语", "fr"), ("德语", "de")
+    ]
+
+    var body: some View {
+        NavigationStack {
+            Form {
+                Section("目标语言（该客户说什么）") {
+                    ForEach(Self.options, id: \.1) { opt in
+                        row(opt.0, opt.1)
+                    }
+                }
+                Section("翻译引擎") {
+                    Text("跟随全局优先级").font(.caption).foregroundStyle(.secondary)
+                }
+            }
+            .navigationTitle("客户语言")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) { Button("关闭") { dismiss() } }
+            }
+            .onAppear { sel = UserDefaults.standard.string(forKey: "chat_lang_\(chatJid)") ?? "" }
+        }
+    }
+
+    private func row(_ name: String, _ code: String) -> some View {
+        Button {
+            UserDefaults.standard.set(code, forKey: "chat_lang_\(chatJid)")
+            sel = code
+            dismiss()
+        } label: {
+            HStack {
+                Text(name).foregroundStyle(Color(hex: 0x111111))
+                Spacer()
+                if sel == code {
+                    Image(systemName: "checkmark").foregroundStyle(Color(hex: 0x25D366))
+                }
+            }
+        }
+    }
+}
+
+// MARK: - 会话内搜索（对齐 Android chatSearchBar）
+struct MessageSearchSheet: View {
+    let chatJid: String
+    @Environment(\.dismiss) private var dismiss
+    @State private var q = ""
+
+    private var hits: [MessageRow] {
+        let all = ProtocolCore.shared.messages(chatJid: chatJid)
+        guard !q.isEmpty else { return [] }
+        let k = q.lowercased()
+        return all.filter { $0.text.lowercased().contains(k) || $0.translated.lowercased().contains(k) }
+    }
+
+    var body: some View {
+        NavigationStack {
+            List(hits) { m in
+                VStack(alignment: .leading, spacing: 3) {
+                    Text(m.text).font(.system(size: 15)).lineLimit(2)
+                    if !m.translated.isEmpty {
+                        Text(m.translated).font(.system(size: 13))
+                            .foregroundStyle(Color(hex: 0x0A7EA4)).lineLimit(2)
+                    }
+                }
+            }
+            .searchable(text: $q, prompt: "搜索消息")
+            .navigationTitle("搜索消息")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) { Button("关闭") { dismiss() } }
+            }
         }
     }
 }
