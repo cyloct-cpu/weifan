@@ -503,7 +503,10 @@ struct ChatView: View {
     @State private var kickedFrom: String?
 
     var body: some View {
-        VStack(spacing: 0) {
+        ZStack {
+            // 聊天壁纸垫底（铺满全屏含安全区；SwiftUI background 挂 ScrollView 会随内容裁切）
+            ChatWallpaperView().ignoresSafeArea()
+            VStack(spacing: 0) {
             ScrollViewReader { proxy in
                 ScrollView {
                     LazyVStack(spacing: 4) {
@@ -518,8 +521,6 @@ struct ChatView: View {
                         }
                         .padding(.horizontal, 8).padding(.vertical, 10)
                 }
-                // 聊天背景：WhatsApp 涂鸦壁纸（与安卓 drawable-nodpi 同款资源，昼夜两版）
-                .background(ChatWallpaperView())
                 .onChange(of: msgs.count) { _ in
                     if let last = msgs.last { proxy.scrollTo(last.id, anchor: .bottom) }
                 }
@@ -584,6 +585,7 @@ struct ChatView: View {
             .padding(.horizontal, 10).padding(.vertical, 6)
             .background(Capsule().fill(Color.dyn(0xF2F2F7, 0x202C33)))
             .padding(.horizontal, 8).padding(.vertical, 6)
+            }
         }
         .sheet(isPresented: $showLangPicker) { CustomerLanguageSheet(chatJid: chatJid) }
         .sheet(isPresented: $showSearch) { MessageSearchSheet(chatJid: chatJid) }
@@ -602,8 +604,9 @@ struct ChatView: View {
                         CallEngine.shared.startCall(client: core.client, jid: chatJid, video: true)
                     } label: { Image(systemName: "video") }
                     // 对齐 Android customerLanguageButton：会话级指定客户语言与引擎
+                    // （不用 SF textformat 符号——中文系统会本地化成「甲乙丙」）
                     Button { showLangPicker = true } label: {
-                        Image(systemName: "textformat.characters")
+                        Text("文").font(.system(size: 16, weight: .semibold))
                     }
                     // 对齐 Android searchButton：会话内消息搜索
                     Button { showSearch = true } label: {
@@ -1168,13 +1171,46 @@ struct BubbleView: View {
     }
 
     private var textBubbleContent: some View {
-        VStack(alignment: .leading, spacing: 3) {
-            if !quoteText.isEmpty {
-                quoteBlock
-            }
-            bubbleTexts
-            timeRow
+        if quoteText.isEmpty && bubbleTextsIsSingleLine {
+            // 纯文本：时间+回执内联在句尾（气泡完全贴内容，对齐 WhatsApp Web 短消息）
+            AnyView(HStack(spacing: 0) { trailingText })
+        } else {
+            AnyView(VStack(alignment: .leading, spacing: 3) {
+                if !quoteText.isEmpty {
+                    quoteBlock
+                }
+                bubbleTexts
+                timeRow
+            })
         }
+    }
+
+    /// 是否纯文本（无引用/链接卡；有译文或原文说明是多元素）
+    private var bubbleTextsIsSingleLine: Bool {
+        linkPreview == nil && !isCardKind
+            && (m.fromMe ? (m.original.isEmpty || m.original == m.text) : m.translated.isEmpty)
+    }
+
+    /// 句尾内联：正文 + 时间 + 回执勾（Text 拼接，基线对齐）
+    private var trailingText: Text {
+        let time = Text("  " + Self.time(m.ts))
+            .font(.system(size: 10)).foregroundColor(Color.primary.opacity(0.45))
+        let tick: Text
+        if m.fromMe {
+            let color = receipt == "read" ? Color(hex: 0x34B7F1) : Color.primary.opacity(0.4)
+            if receipt == "sent" {
+                tick = Text(" ").font(.system(size: 9)) + Text(Image(systemName: "checkmark"))
+                    .font(.system(size: 9, weight: .bold)).foregroundColor(color)
+            } else {
+                tick = Text(" ").font(.system(size: 9))
+                    + Text(Image(systemName: "checkmark")).font(.system(size: 9, weight: .bold)).foregroundColor(color)
+                    + Text(Image(systemName: "checkmark")).font(.system(size: 9, weight: .bold)).foregroundColor(color)
+            }
+        } else {
+            tick = Text("")
+        }
+        return Text(m.text).font(.system(size: settings.sourceTextSp)).foregroundColor(.primary)
+            + time + tick
     }
 
     private var bubbleTexts: some View {
