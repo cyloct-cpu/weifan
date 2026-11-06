@@ -51,6 +51,8 @@
         <string>audio</string>
         <string>voip</string>
     </array>
+    <key>ITSAppUsesNonExemptEncryption</key>
+    <false/>
     <key>NSCameraUsageDescription</key>
     <string>视频通话需要使用摄像头</string>
     <key>NSMicrophoneUsageDescription</key>
