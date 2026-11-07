@@ -95,11 +95,11 @@ struct PairingView: View {
 
     var body: some View {
         ZStack {
-            // 浅底 + 品牌动画环境（对齐品牌规范：等待场景用 W 动画）
-            Color.dyn(0xFFFFFF, 0x111B21).ignoresSafeArea()
+            // 品牌动画环境：浅色白底蓝 W；深色提高 W 不透明度避免黑上看不见
+            Color.dyn(0xFFFFFF, 0x161B20).ignoresSafeArea()
             WLogoPlayer(loop: true)
                 .frame(maxWidth: .infinity)
-                .opacity(0.14)
+                .opacity(0.28)
                 .ignoresSafeArea()
 
             ScrollView {
@@ -256,6 +256,7 @@ struct ChatListView: View {
     @State private var chip = "所有"
     @State private var showNewChat = false
     @State private var showNewGroup = false
+    @State private var reloadDebounce: Task<Void, Never>?
     // 来电浮层/通话错误 alert 的条件在 body 里 → 观察 CallEngine
     @ObservedObject private var callEngine = CallEngine.shared
     private let chips = ["所有", "未读", "特别关注", "群组", "已归档"]
@@ -368,7 +369,14 @@ struct ChatListView: View {
             }
             .toolbar(.hidden, for: .navigationBar)
             .onAppear { CallEngine.shared.wire(client: core.client); reloadChats() }
-            .onChange(of: core.inboxTick) { _ in reloadChats() }
+            .onChange(of: core.inboxTick) { _ in
+                // 防抖：历史同步时每秒几十条消息涌入，逐条重查列表会拖垮主线程
+                reloadDebounce?.cancel()
+                reloadDebounce = Task {
+                    try? await Task.sleep(nanoseconds: 250_000_000)
+                    if !Task.isCancelled { reloadChats() }
+                }
+            }
             .alert("通话", isPresented: .init(
                 get: { callEngine.error != nil && callEngine.phase == .idle },
                 set: { if !$0 { callEngine.clearError() } })) {

@@ -73,6 +73,10 @@ final class ChatDatabase: @unchecked Sendable {
                           userInfo: [NSLocalizedDescriptionKey: "打不开数据库 \(path)"])
         }
         db = handle
+        // WAL：读写互不阻塞（历史同步后台批量写时，主线程读列表不再被写事务卡死）
+        exec("PRAGMA journal_mode=WAL")
+        exec("PRAGMA synchronous=NORMAL")
+        exec("PRAGMA busy_timeout=3000")
         migrate()
     }
 

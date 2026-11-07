@@ -112,3 +112,18 @@ targets:
         FRAMEWORK_SEARCH_PATHS: "$(inherited) $(PROJECT_DIR)/Frameworks/WeifanProtocol.xcframework/ios-arm64_x86_64-simulator"
         GENERATE_INFOPLIST_FILE: YES
         TEST_TARGET_NAME: WeiFan
+
+schemes:
+  WeiFan:
+    build:
+      targets:
+        WeiFan: all
+        WeiFanKeyboard: [build]
+        WeiFanShare: [build]
+        WeiFanUITests: [test]
+    run:
+      config: Release
+    test:
+      config: Debug
+      targets:
+        - WeiFanUITests
