@@ -94,24 +94,34 @@ struct PairingView: View {
     }
 
     var body: some View {
-        ScrollView {
-            VStack(spacing: 16) {
-                Text("关联 WhatsApp").font(.system(size: 20, weight: .bold))
-                Picker("", selection: $mode) {
-                    Text("手机号").tag(0)
-                    Text("二维码").tag(1)
-                }
-                .pickerStyle(.segmented)
-                .padding(.horizontal, 24)
+        ZStack {
+            // 浅底 + 品牌动画环境（对齐品牌规范：等待场景用 W 动画）
+            Color.dyn(0xFFFFFF, 0x111B21).ignoresSafeArea()
+            WLogoPlayer(loop: true)
+                .frame(maxWidth: .infinity)
+                .opacity(0.14)
+                .ignoresSafeArea()
 
-                if mode == 0 { phoneFlow } else { qrFlow }
+            ScrollView {
+                VStack(spacing: 16) {
+                    Text("关联 WhatsApp").font(.system(size: 20, weight: .bold))
+                        .foregroundStyle(.primary)
+                    Picker("", selection: $mode) {
+                        Text("手机号").tag(0)
+                        Text("二维码").tag(1)
+                    }
+                    .pickerStyle(.segmented)
+                    .padding(.horizontal, 24)
 
-                if let err = core.pairError {
-                    Text(err).font(.footnote).foregroundStyle(.red)
-                        .multilineTextAlignment(.center).padding(.horizontal, 24)
+                    if mode == 0 { phoneFlow } else { qrFlow }
+
+                    if let err = core.pairError {
+                        Text(err).font(.footnote).foregroundStyle(.red)
+                            .multilineTextAlignment(.center).padding(.horizontal, 24)
+                    }
                 }
+                .padding(.vertical, 24)
             }
-            .padding(.vertical, 24)
         }
         .onAppear {
             // 默认进手机号流程；切到二维码才发 QR 请求（对齐 Android 进面板才发起）
@@ -185,6 +195,28 @@ struct PairingView: View {
                 .padding(.top, 8)
             }
         }
+        // 拿到配对码后：模糊背景 + 品牌 W 动画（码保持清晰，供对方输入）
+        .overlay {
+            if core.pairCode != nil {
+                ZStack {
+                    Rectangle().fill(.ultraThinMaterial).ignoresSafeArea()
+                    VStack(spacing: 18) {
+                        WLogoPlayer()
+                            .frame(width: 220, height: 124)
+                        Text("正在等待配对确认…")
+                            .font(.callout).foregroundStyle(.primary)
+                        if let c = core.pairCode {
+                            Text(c).font(.system(size: 34, weight: .bold, design: .monospaced))
+                                .textSelection(.enabled)
+                            Text("在对方 WhatsApp 输入此码完成关联")
+                                .font(.caption).foregroundStyle(.secondary)
+                        }
+                    }
+                }
+                .transition(.opacity)
+            }
+        }
+        .animation(.easeOut(duration: 0.35), value: core.pairCode)
     }
 
     // MARK: 二维码流程
@@ -335,7 +367,8 @@ struct ChatListView: View {
                 }
             }
             .toolbar(.hidden, for: .navigationBar)
-            .onAppear { CallEngine.shared.wire(client: core.client) }
+            .onAppear { CallEngine.shared.wire(client: core.client); reloadChats() }
+            .onChange(of: core.inboxTick) { _ in reloadChats() }
             .alert("通话", isPresented: .init(
                 get: { callEngine.error != nil && callEngine.phase == .idle },
                 set: { if !$0 { callEngine.clearError() } })) {
@@ -363,8 +396,12 @@ struct ChatListView: View {
         }
     }
 
+    // 会话列表缓存：只在 inboxTick/首启时查库（此前每次渲染都全量查 SQLite，按钮/搜索都卡）
+    @State private var chatsCache: [ChatRow] = []
+    private func reloadChats() { chatsCache = core.chats() }
+
     private var filtered: [ChatRow] {
-        var cs = core.chats()
+        var cs = chatsCache
         if query.isEmpty == false {
             cs = cs.filter { $0.title.localizedCaseInsensitiveContains(query) || $0.jid.contains(query) }
         }
@@ -382,7 +419,7 @@ struct ChatListView: View {
         VStack(spacing: 10) {
             Image(systemName: "bubble.left.and.bubble.right")
                 .font(.system(size: 40)).foregroundStyle(.secondary)
-            Text(core.chats().isEmpty ? "还没有会话\n收到的消息会出现在这里" : "没有匹配「\(query)」的会话")
+            Text(chatsCache.isEmpty ? "还没有会话\n收到的消息会出现在这里" : "没有匹配「\(query)」的会话")
                 .font(.callout).foregroundStyle(.secondary)
                 .multilineTextAlignment(.center)
         }
@@ -481,13 +518,6 @@ struct ChatView: View {
         }
     }
 
-    /// 会话内搜索：原文或译文包含关键词（对齐 Android renderMessages 的过滤逻辑）
-    private var filteredMessages: [MessageRow] {
-        let all = core.messages(chatJid: chatJid)
-        guard !searchText.isEmpty else { return Array(all.suffix(50)) }
-        let q = searchText.lowercased()
-        return all.filter { $0.text.lowercased().contains(q) || $0.translated.lowercased().contains(q) }
-    }
     let chatJid: String
     @ObservedObject var core = ProtocolCore.shared
     // 通话浮层/alert 的可见性条件在本视图 body 里 → 必须观察 CallEngine
@@ -512,6 +542,11 @@ struct ChatView: View {
     @StateObject private var voice = VoiceRecorder()
     @State private var recording = false
     @State private var kickedFrom: String?
+    // 翻译模式：开=发中文自动译外语；关=直接发原文（「译」按钮切换）
+    @AppStorage("translate_enabled") private var translateEnabled = true
+    // 未配置任何接口时确认过「按原文发送」→ 本次会话不再重复弹窗
+    @State private var rawSendConfirmed = false
+    @State private var showNoProviderAlert = false
 
     var body: some View {
         ZStack {
@@ -563,7 +598,24 @@ struct ChatView: View {
                 }.disabled(recording)
                 .accessibilityIdentifier("composer_attach")
 
-                TextField("输入中文，发出自动翻译", text: $input, axis: .vertical)
+                // 圆形「译」按钮：未配置接口=灰色不可用；配置后蓝色=翻译模式开，点击可关
+                Button {
+                    if hasAnyProvider {
+                        translateEnabled.toggle()
+                    }
+                } label: {
+                    Text("译")
+                        .font(.system(size: 15, weight: .bold))
+                        .foregroundStyle(translateButtonColors.icon)
+                        .frame(width: 34, height: 34)
+                        .background(Circle().fill(translateButtonColors.bg))
+                }
+                .disabled(!hasAnyProvider)
+                .accessibilityIdentifier("composer_translate_toggle")
+                .disabled(recording)
+
+                TextField(translateEnabled && hasAnyProvider ? "输入中文，发出自动翻译" : "输入消息原文直接发送",
+                          text: $input, axis: .vertical)
                     .font(.system(size: 16))
                     .textFieldStyle(.plain)
                     .lineLimit(1...4)
@@ -597,6 +649,12 @@ struct ChatView: View {
             .background(Capsule().fill(Color.dyn(0xF2F2F7, 0x202C33)))
             .padding(.horizontal, 8).padding(.vertical, 6)
             }
+        }
+        .alert("提示", isPresented: $showNoProviderAlert) {
+            Button("确认，按原文发送") { rawSendConfirmed = true }
+            Button("去配置接口", role: .cancel) { }
+        } message: {
+            Text("目前没有配置接口，将以原文的形式进行发送。")
         }
         .sheet(isPresented: $showLangPicker) { CustomerLanguageSheet(chatJid: chatJid) }
         .sheet(isPresented: $showSearch) { MessageSearchSheet(chatJid: chatJid) }
@@ -694,13 +752,38 @@ struct ChatView: View {
         }
     }
 
+    /// 是否配置了任意可用翻译接口（内置密钥或自定义接口）
+    private var hasAnyProvider: Bool {
+        let c = core.core.credentials
+        if !(c.deepLAPIKey ?? "").isEmpty || !(c.googleAPIKey ?? "").isEmpty
+            || !(c.llmAPIKey ?? "").isEmpty { return true }
+        return CustomProfile.loadAll().contains { !$0.key.isEmpty && !$0.baseUrl.isEmpty && !$0.model.isEmpty }
+    }
+
+    private var translateButtonColors: (icon: Color, bg: Color) {
+        if !hasAnyProvider {
+            return (Color.primary.opacity(0.3), Color.primary.opacity(0.08))   // 灰
+        }
+        return translateEnabled
+            ? (.white, Color(hex: 0x0A7EA4))                                    // 蓝=翻译模式开
+            : (.primary, Color.dyn(0xFFFFFF, 0x2A3942))                         // 白=翻译模式关
+    }
+
     private func sendText() {
         let text = input.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !text.isEmpty else { return }
+        // 未配置接口 + 翻译模式开着 → 先弹一次确认，确认后本次会话直接发原文
+        if translateEnabled && !hasAnyProvider && !rawSendConfirmed {
+            showNoProviderAlert = true
+            return
+        }
+        let asRaw = !translateEnabled || !hasAnyProvider
         input = ""
         if let q = pendingQuote {
             pendingQuote = nil
             core.sendReplyAsync(chatJid: chatJid, quote: q, body: text) { err in sendError = err }
+        } else if asRaw {
+            core.sendRawAsync(chatJid: chatJid, text: text) { err in sendError = err }
         } else {
             core.sendTextAsync(chatJid: chatJid, text: text) { err in sendError = err }
         }
@@ -1083,6 +1166,7 @@ struct BubbleView: View {
     @State private var player: AVAudioPlayer?
     // P7：链接预览（og 元数据）
     @State private var linkPreview: LinkPreview?
+    @State private var thumb: UIImage?
     // 字号/颜色设置统一走 ProtocolCore 的 AppSettings（翻译服务页 applySettings 后即时生效）
     private var settings: AppSettings { ProtocolCore.shared.core.settings }
     let chatMsgs: [MessageRow]
@@ -1108,6 +1192,12 @@ struct BubbleView: View {
             if !m.fromMe { Spacer(minLength: 46) }
         }
         .task(id: m.id) {
+            // 缩略图只读一次盘（原来每次渲染都同步读文件，气泡多时明显卡顿）
+            if thumb == nil {
+                thumb = await Task.detached(priority: .utility) {
+                    MediaStore.thumbnail(m)
+                }.value
+            }
             // P7：链接预览（有 URL、无媒体、未抓过 → 后台抓 og）
             if m.mediaKind.isEmpty, !m.fromMe, let u = LinkPreviewFetcher.firstURL(m.text) {
                 if let cached = ProtocolCore.linkPreviewCache[u] {

@@ -127,6 +127,10 @@ struct RootView: View {
         // 外层再包一层会导致内层失效 → 标题与 chips 不渲染（实测全黑无标题）
         // ChatListView 内部依赖外层 NavigationStack 提供渲染上下文，
         // 去掉会导致整页白屏（实测）。标题/chips 的问题改用内层处理。
+        //
+        // 品牌闪屏说明：系统启动图（UILaunchScreen，白/黑底 + W 静帧）已承担开机品牌展示；
+        // Debug 构建进程启动约 2.5s，再加 App 内闪屏会让用户盯着静止 W 近 7 秒（实测）
+        // → 不再做 App 内闪屏，W 动画用在配对等待场景（PairingView）。
         NavigationStack { ChatRootView() }
     }
 }
