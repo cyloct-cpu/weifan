@@ -394,4 +394,26 @@ final class WeiFanUITests: XCTestCase {
                       || app.staticTexts.matching(NSPredicate(format: "label CONTAINS %@", "语音通话")).firstMatch.exists,
                       "通话记录没渲染")
     }
+
+    /// 同步 WhatsApp 闪退复现（真机反馈）——模拟器已配对已连接，同条件点按钮
+    func testSyncWhatsAppSmoke() throws {
+        let app = XCUIApplication()
+        app.launch()   // 真实配对状态（模拟器已配对）
+
+        let menu = app.buttons["header_menu"]
+        XCTAssertTrue(menu.waitForExistence(timeout: 25), "列表没起来")
+        menu.tap()
+        let settingsItem = app.buttons["设置"]
+        XCTAssertTrue(settingsItem.waitForExistence(timeout: 8))
+        settingsItem.tap()
+        XCTAssertTrue(app.navigationBars["聊天设置"].waitForExistence(timeout: 10))
+
+        let syncBtn = app.buttons["同步 WhatsApp"]
+        XCTAssertTrue(syncBtn.waitForExistence(timeout: 8), "同步按钮没找到")
+        syncBtn.tap()
+        sleep(4)
+        // 活着 = 无闪退；此时应有结果提示（成功/失败 alert 或行内状态）
+        XCTAssertTrue(app.state == .runningForeground, "App 在点击同步后闪退")
+        snapshot(app, "90-同步WhatsApp-点击后")
+    }
 }

@@ -98,7 +98,7 @@ struct ChatSettingsView: View {
                 Button { doSync() } label: {
                     HStack {
                         Label("同步 WhatsApp", systemImage: "arrow.triangle.2.circlepath")
-                        if syncing { ProgressView().scaleEffect(0.7) }
+                        if syncing { Text("请求中…").font(.caption).foregroundStyle(.secondary) }
                     }
                 }.disabled(syncing)
                 Button(role: .destructive) { showLogout = true } label: {
@@ -170,19 +170,14 @@ extension ChatSettingsView {
     func doSync() {
         syncing = true
         syncMsg = nil
-        DispatchQueue.global(qos: .userInitiated).async {
-            do {
-                try ProtocolCore.shared.client.requestFullHistorySync(50)
-                DispatchQueue.main.async {
-                    syncing = false
-                    syncMsg = "已发出请求。若原装 WhatsApp 在线且未被清理后台，历史会陆续出现。"
-                }
-            } catch {
-                DispatchQueue.main.async {
-                    syncing = false
-                    syncMsg = "同步失败：\(error.localizedDescription)"
-                }
-            }
+        do {
+            // 实验二：Go 调用挪到主线程串行执行（排查跨线程竞态导致的内存损坏）
+            try ProtocolCore.shared.client.requestFullHistorySync(50)
+            syncing = false
+            syncMsg = "已发出请求。若原装 WhatsApp 在线且未被清理后台，历史会陆续出现。"
+        } catch {
+            syncing = false
+            syncMsg = "同步失败：\(error.localizedDescription)"
         }
     }
 

@@ -109,13 +109,6 @@ final class ProtocolCore: ObservableObject {
     private init() {
         let dir = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0]
             .appendingPathComponent("protocol").path
-        let t0 = CFAbsoluteTimeGetCurrent()
-        var initLog: [String] = []
-        func mark(_ label: String) {
-            initLog.append("⏱ INIT \(label): \(Int((CFAbsoluteTimeGetCurrent() - t0) * 1000))ms")
-            try? initLog.joined(separator: "\n").write(toFile: dir + "/init_timing.txt", atomically: true, encoding: .utf8)
-        }
-        mark("start")
         try? FileManager.default.createDirectory(atPath: dir, withIntermediateDirectories: true)
         let dbPath = dir + "/chats.db"
 
@@ -124,23 +117,19 @@ final class ProtocolCore: ObservableObject {
         // 国内网络必须走代理才能连上 WhatsApp 服务器（mobile.go NewClient 注释同）
         let proxy = UserDefaults.standard.string(forKey: "wa_proxy") ?? ""
         var err: NSError?
-        mark("before MobileNewClient")
         guard let c = MobileNewClient(dir, proxy, &err) else {
             fatalError("协议层初始化失败: \(err?.localizedDescription ?? "未知")")
         }
         self.client = c
-        mark("after MobileNewClient")
 
         do {
             db = try ChatDatabase(path: dbPath)
         } catch {
             fatalError("本地库初始化失败: \(error)")
         }
-        mark("after ChatDatabase")
 
         // 翻译管线：与翻译工具形态共用一套 WeiFanCore 装配（凭据来自钥匙串）
         core = TranslationCore.make(credentials: Keychain.credentials())
-        mark("after TranslationCore+Keychain")
 
         // UI 测试开关：launch 参数模拟已配对/未配对态（真实配对需要手机扫码）
         if ProcessInfo.processInfo.arguments.contains("UITEST_FAKE_PAIRED") {
@@ -183,7 +172,6 @@ final class ProtocolCore: ObservableObject {
         client.setConnectionListener(connHandler)
         client.setMessageListener(msgHandler)
         client.setReceiptListener(receiptHandler)
-        mark("after listeners / init done")
         msgHandler.onEvent = { data in
             Task { @MainActor in self.onGroupEvent?(data) }
         }
