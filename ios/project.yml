@@ -39,7 +39,7 @@ targets:
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.weifan.app
-        PRODUCT_NAME: 微翻
+        PRODUCT_NAME: WeFlip
         SWIFT_OBJC_BRIDGING_HEADER: Sources/App/ProtocolBridging.h
         HEADER_SEARCH_PATHS: "$(inherited) $(PROJECT_DIR)/Frameworks/ProtocolHeaders"
         OTHER_LDFLAGS: "$(inherited) -framework WeifanProtocol"
