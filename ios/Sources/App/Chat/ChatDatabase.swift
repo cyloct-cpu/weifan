@@ -259,6 +259,67 @@ final class ChatDatabase: @unchecked Sendable {
                     m.mediaSize, m.mediaPath, m.mediaThumb, m.mediaMeta, m.reaction])
     }
 
+    /// 通话记录（跨会话，media_kind=call；带会话标题）
+    struct CallRecord {
+        var chatJid: String
+        var title: String
+        var text: String
+        var dir: String       // out/in/missed
+        var kind: String      // voice/video
+        var duration: Int
+        var ts: Int64
+    }
+
+    func callRecords(limit: Int = 200) -> [CallRecord] {
+        var out: [CallRecord] = []
+        queue.sync {
+            let sql = """
+            SELECT m.chat_jid, IFNULL(c.title, ''), m.text, m.media_meta, m.ts
+            FROM messages m LEFT JOIN chats c ON c.jid = m.chat_jid
+            WHERE m.media_kind = 'call' ORDER BY m.ts DESC LIMIT ?
+            """
+            var stmt: OpaquePointer?
+            guard sqlite3_prepare_v2(db, sql, -1, &stmt, nil) == SQLITE_OK else { return }
+            sqlite3_bind_int(stmt, 1, Int32(limit))
+            while sqlite3_step(stmt) == SQLITE_ROW {
+                let col = { (i: Int32) -> String in
+                    if let c = sqlite3_column_text(stmt, i) { return String(cString: c) }
+                    return ""
+                }
+                let chatJid = col(0), title = col(1), text = col(2), meta = col(3)
+                let ts = sqlite3_column_int64(stmt, 4)
+                var dir = "out", kind = "voice", duration = 0
+                if let d = meta.data(using: .utf8),
+                   let o = try? JSONSerialization.jsonObject(with: d) as? [String: Any] {
+                    dir = o["dir"] as? String ?? "out"
+                    kind = o["kind"] as? String ?? "voice"
+                    duration = o["duration"] as? Int ?? 0
+                }
+                out.append(CallRecord(chatJid: chatJid, title: title, text: text,
+                                      dir: dir, kind: kind, duration: duration, ts: ts))
+            }
+            sqlite3_finalize(stmt)
+        }
+        return out
+    }
+
+    /// 工具页统计
+    func statsCounts() -> (chats: Int, calls: Int) {
+        var chats = 0, calls = 0
+        queue.sync {
+            var st: OpaquePointer?
+            if sqlite3_prepare_v2(db, "SELECT COUNT(*) FROM chats WHERE archived = 0", -1, &st, nil) == SQLITE_OK {
+                if sqlite3_step(st) == SQLITE_ROW { chats = Int(sqlite3_column_int(st, 0)) }
+                sqlite3_finalize(st)
+            }
+            if sqlite3_prepare_v2(db, "SELECT COUNT(*) FROM messages WHERE media_kind = 'call'", -1, &st, nil) == SQLITE_OK {
+                if sqlite3_step(st) == SQLITE_ROW { calls = Int(sqlite3_column_int(st, 0)) }
+                sqlite3_finalize(st)
+            }
+        }
+        return (chats, calls)
+    }
+
     func messages(chatJid: String, limit: Int = 300) -> [MessageRow] {
         var out: [MessageRow] = []
         // 注意：不能写「SELECT * FROM (子查询) ORDER BY rowid」——子查询投影会丢掉 rowid

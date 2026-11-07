@@ -377,19 +377,6 @@ struct ChatListView: View {
                     if !Task.isCancelled { reloadChats() }
                 }
             }
-            .alert("通话", isPresented: .init(
-                get: { callEngine.error != nil && callEngine.phase == .idle },
-                set: { if !$0 { callEngine.clearError() } })) {
-                Button("好", role: .cancel) {}
-            } message: { Text(callEngine.error ?? "") }
-            .overlay {
-                if callEngine.phase != .idle {
-                    CallOverlayView(client: core.client) { jid in
-                        core.chats().first(where: { $0.jid == jid })?.title
-                            ?? core.messages(chatJid: jid).last.map { _ in jid } ?? jid
-                    }
-                }
-            }
             .searchable(text: $query, placement: .navigationBarDrawer(displayMode: .always), prompt: "搜索或开始新聊天")
             .navigationDestination(for: String.self) { jid in
                 ChatView(chatJid: jid)
@@ -666,20 +653,7 @@ struct ChatView: View {
         }
         .sheet(isPresented: $showLangPicker) { CustomerLanguageSheet(chatJid: chatJid) }
         .sheet(isPresented: $showSearch) { MessageSearchSheet(chatJid: chatJid) }
-        // 通话浮层：来电全屏/主叫状态（之前只挂在列表页——会话页内不可见）
-        .overlay {
-            if callEngine.phase != .idle {
-                CallOverlayView(client: core.client) { jid in
-                    core.chats().first(where: { $0.jid == jid })?.title
-                        ?? core.messages(chatJid: jid).last.map { _ in jid } ?? jid
-                }
-            }
-        }
-        .alert("通话", isPresented: .init(
-            get: { callEngine.error != nil && callEngine.phase == .idle },
-            set: { if !$0 { callEngine.clearError() } })) {
-            Button("好", role: .cancel) {}
-        } message: { Text(callEngine.error ?? "") }
+
         .navigationTitle(title.isEmpty ? chatJid : title)
         .navigationBarTitleDisplayMode(.inline)
         .toolbar {
