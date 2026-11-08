@@ -4,6 +4,7 @@ import WeiFanCore
 @main
 struct WeiFanApp: App {
     @StateObject private var model = AppModel()
+    @State private var reloadDebounce: Task<Void, Never>?
 
     init() {
         // UI 测试：在任何 SwiftUI 视图创建之前把首启标记清掉（@AppStorage 缓存于此之后才建立）
@@ -39,7 +40,12 @@ struct WeiFanApp: App {
                 .environmentObject(model)
                 // 翻译服务页等保存设置后立即反映（UserDefaults didChange → 重载）
                 .onReceive(NotificationCenter.default.publisher(for: UserDefaults.didChangeNotification)) { _ in
-                    model.reload()
+                    // 防抖：UserDefaults 写入可能很频繁（含系统写入），全量读盘合并到 0.5s 一次
+                    reloadDebounce?.cancel()
+                    reloadDebounce = Task {
+                        try? await Task.sleep(nanoseconds: 500_000_000)
+                        if !Task.isCancelled { model.reload() }
+                    }
                 }
                 .onOpenURL { url in
                     // weifan://share?text=... 供快捷指令或其它 App 唤起
