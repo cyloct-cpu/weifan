@@ -80,7 +80,7 @@ struct LanguagePickerView: View {
 struct PairingView: View {
     @ObservedObject var core = ProtocolCore.shared
     @State private var mode = 0                  // 0=手机号 1=二维码
-    @State private var code = "86"               // 国家码（86 是灰色提示）
+    @State private var code = ""                // 国家码（空 = 灰色提示 86，可输其他区号）
     @State private var phone = ""
     @State private var started = false
     @State private var qrStarted = false
