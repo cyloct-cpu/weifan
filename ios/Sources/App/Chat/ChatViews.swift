@@ -98,7 +98,7 @@ struct PairingView: View {
     var body: some View {
         ZStack {
             // 品牌动画：W 放下半区（不挡输入区/标题）
-            Color.dyn(0xFFFFFF, 0x161B20).ignoresSafeArea()
+            Color.dyn(0xFFFFFF, 0x0B141A).ignoresSafeArea()
             VStack {
                 Spacer(minLength: 0)
                 WLogoPlayer(loop: true)
@@ -323,7 +323,7 @@ struct ChatListView: View {
                 }
                 .padding(.horizontal, 12)
                 .frame(height: 48)
-                .background(Color.dyn(0xFFFFFF, 0x000000))
+                .background(Color.dyn(0xFFFFFF, 0x0B141A))
 
                 // 搜索框：.searchable 依附系统导航栏，隐藏导航栏后失效，改为自绘
                 // 对齐安卓：40dp 高、圆角 20、#F2F2F7 底、图标 14sp + hint 15sp
