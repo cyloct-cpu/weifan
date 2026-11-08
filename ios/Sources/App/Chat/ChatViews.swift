@@ -93,14 +93,21 @@ struct PairingView: View {
         return (c.isEmpty ? "86" : c) + p
     }
 
+    @FocusState private var focusedField: Bool
+
     var body: some View {
         ZStack {
-            // 品牌动画环境：浅色白底蓝 W；深色提高 W 不透明度避免黑上看不见
+            // 品牌动画：W 放下半区（不挡输入区/标题）
             Color.dyn(0xFFFFFF, 0x161B20).ignoresSafeArea()
-            WLogoPlayer(loop: true)
-                .frame(maxWidth: .infinity)
-                .opacity(0.28)
-                .ignoresSafeArea()
+            VStack {
+                Spacer(minLength: 0)
+                WLogoPlayer(loop: true)
+                    .frame(maxWidth: .infinity)
+                    .frame(height: 180)
+                    .opacity(0.22)
+                    .clipped()
+            }
+            .ignoresSafeArea()
 
             ScrollView {
                 VStack(spacing: 16) {
@@ -122,7 +129,30 @@ struct PairingView: View {
                 }
                 .padding(.vertical, 24)
             }
+            .onTapGesture { focusedField = false }
         }
+        // 拿到配对码后：全屏模糊（含标题+选择器）+ W 动画居中 + 码清晰
+        .overlay {
+            if core.pairCode != nil {
+                ZStack {
+                    Rectangle().fill(.ultraThinMaterial).ignoresSafeArea()
+                    VStack(spacing: 16) {
+                        WLogoPlayer()
+                            .frame(width: 200, height: 112)
+                        Text("正在等待配对确认…")
+                            .font(.callout).foregroundStyle(.primary)
+                        if let c = core.pairCode {
+                            Text(c).font(.system(size: 34, weight: .bold, design: .monospaced))
+                                .textSelection(.enabled)
+                            Text("在对方 WhatsApp 输入此码完成关联")
+                                .font(.caption).foregroundStyle(.secondary)
+                        }
+                    }
+                }
+                .transition(.opacity)
+            }
+        }
+        .animation(.easeOut(duration: 0.35), value: core.pairCode)
         .onAppear {
             // 默认进手机号流程；切到二维码才发 QR 请求（对齐 Android 进面板才发起）
             if mode == 1 && !qrStarted { requestQR() }
@@ -148,11 +178,13 @@ struct PairingView: View {
                     .frame(width: 56)
                     .font(.system(size: 17))
                     .multilineTextAlignment(.center)
+                    .focused($focusedField, equals: true)
                 Divider().frame(height: 22)
                 TextField("请输入手机号码", text: $phone)
                     .keyboardType(.numberPad)
                     .font(.system(size: 17))
                     .padding(.horizontal, 12)
+                    .focused($focusedField, equals: true)
             }
             .frame(height: 50)
             .background(Capsule().fill(Color.dyn(0xF2F2F7, 0x202C33)))
