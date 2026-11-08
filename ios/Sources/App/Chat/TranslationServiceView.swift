@@ -1014,6 +1014,9 @@ struct CustomProfileEditor: View {
     var onSave: (CustomProfile) -> Void
     @Environment(\.dismiss) private var dismiss
 
+    @State private var testResult = ""
+    @State private var testing = false
+
     var body: some View {
         NavigationStack {
             Form {
@@ -1026,6 +1029,38 @@ struct CustomProfileEditor: View {
                 TextField("模型名（如 agnes-3.0-flash）", text: $profile.model)
                     .autocorrectionDisabled()
                     .textInputAutocapitalization(.never)
+
+                // 测试连通性/速度
+                Section {
+                    Button {
+                        testing = true
+                        testResult = ""
+                        Task {
+                            let start = Date()
+                            do {
+                                let translated = try await CustomLLMEngine.translate(
+                                    text: "Hello", target: "中文",
+                                    profile: profile, prompt: nil)
+                                let ms = Int(Date().timeIntervalSince(start) * 1000)
+                                testResult = "✅ \(ms)ms · \(translated.prefix(30))"
+                            } catch {
+                                testResult = "❌ \(error.localizedDescription)"
+                            }
+                            testing = false
+                        }
+                    } label: {
+                        HStack {
+                            Text("测试连通性")
+                            if testing { ProgressView().scaleEffect(0.7) }
+                            Spacer()
+                        }
+                    }
+                    .disabled(profile.key.isEmpty || profile.baseUrl.isEmpty || profile.model.isEmpty || testing)
+
+                    if !testResult.isEmpty {
+                        Text(testResult).font(.caption).foregroundStyle(.secondary)
+                    }
+                }
             }
             .navigationTitle("自定义接口")
             .navigationBarTitleDisplayMode(.inline)

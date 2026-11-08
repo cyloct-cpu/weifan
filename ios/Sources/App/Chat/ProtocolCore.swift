@@ -400,7 +400,36 @@ final class ProtocolCore: ObservableObject {
                     completion?(nil)
                 }
             } catch {
-                await MainActor.run { completion?(error.localizedDescription) }
+                // 内置密钥缺失 → 回落到自定义接口
+                let desc = error.localizedDescription
+                if desc.contains("缺少密钥"),
+                   let prof = CustomProfile.loadAll().first(where: { !$0.key.isEmpty && !$0.baseUrl.isEmpty && !$0.model.isEmpty }) {
+                    do {
+                        let target = core.settings.defaultTargetLanguage
+                        let translated = try await CustomLLMEngine.translate(
+                            text: text, target: target.displayName,
+                            profile: prof, prompt: nil)
+                        var sendErr2: NSError?
+                        let msgId2 = client.sendMessage(chatJid, text: translated, error: &sendErr2)
+                        if let sendErr2 { throw sendErr2 }
+                        let now2 = Int64(Date().timeIntervalSince1970 * 1000)
+                        try db.insertMessage(MessageRow(
+                            id: msgId2, chatJid: chatJid, senderJid: "", fromMe: true,
+                            text: translated, original: text, translated: "", translatedLang: "",
+                            ts: now2, mediaKind: "", mediaMime: "", mediaName: "",
+                            mediaSize: 0, mediaPath: "", mediaThumb: "", mediaMeta: "", reaction: ""))
+                        try? db.upsertChat(jid: chatJid, title: "", lastMessage: translated,
+                                           lastTs: now2, incrementUnread: false)
+                        await MainActor.run {
+                            self.inboxTick &+= 1
+                            completion?(nil)
+                        }
+                    } catch {
+                        await MainActor.run { completion?(error.localizedDescription) }
+                    }
+                } else {
+                    await MainActor.run { completion?(desc) }
+                }
             }
         }
     }

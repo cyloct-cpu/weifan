@@ -686,6 +686,7 @@ struct ChatView: View {
         .sheet(isPresented: $showLangPicker) { CustomerLanguageSheet(chatJid: chatJid) }
         .sheet(isPresented: $showSearch) { MessageSearchSheet(chatJid: chatJid) }
 
+        .toolbar(.hidden, for: .tabBar)
         .navigationTitle(title.isEmpty ? chatJid : title)
         .navigationBarTitleDisplayMode(.inline)
         .toolbar {
